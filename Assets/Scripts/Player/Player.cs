@@ -2,6 +2,7 @@ using UnityEngine;
 using Photon.Pun;
 using System.Collections.Generic;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System;
 
 [RequireComponent(typeof(JimmyMove))]
 [RequireComponent(typeof(Rigidbody))]
@@ -89,6 +90,8 @@ public class Player : MonoBehaviour
     }
     public MovementState currentState = MovementState.Idle;
     public MovementState lastState = MovementState.Idle;
+    public event System.Action OnJump;
+    public event System.Action OnLand;
     public float targetSpeed = 8f;
 
     // Event for state changes
@@ -172,6 +175,20 @@ public class Player : MonoBehaviour
         //{
         //    customProperties[kvp.Key.ToString()] = (Object)kvp.Value;
         //}
+    }
+
+    // Jump event
+    public void TriggerJump()
+    {
+        //Debug.Log("Jump Event");
+        OnJump?.Invoke();
+    }
+
+    // Landing event
+    public void TriggerLand()
+    {
+        //Debug.Log("Land Event");
+        OnLand?.Invoke();
     }
 
     /*

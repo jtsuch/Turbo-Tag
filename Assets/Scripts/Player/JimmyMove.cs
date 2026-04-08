@@ -76,10 +76,14 @@ public class JimmyMove : MonoBehaviour
     void SurfaceCheck()
     {
         // Track previous grounded state so we can fire landing events
-        // bool wasGrounded = onGround;
+        bool wasGrounded = onGround;
 
         // Raycasts that checks for ground
         onGround = Physics.Raycast(transform.position, Vector3.down, player.height * 0.2f, ~0);
+
+        // Fire event when player lands on ground
+        if (!wasGrounded && onGround)
+            player.TriggerLand();
 
         // Don't do checks if hanging
         if (player.currentState == Player.MovementState.Hang)
@@ -317,6 +321,7 @@ public class JimmyMove : MonoBehaviour
         }
         //Debug.DrawRay(transform.position, jumpVector, Color.red);
         rb.AddForce(jumpVector, ForceMode.Impulse);
+        player.TriggerJump();
     }
 
     public void ToggleCrouch()

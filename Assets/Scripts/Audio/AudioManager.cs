@@ -106,46 +106,37 @@ private int lastPlayedIndex = -1; // Avoids playing the same track twice in a ro
     // Music Transitions
     // -------------------------------------------------------------------------
 
-    public void TransitionTo(AudioClip newClip)
+// Update the signature to take the full track
+private IEnumerator CrossfadeTo(MusicTrack track)
+{
+    float startVolume = musicSource.volume;
+    float targetVolume = musicVolume * track.volume; // Master volume * per-track scale
+
+    // Fade out
+    float elapsed = 0f;
+    while (elapsed < crossfadeDuration / 2f)
     {
-        if (newClip == null) return;
-
-        // Don't restart if the same track is already playing
-        if (musicSource.clip == newClip && musicSource.isPlaying) return;
-
-        StopAllCoroutines();
-        StartCoroutine(CrossfadeTo(newClip));
+        elapsed += Time.deltaTime;
+        musicSource.volume = Mathf.Lerp(startVolume, 0f, elapsed / (crossfadeDuration / 2f));
+        yield return null;
     }
 
-    private IEnumerator CrossfadeTo(AudioClip newClip, float targetVolume = 1f)
+    // Swap clip
+    musicSource.Stop();
+    musicSource.clip = track.clip;
+    musicSource.Play();
+
+    // Fade in to this track's target volume
+    elapsed = 0f;
+    while (elapsed < crossfadeDuration / 2f)
     {
-        float startVolume = musicSource.volume * targetVolume;
-
-        // Fade out
-        float elapsed = 0f;
-        while (elapsed < crossfadeDuration / 2f)
-        {
-            elapsed += Time.deltaTime;
-            musicSource.volume = Mathf.Lerp(startVolume, 0f, elapsed / (crossfadeDuration / 2f));
-            yield return null;
-        }
-
-        // Swap clip
-        musicSource.Stop();
-        musicSource.clip = newClip;
-        musicSource.Play();
-
-        // Fade in
-        elapsed = 0f;
-        while (elapsed < crossfadeDuration / 2f)
-        {
-            elapsed += Time.deltaTime;
-            musicSource.volume = Mathf.Lerp(0f, musicVolume, elapsed / (crossfadeDuration / 2f));
-            yield return null;
-        }
-
-        musicSource.volume = musicVolume;
+        elapsed += Time.deltaTime;
+        musicSource.volume = Mathf.Lerp(0f, targetVolume, elapsed / (crossfadeDuration / 2f));
+        yield return null;
     }
+
+    musicSource.volume = targetVolume;
+}
 
     // Call this instead of TransitionTo(gameMusic) in your switch
     private void StartPlaylist()
@@ -154,16 +145,24 @@ private int lastPlayedIndex = -1; // Avoids playing the same track twice in a ro
         StartCoroutine(PlaylistRoutine());
     }
 
+    // In TransitionTo() — wrap the clip in a MusicTrack at full volume
+    public void TransitionTo(AudioClip newClip)
+    {
+        if (newClip == null) return;
+        if (musicSource.clip == newClip && musicSource.isPlaying) return;
+
+        StopAllCoroutines();
+        MusicTrack track = new MusicTrack { clip = newClip, volume = 1f };
+        StartCoroutine(CrossfadeTo(track));
+    }
+
+    // In PlaylistRoutine() — pass the full track directly
     private IEnumerator PlaylistRoutine()
     {
-        while (true) // Loops forever until a scene change stops it
+        while (true)
         {
             MusicTrack track = GetNextTrack();
-
-            // Crossfade in
-            yield return StartCoroutine(CrossfadeTo(track.clip, track.volume));
-
-            // Wait for the track to finish, then loop back
+            yield return StartCoroutine(CrossfadeTo(track));
             yield return new WaitForSeconds(track.clip.length);
         }
     }
