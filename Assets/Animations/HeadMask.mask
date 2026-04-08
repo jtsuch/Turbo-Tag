@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!319 &31900000
+AvatarMask:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: HeadMask
+  m_Mask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000
+  m_Elements:
+  - m_Path: 
+    m_Weight: 1
+  - m_Path: Armature
+    m_Weight: 0
+  - m_Path: Armature/LeftHip
+    m_Weight: 0
+  - m_Path: Armature/LeftHip/LeftLeg
+    m_Weight: 0
+  - m_Path: Armature/LeftHip/LeftLeg/LeftFoot
+    m_Weight: 0
+  - m_Path: Armature/LeftHip/LeftLeg/LeftFoot/LeftFoot_end
+    m_Weight: 0
+  - m_Path: Armature/RigthHip
+    m_Weight: 0
+  - m_Path: Armature/RigthHip/RightLeg
+    m_Weight: 0
+  - m_Path: Armature/RigthHip/RightLeg/RightFoot
+    m_Weight: 0
+  - m_Path: Armature/RigthHip/RightLeg/RightFoot/RightFoot_end
+    m_Weight: 0
+  - m_Path: Armature/Stomach
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder/LeftArm1
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder/LeftArm1/LeftArm2
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder/LeftArm1/LeftArm2/LeftArm3
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder/LeftArm1/LeftArm2/LeftArm3/LeftArm4
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/LeftShoulder/LeftArm1/LeftArm2/LeftArm3/LeftArm4/LeftArm4_end
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/Neck
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/Neck/Head
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/Neck/Head/Head_end
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4
+    m_Weight: 0
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end
+    m_Weight: 0
+  - m_Path: Jimmy
+    m_Weight: 0
