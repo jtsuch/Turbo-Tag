@@ -19,11 +19,11 @@ public class PlayerAudio : MonoBehaviour
     [SerializeField] private AudioClip slideSound;      // Looping slide audio
 
     [Header("Footstep Timing")]
-    [SerializeField] private float walkStepInterval = 0.5f;
-    [SerializeField] private float sprintStepInterval = 0.28f;
+    [SerializeField] private float walkStepInterval = 0.3f;
+    [SerializeField] private float sprintStepInterval = 0.22f;
 
     [Header("Volume")]
-    [SerializeField] private float footstepVolume = 0.6f;
+    [SerializeField] private float footstepVolume = 0.2f;
     [SerializeField] private float jumpVolume = 0.8f;
     [SerializeField] private float landVolume = 0.9f;
     [SerializeField] private float slideVolume = 0.7f;
@@ -93,7 +93,7 @@ public class PlayerAudio : MonoBehaviour
 
         // Check if the player is actually moving horizontally
         Vector3 flatVelocity = new Vector3(player.rb.linearVelocity.x, 0f, player.rb.linearVelocity.z);
-        if (flatVelocity.magnitude < 0.5f) return;
+        if (flatVelocity.magnitude < 2f) return;
 
         bool isSprinting = player.currentState == Player.MovementState.WallRun
                         || flatVelocity.magnitude >= player.SprintSpeed * 0.8f;
@@ -117,7 +117,7 @@ public class PlayerAudio : MonoBehaviour
         // Sliding = prone + grounded + speed above threshold
         bool shouldSlide = player.currentState == Player.MovementState.Prone
                         && movement.onGround
-                        && player.rb.linearVelocity.magnitude > 3f;
+                        && player.rb.linearVelocity.magnitude > player.ProneSpeed + 1f;
 
         if (shouldSlide && !isSliding)
             StartSlide();

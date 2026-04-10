@@ -27,13 +27,6 @@ public class InputHandler : MonoBehaviourPunCallbacks
 
     private PhotonView view;
     private Dictionary<string, KeyCode> keybindings;
-    // Per-frame ability input state
-    //private Dictionary<string, bool> abilityKeyDown = new();
-    //private Dictionary<string, bool> abilityKeyUp = new();
-
-    // Events so other systems (Abilities) can subscribe
-    //public event Action<string> OnAbilityKeyDown;
-    //public event Action<string> OnAbilityKeyUp;
 
     // Stored defaults for ability key slots so we can apply them when ability names arrive
     private KeyCode abilitySlotKey0;
