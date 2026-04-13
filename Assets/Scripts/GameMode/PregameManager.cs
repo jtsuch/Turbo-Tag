@@ -145,20 +145,21 @@ public class PregameManager : MonoBehaviour
         Debug.Log(PhotonNetwork.LocalPlayer.ActorNumber + " is uploading their data");
         UploadAllPlayerData();
     }
-
-    private readonly string[] basicAbilityList = { "BasicGrapple", "StiffGrapple", "SpringyGrapple", "Flappy" };
-    private readonly string[] quickAbilityList = { "Dash" };
-    private readonly string[] throwAbilityList = { "BoomBomb" };
-    private readonly string[] trapAbilityList = { "Box", "Ladder", "Nuke" };
     public void UploadAllPlayerData()
     {
         // Hunter Status
         UpdatePlayerProperty("isHunter", isHunter);
 
         // Basic Ability
-        if (activeBasicToggle == null) activeBasicToggle = basicGrappleToggle;
-        int index = activeBasicToggle.transform.parent.GetSiblingIndex();
-        UpdatePlayerProperty("BasicAbility", basicAbilityList[index]);
+        if (activeBasicToggle == null) 
+            UpdatePlayerProperty("BasicAbility", "BasicGrapple");
+        else if (activeBasicToggle.TryGetComponent<AbilityToggle>(out var abilityToggle))
+        {
+            UpdatePlayerProperty("BasicAbility", abilityToggle.abilityName);
+        }
+        //if (activeBasicToggle == null) activeBasicToggle = "BasicGrapple";
+        //int index = activeBasicToggle.transform.parent.GetSiblingIndex();
+        //UpdatePlayerProperty("BasicAbility", basicAbilityList[index]);
 
         // Quick Ability
         UpdatePlayerProperty("QuickAbility", "Dash");
@@ -167,9 +168,12 @@ public class PregameManager : MonoBehaviour
         UpdatePlayerProperty("ThrowAbility", "BoomBomb");
 
         // Trap Ability
-        if (activeTrapToggle == null) activeTrapToggle = boxToggle;
-        index = activeTrapToggle.transform.parent.GetSiblingIndex();
-        UpdatePlayerProperty("TrapAbility", trapAbilityList[index]);
+        if (activeTrapToggle == null) 
+            UpdatePlayerProperty("TrapAbility", "Box");
+        else if (activeTrapToggle.TryGetComponent<AbilityToggle>(out var abilityToggle))
+        {
+            UpdatePlayerProperty("TrapAbility", abilityToggle.abilityName);
+        }
     }
 
     public void OnBasicToggleChanged(Toggle changedToggle)

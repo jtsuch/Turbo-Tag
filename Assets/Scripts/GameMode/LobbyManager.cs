@@ -107,6 +107,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     public void OnToggleChanged(Toggle changedToggle)
     {
         activeMapToggle = changedToggle;
+        mapText.text = "Map: " + changedToggle.GetComponent<MapToggle>().mapName;
     }
 
     /*
@@ -144,12 +145,6 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
         // Hunter Count
         UpdateRoomProperty(HUNTER_COUNT_KEY, (int)hunterCount.value);
-    }
-
-    public void OnMapSelected(string mapName)
-    {
-        mapText.text = "Map: " + mapName;
-        UpdateRoomProperty(MAP_KEY, mapName);
     }
     
     public void AssignHunters(int hunterCount)
