@@ -6,6 +6,7 @@ using System.Linq;
 using System.Collections;
 using System.Data;
 using System;
+using System.Runtime.CompilerServices;
 
 public class LobbyManager : MonoBehaviourPunCallbacks
 {
@@ -119,16 +120,14 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     private const string HIDING_DURATION_KEY = "HidingDuration";
     private const string SEEKING_DURATION_KEY = "SeekingDuration";
     private const string HUNTER_COUNT_KEY = "HunterCount";
-    private readonly string[] mapNameList = new string[3] { "OG", "Level2", "PenguinWorld" };
     private void UploadSettings()
     {
         // Map
         if (activeMapToggle == null) 
-            UpdateRoomProperty(MAP_KEY, mapNameList[0]);
-        else
+            UpdateRoomProperty(MAP_KEY, "Quads");
+        else if (activeMapToggle.TryGetComponent<MapToggle>(out var mapToggle))
         {
-            int index = activeMapToggle.transform.GetSiblingIndex();
-            UpdateRoomProperty(MAP_KEY, mapNameList[index]);
+            UpdateRoomProperty(MAP_KEY, mapToggle.mapName);
         }
 
         // Game Mode
