@@ -41,6 +41,7 @@ public class InputHandler : MonoBehaviourPunCallbacks
             enabled = false; // avoid wasting CPU on remote instances
 
         // Retrieve player keybinds, unless it's their first time, then store
+        string actionKey = PlayerPrefs.GetString("Keybind_Action", KeyCode.Mouse0.ToString());
         string jumpKey = PlayerPrefs.GetString("Keybind_Jump", KeyCode.Space.ToString());
         string sprintKey = PlayerPrefs.GetString("Keybind_Sprint", KeyCode.LeftShift.ToString());
         string crouchKey = PlayerPrefs.GetString("Keybind_Crouch", KeyCode.LeftControl.ToString());
@@ -66,6 +67,7 @@ public class InputHandler : MonoBehaviourPunCallbacks
         // Sets the global dictionary to the keybinds of the players stored preferences
         keybindings = new()
         {
+            {"Action", (KeyCode)System.Enum.Parse(typeof(KeyCode), actionKey)},
             {"Jump", (KeyCode)System.Enum.Parse(typeof(KeyCode), jumpKey)},
             {"Sprint", (KeyCode)System.Enum.Parse(typeof(KeyCode), sprintKey)},
             {"Crouch", (KeyCode)System.Enum.Parse(typeof(KeyCode), crouchKey)},
@@ -209,6 +211,12 @@ public class InputHandler : MonoBehaviourPunCallbacks
             Debug.LogWarning("Cannot find AbilityHandler class");
             return;
         }
+
+        if (Input.GetKeyDown(keybindings["Action"]))
+            AbilityHandler.TryConfirmAction();
+        if (Input.GetKeyUp(keybindings["Action"]))
+            AbilityHandler.TryConfirmActionUp();
+
         // Update ability key states and invoke ability actions/events
         foreach (var entry in keybindings)
         {
@@ -218,21 +226,19 @@ public class InputHandler : MonoBehaviourPunCallbacks
             if (IsCoreBinding(actionName)) continue;
             if (string.IsNullOrEmpty(actionName)) continue;
 
-            bool down = Input.GetKeyDown(key);
-            bool up = Input.GetKeyUp(key);
-
-            // If the key is pressed or released
-            if (down || up)
-            {
-                AbilityHandler.TryUseAbility(actionName, down);
-            }
+            if (Input.GetKeyDown(key))
+                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Down);
+            else if (Input.GetKeyUp(key))
+                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Up);
+            else if (Input.GetKey(key))
+                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Held);
         }
     }
 
     // Helper to identify core (non-ability) action names
     private bool IsCoreBinding(string name)
     {
-        return name == "Jump" || name == "Sprint" || name == "Crouch" || name == "Prone" || name == "Pause" || name == "Grab";
+        return name == "Action" || name == "Jump" || name == "Sprint" || name == "Crouch" || name == "Prone" || name == "Pause" || name == "Grab";
     }
 
     // --- Public API: Rebinding ---

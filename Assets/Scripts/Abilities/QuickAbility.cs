@@ -6,17 +6,12 @@ public abstract class QuickAbility : Ability
     private float lastUseTime;
 
     // --- Call to active child class ---
-    public override void TryActivate(bool down)
+    public override void TryActivate(AbilityInputEvent inputEvent)
     {
-        if (down && CanActivate()) // If cooldown is okay and key is pressed down
-        {
-            OnKeyDown();
-            lastUseTime = Time.time;
-        }
-        else
-        {
-            Debug.Log($"{abilityName} is on cooldown ({CooldownRemaining():0.0}s left)");
-        }
+        if (inputEvent != AbilityInputEvent.Down) return;
+        if (!CanActivate()) return;
+        OnKeyDown();
+        lastUseTime = Time.time;
     }
 
     // --- Logic Gate ---

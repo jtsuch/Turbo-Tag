@@ -14,6 +14,7 @@ public abstract class Ability : MonoBehaviour
         Throw,
         Trap
     }
+    public virtual bool IsAwaitingAction => false;
 
     [Header("References")]
     protected Rigidbody rb;
@@ -25,10 +26,10 @@ public abstract class Ability : MonoBehaviour
         pm = GetComponent<JimmyMove>();
     }
 
-    //private readonly string[] basicAbilityList = { "BasicGrapple", "StiffGrapple", "SpringyGrapple", "Flappy" };
-    //private readonly string[] quickAbilityList = { "Dash" };
-    //private readonly string[] throwAbilityList = { "BoomBomb" };
-    //private readonly string[] trapAbilityList = { "Box", "Ladder", "Nuke" };
+    //public abstract void TryActivate(bool down);
 
-    public abstract void TryActivate(bool down);
+    public abstract void TryActivate(AbilityInputEvent inputEvent);
+    public virtual void OnActionConfirm() { }   // LMB pressed
+    public virtual void OnActionCancel() { }    // Ability key pressed while active = cancel
+    public virtual void OnActionConfirmUp() { } // Shows when LMB is released
 }

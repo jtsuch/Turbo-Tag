@@ -30,7 +30,7 @@ public class BoomBomb : ThrowAbility
         base.Awake(); // assigns rb and pm in Ability.Awake()
     }
 
-    protected override void OnKeyDown()
+    /*protected override void OnKeyDown()
     {
         if (canDetonate)
         {
@@ -40,7 +40,7 @@ public class BoomBomb : ThrowAbility
         {
             Throw();
         }
-    }
+    }*/
 
     void Throw()
     {

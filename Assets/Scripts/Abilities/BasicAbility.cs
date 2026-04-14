@@ -12,13 +12,11 @@ public abstract class BasicAbility : Ability
     }
 
     // --- Call to active child class ---
-    public override void TryActivate(bool down)
+    public override void TryActivate(AbilityInputEvent inputEvent)
     {
         if (PauseMenuManager.Instance.Paused) return;
-        if (down)
-            OnKeyDown();
-        else
-            OnKeyUp();
+        if (inputEvent == AbilityInputEvent.Down) OnKeyDown();
+        else if (inputEvent == AbilityInputEvent.Up) OnKeyUp();
     }
 
     private void FixedUpdate()

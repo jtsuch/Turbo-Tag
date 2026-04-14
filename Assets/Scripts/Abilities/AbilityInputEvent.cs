@@ -1,0 +1,1 @@
+public enum AbilityInputEvent { Down, Up, Held }

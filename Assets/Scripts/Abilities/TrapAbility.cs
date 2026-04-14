@@ -28,9 +28,10 @@ public abstract class TrapAbility : Ability
     private Quaternion targetRotation;
     private float lastUseTime;
     protected bool isLocalPlayer = false;
+    public override bool IsAwaitingAction => isPlacementMode;
 
     // --- Call to active child class ---
-    public override void TryActivate(bool down)
+    /*public override void TryActivate(bool down)
     {
         if (!isLocalPlayer) return;
         if (down && CanActivate()) // If cooldown is okay and key is pressed down
@@ -51,6 +52,46 @@ public abstract class TrapAbility : Ability
         {
             Debug.Log($"{abilityName} is on cooldown ({CooldownRemaining():0.0}s left)");
         }
+    }*/
+    public override void TryActivate(AbilityInputEvent inputEvent)
+    {
+        if (!isLocalPlayer) return;
+        if (inputEvent != AbilityInputEvent.Down) return;
+
+        if (!isPlacementMode)
+        {
+            if (CanActivate()) EnterPlacementMode();
+            else Debug.Log($"{abilityName} on cooldown ({CooldownRemaining():0.0}s left)");
+        }
+        else
+        {
+            // X pressed again while hologram is out = cancel
+            CancelPlacement();
+        }
+
+        lastUseTime = Time.time;
+    }
+
+    // LMB = confirm placement
+    public override void OnActionConfirm()
+    {
+        if (isPlacementMode)
+            AttemptPlacement();
+    }
+
+    public override void OnActionCancel()
+    {
+        CancelPlacement();
+    }
+
+    private void CancelPlacement()
+    {
+        if (hologramObject != null)
+        {
+            PhotonNetwork.Destroy(hologramObject);
+            hologramObject = null;
+        }
+        isPlacementMode = false;
     }
 
     // --- Logic Gate ---
@@ -213,12 +254,7 @@ public abstract class TrapAbility : Ability
                 // Fallback: Use your hardcoded values
                 halfExtents = new Vector3(0.9f, 5.9f, 0.1f);
                 center = position;
-            }   
-            // Use the actual position of the hologram as the center for overlap check
-            //Vector3 center = position;
-            //Vector3 halfExtents = bounds.extents * 0.9f; // Slight reduction for better overlap detection
-            //Debug.Log("Extents: " + bounds.extents.x + ", " + bounds.extents.y + ", " + bounds.extents.z);
-            //Vector3 trueHalfExtents = new (0.9f, 5.9f, 0.1f);
+            }
             
             // Check for overlapping colliders
             Collider[] overlaps = Physics.OverlapBox(center, halfExtents, targetRotation);
