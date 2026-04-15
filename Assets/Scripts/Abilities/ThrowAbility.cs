@@ -3,11 +3,11 @@ using Photon.Pun;
 
 public abstract class ThrowAbility : Ability
 {
-    [Header("Throw Settings")]
-    public float cooldownTime = 3f;
-    public float minThrowForce = 10f;
-    public float maxThrowForce = 40f;
-    public float chargeTime = 2f;          // Seconds to reach max charge
+    // Set by each child class in Awake — same pattern as QuickAbility.cooldownTime
+    protected float cooldownTime;
+    protected float minThrowForce;
+    protected float maxThrowForce;
+    protected float chargeTime;
 
     [Header("Trajectory Settings")]
     [SerializeField] private int trajectorySteps = 60;       // How many points on the arc
@@ -27,6 +27,12 @@ public abstract class ThrowAbility : Ability
 
     private enum ThrowState { Idle, Aiming, Charging }
     private ThrowState state = ThrowState.Idle;
+
+    protected override void Awake()
+    {
+        base.Awake();
+        abilityType = AbilityType.Throw;
+    }
 
     // -------------------------------------------------------------------------
     // Ability Base Implementation
@@ -51,6 +57,9 @@ public abstract class ThrowAbility : Ability
                 break;
         }
     }
+
+    // Another ability cancelled this one (e.g. trap pressed while throw is active)
+    public override void OnActionCancel() => CancelThrow();
 
     // LMB down = start charging
     public override void OnActionConfirm()
@@ -80,9 +89,10 @@ public abstract class ThrowAbility : Ability
 
     private void Update()
     {
-        if (state == ThrowState.Charging)
+        if (state == ThrowState.Aiming || state == ThrowState.Charging)
         {
             UpdateTrajectory();
+            //Debug.Log($"{abilityName} charge: {currentCharge * 100f:F1}%");
         }
     }
 
@@ -94,6 +104,13 @@ public abstract class ThrowAbility : Ability
     {
         state = ThrowState.Aiming;
         SpawnHeldObject();
+
+        if (trajectoryLine != null)
+        {
+            //trajectoryLine.gameObject.SetActive(true);
+            trajectoryLine.enabled = true;
+        }
+
         OnEnterAiming();
     }
 
@@ -101,10 +118,6 @@ public abstract class ThrowAbility : Ability
     {
         state = ThrowState.Charging;
         chargeStartTime = Time.time;
-        
-        if (trajectoryLine != null)
-            trajectoryLine.enabled = true;
-
         OnEnterCharging();
     }
 
@@ -171,13 +184,25 @@ public abstract class ThrowAbility : Ability
 
     private void UpdateTrajectory()
     {
-        if (trajectoryLine == null || throwOrigin == null) return;
+        if (trajectoryLine == null) return;
 
+        // Re-enable every frame while active — guards against anything setting it to false externally
+        trajectoryLine.enabled = true;
+
+        if (throwOrigin == null)
+        {
+            Debug.LogWarning($"{abilityName}: throwOrigin is not assigned — trajectory cannot be drawn.");
+            return;
+        }
+
+        // During Aiming the player hasn't started charging yet, so show the minimum-force arc.
+        // During Charging the arc grows in real time as currentCharge increases.
+        float charge = state == ThrowState.Charging ? currentCharge : 0f;
         Vector3[] points = CalculateTrajectory(
             throwOrigin.position,
-            throwOrigin.forward * Mathf.Lerp(minThrowForce, maxThrowForce, currentCharge)
+            throwOrigin.forward * Mathf.Lerp(minThrowForce, maxThrowForce, charge)
         );
-
+        
         trajectoryLine.positionCount = points.Length;
         trajectoryLine.SetPositions(points);
     }

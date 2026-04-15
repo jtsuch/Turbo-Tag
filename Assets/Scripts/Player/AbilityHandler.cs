@@ -20,16 +20,26 @@ public class AbilityHandler : MonoBehaviour
         }
     }
 
+    // Returns true when two abilities should block each other.
+    // Throw and Trap are mutually exclusive; Basic and Quick can overlap freely.
+    private static bool Conflicts(Ability a, Ability b)
+    {
+        static bool isBlockingType(Ability x) =>
+            x.abilityType == Ability.AbilityType.Throw ||
+            x.abilityType == Ability.AbilityType.Trap;
+        return isBlockingType(a) && isBlockingType(b);
+    }
+
     public void TryUseAbility(string abilityName, AbilityInputEvent inputEvent)
     {
         if (!abilityMap.TryGetValue(abilityName, out Ability ability)) return;
 
-        // If a different ability is already active and this is a fresh activation,
-        // cancel the current one before proceeding
+        // If a conflicting ability is already active, cancel it before starting the new one
         if (inputEvent == AbilityInputEvent.Down
             && activeAbility != null
             && activeAbility != ability
-            && activeAbility.IsAwaitingAction)
+            && activeAbility.IsAwaitingAction
+            && Conflicts(activeAbility, ability))
         {
             activeAbility.OnActionCancel();
             activeAbility = null;

@@ -4,6 +4,12 @@ using UnityEngine;
 public abstract class TrapAbility : Ability
 {
     
+    protected override void Awake()
+    {
+        base.Awake();
+        abilityType = AbilityType.Trap;
+    }
+
     [Header("Object Settings")]
     protected GameObject objectPrefab;
     [SerializeField] protected float placingDistance = 15f;

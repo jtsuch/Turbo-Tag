@@ -165,7 +165,7 @@ public class PregameManager : MonoBehaviour
         UpdatePlayerProperty("QuickAbility", "Dash");
 
         // Throw Ability
-        UpdatePlayerProperty("ThrowAbility", "BoomBomb");
+        UpdatePlayerProperty("ThrowAbility", "BoomStick");
 
         // Trap Ability
         if (activeTrapToggle == null) 
