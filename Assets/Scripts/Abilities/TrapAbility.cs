@@ -36,29 +36,6 @@ public abstract class TrapAbility : Ability
     protected bool isLocalPlayer = false;
     public override bool IsAwaitingAction => isPlacementMode;
 
-    // --- Call to active child class ---
-    /*public override void TryActivate(bool down)
-    {
-        if (!isLocalPlayer) return;
-        if (down && CanActivate()) // If cooldown is okay and key is pressed down
-        {
-            if (!isPlacementMode)
-            {
-                // First press - enter placement mode
-                EnterPlacementMode();
-            }
-            else
-            {
-                // Second press - attempt to place the object
-                AttemptPlacement();
-            }
-            lastUseTime = Time.time;
-        }
-        else
-        {
-            Debug.Log($"{abilityName} is on cooldown ({CooldownRemaining():0.0}s left)");
-        }
-    }*/
     public override void TryActivate(AbilityInputEvent inputEvent)
     {
         if (!isLocalPlayer) return;
@@ -78,7 +55,6 @@ public abstract class TrapAbility : Ability
         lastUseTime = Time.time;
     }
 
-    // LMB = confirm placement
     public override void OnActionConfirm()
     {
         if (isPlacementMode)

@@ -22,6 +22,14 @@ public class BoomStickObject : MonoBehaviourPun
 
     [Header("References")]
     [SerializeField] private GameObject explosionVFX;   // Optional local particle prefab
+    [SerializeField] private AudioClip explosionSFX;    // Optional world-space audio clip
+
+    [Header("VFX Settings")]
+    [SerializeField] private float vfxScale = 0.3f;     // Multiplier applied to each particle system's start size
+
+    [Header("Audio Settings")]
+    [SerializeField] private float audioRadius = 20f;   // Distance at which the explosion becomes inaudible
+    [SerializeField] private float audioVolume = 1f;
 
     private bool hasExploded = false;
 
@@ -73,9 +81,29 @@ public class BoomStickObject : MonoBehaviourPun
     [PunRPC]
     private void ExplodeRPC(Vector3 pos)
     {
-        // Spawn visual effect locally on each client (not networked — it's cosmetic only)
         if (explosionVFX != null)
-            Instantiate(explosionVFX, pos, Quaternion.identity);
+        {
+            GameObject vfx = Instantiate(explosionVFX, pos, Quaternion.identity);
+            vfx.transform.localScale = Vector3.one * vfxScale;
+        }
+
+        // Play explosion audio with a configurable world-space radius.
+        // AudioSource.PlayClipAtPoint uses Unity's default max distance (~500), which is too large;
+        // creating a temporary source lets us set exact rolloff and range.
+        if (explosionSFX != null)
+        {
+            GameObject audioObj = new("ExplosionAudio");
+            audioObj.transform.position = pos;
+            AudioSource src = audioObj.AddComponent<AudioSource>();
+            src.clip          = explosionSFX;
+            src.spatialBlend  = 1f;                          // Full 3D attenuation
+            src.rolloffMode   = AudioRolloffMode.Linear;     // Linear: smoothly fades to silence at maxDistance
+            src.minDistance   = 1f;
+            src.maxDistance   = audioRadius;
+            src.volume        = audioVolume;
+            src.Play();
+            Destroy(audioObj, explosionSFX.length + 0.1f);  // Clean up after clip finishes
+        }
 
         // Apply physics blast to all nearby rigidbodies.
         // Fall back to all layers if affectedLayers was left at 0 (Nothing) in the Inspector.

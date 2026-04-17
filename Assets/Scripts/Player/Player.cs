@@ -60,7 +60,8 @@ public class Player : MonoBehaviour
     public float SwingSpeed = 20f;
 
     // --- Modifiers ---
-    public float SpeedMultiplier = 1f;
+    public float   SpeedMultiplier = 1f;
+    public Vector2 MovementScale   = Vector2.one;
     public float Acceleration = 50f;
     public float JumpStrength = 16;
     public float currentXScale = 1f;

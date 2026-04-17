@@ -195,8 +195,8 @@ public class JimmyMove : MonoBehaviour
             WallRun();
 
 
-        float moveHorizontal = Input.GetAxis("Horizontal");
-        float moveVertical = Input.GetAxis("Vertical");
+        float moveHorizontal = Input.GetAxis("Horizontal") * player.MovementScale.x;
+        float moveVertical   = Input.GetAxis("Vertical")   * player.MovementScale.y;
 
         // If paused, zero out input
         if (PauseMenuManager.Instance.Paused || !player.CanMove)
