@@ -1,15 +1,37 @@
 using UnityEngine;
 using Photon.Pun;
+using System.Collections;
 using System.Linq;
 
 public class Spawner : MonoBehaviour
 {
+    // Drag the scene's PlayerHUD and PauseMenu objects into these fields in the Inspector.
+    // If left empty, Spawner will locate them in the scene automatically.
+    [SerializeField] private GameObject playerHUD;
+    [SerializeField] private GameObject pauseMenu;
+
     void Start()
+    {
+        SpawnPlayer();
+        StartCoroutine(InitializeUIWhenReady());
+    }
+
+    // Wait until the local player has registered itself, then init UI
+    private IEnumerator InitializeUIWhenReady()
+    {
+        while (Player.Instance == null)
+            yield return null;
+
+        InitializeHUD();
+        InitializePauseMenu();
+    }
+
+    private void SpawnPlayer()
     {
         var room = PhotonNetwork.CurrentRoom;
         if (room == null)
         {
-            Debug.LogError("[Spawner] No current room found when trying to spawn. Aborting spawn.");
+            Debug.LogError("[Spawner] No current room found. Aborting spawn.");
             return;
         }
 
@@ -19,94 +41,58 @@ public class Spawner : MonoBehaviour
         if (props != null && props.TryGetValue("Hunters", out object rawHunters))
         {
             if (rawHunters is int[] intHunters)
-            {
                 hunters = intHunters;
-            }
             else if (rawHunters is object[] objArr)
-            {
                 hunters = objArr.OfType<int>().ToArray();
-            }
             else
-            {
-                Debug.LogWarning($"[Spawner] Unexpected Hunters type: {rawHunters?.GetType()}. Defaulting to empty list.");
-            }
+                Debug.LogWarning($"[Spawner] Unexpected Hunters type: {rawHunters?.GetType()}");
         }
         else
         {
-            Debug.LogWarning("[Spawner] No 'Hunters' property found on room. Defaulting to non-hunter spawn.");
+            Debug.LogWarning("[Spawner] No 'Hunters' property found. Defaulting to non-hunter.");
         }
 
         bool isHunter = hunters.Contains(PhotonNetwork.LocalPlayer.ActorNumber);
 
-        Vector3 spawnPoint;
-        if (isHunter)
-        {
-            spawnPoint = GetCirclePosition(transform.position, 1f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount);
-        }
-        else
-        {
-            spawnPoint = GetCirclePosition(transform.position, 5f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount);
-        }
+        Vector3 spawnPoint = isHunter
+            ? GetCirclePosition(transform.position, 1f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount)
+            : GetCirclePosition(transform.position, 5f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount);
 
         GameObject spawned = PhotonNetwork.Instantiate("Player/ThePlayer", spawnPoint, Quaternion.identity);
-        if (spawned == null) return;
-
-        if (spawned.TryGetComponent<PhotonView>(out var pv))
+        if (spawned == null)
         {
-            Debug.Log($"[Spawner] Instantiated player prefab. Name={spawned.name} ViewID={pv.ViewID} IsMine={pv.IsMine} Owner={pv.Owner}");
-        }
-        else
-        {
-            Debug.LogError("[Spawner] PhotonNetwork.Instantiate returned null! Check the Resources path and Photon setup.");
+            Debug.LogError("[Spawner] PhotonNetwork.Instantiate returned null.");
+            return;
         }
 
-        // Load in the HUD prefab from the Resources folder
-        GameObject hudPrefab = Resources.Load<GameObject>("UI/PlayerHUD");
-        if (hudPrefab != null)
-        {
-            // Instantiate the HUD locally using Unity's Instantiate.
-            GameObject playerHUD = Instantiate(hudPrefab);
+        Debug.Log($"[Spawner] Spawned player. Name={spawned.name}");
+    }
 
-            // Find the main Canvas in the scene to parent the HUD to.
-            Canvas mainCanvas = FindFirstObjectByType<Canvas>();
-            if (mainCanvas != null)
-            {
-                playerHUD.transform.SetParent(mainCanvas.transform, false);
-            }
-            else
-            {
-                Debug.LogWarning("No Canvas found in the scene to parent the HUD to!");
-            }
-        }
-        else
+    private void InitializeHUD()
+    {
+        HUDManager hud = playerHUD != null
+            ? playerHUD.GetComponent<HUDManager>()
+            : HUDManager.Instance;
+
+        if (hud == null)
         {
-            // Original: Debug.LogError("Failed to load HUD prefab from Resources: UI/UIManager");
-            Debug.LogError("Failed to load HUD prefab from Resources: UI/PlayerHUD");
+            Debug.LogWarning("[Spawner] HUDManager not found.");
+            return;
         }
 
-        // Load in the Pause Menu prefab from the Resources folder
-        GameObject pausePrefab = Resources.Load<GameObject>("UI/PauseMenu");
-        if (pausePrefab != null)
-        {
-            // Instantiate the menu locally using Unity's Instantiate.
-            GameObject pauseMenu = Instantiate(pausePrefab);
+        hud.gameObject.SetActive(true);
+        hud.Initialize();
+    }
 
-            // Find the main Canvas in the scene to parent the PauseMenu to.
-            Canvas mainCanvas = FindFirstObjectByType<Canvas>();
-            if (mainCanvas != null)
-            {
-                pauseMenu.transform.SetParent(mainCanvas.transform, false);
-            }
-            else
-            {
-                Debug.LogWarning("No Canvas found in the scene to parent the PauseMenu to!");
-            }
-        }
-        else
+    private void InitializePauseMenu()
+    {
+        PauseMenuManager pm = PauseMenuManager.Instance;
+        if (pm == null)
         {
-            // Original: Debug.LogError("Failed to load HUD prefab from Resources: UI/PauseMenu");
-            Debug.LogError("Failed to load PauseMenu prefab from Resources: UI/PauseMenu");
+            Debug.LogWarning("[Spawner] PauseMenuManager not found.");
+            return;
         }
+        pm.Initialize();
     }
 
     Vector3 GetCirclePosition(Vector3 center, float radius, float index, float total)

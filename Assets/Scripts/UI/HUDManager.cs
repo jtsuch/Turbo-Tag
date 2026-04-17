@@ -30,11 +30,18 @@ public class HUDManager : MonoBehaviour
 
     private void Start()
     {
-        UpdateAllAbilitiesInHotbar();
         timer.SetActive(false);
+        // Don't call Initialize here — Player.Instance isn't ready yet
+    }
 
-        if (Player.Instance != null) 
+    public void Initialize()
+    {
+        UpdateAllAbilitiesInHotbar();
+
+        if (Player.Instance != null)
             trackedBasicAbility = Player.Instance.GetComponent<BasicAbility>();
+        else
+            Debug.LogWarning("[HUDManager] Player.Instance is null during Initialize.");
     }
 
     // Update is called once per frame

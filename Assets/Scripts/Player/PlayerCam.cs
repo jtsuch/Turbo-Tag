@@ -101,7 +101,18 @@ public class PlayerCam : MonoBehaviour
     private void LateUpdate()
     {
         if (!view.IsMine) return;
-        if (PauseMenuManager.Instance != null && PauseMenuManager.Instance.Paused) return;
+
+        bool paused = PauseMenuManager.Instance != null && PauseMenuManager.Instance.Paused;
+
+        // Re-lock cursor every frame when not paused. This handles the frame after Resume()
+        // where the EventSystem or editor may have left the cursor in the wrong state.
+        if (!paused && Cursor.lockState != CursorLockMode.Locked)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible   = false;
+        }
+
+        if (paused) return;
 
         float mouseX = Input.GetAxisRaw("Mouse X") * (sensitivity / 100f);
         float mouseY = Input.GetAxisRaw("Mouse Y") * (sensitivity / 100f);
