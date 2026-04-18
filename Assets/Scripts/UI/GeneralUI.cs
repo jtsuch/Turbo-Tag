@@ -39,6 +39,8 @@ public class GeneralUI : MonoBehaviourPunCallbacks
     public GameObject keybindRowPrefab;
     [Tooltip("Parent transform (e.g. a Vertical Layout Group) where rows are spawned.")]
     public Transform  keybindContainer;
+    [Tooltip("Resets all keybinds to their defaults.")]
+    public Button     resetKeybindsButton;
 
     // ─── Internal state ───────────────────────────────────────────────────────
     private bool       updatingUI          = false;
@@ -79,6 +81,9 @@ public class GeneralUI : MonoBehaviourPunCallbacks
         SettingsManager.OnFPSChanged         += HandleFPSChanged;
 
         BuildKeybindList();
+
+        if (resetKeybindsButton != null)
+            resetKeybindsButton.onClick.AddListener(ResetToDefaults);
     }
 
     void OnDestroy()
@@ -131,11 +136,13 @@ public class GeneralUI : MonoBehaviourPunCallbacks
 
     private void StartListening(KeybindRow row)
     {
-        // Cancel any currently active listen before starting a new one
         listeningRow?.SetListening(false);
         listeningRow        = row;
         skipFrameAfterClick = true;
         row.SetListening(true);
+
+        // Deselect current UI element so Space/Enter aren't intercepted by EventSystem
+        UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
     }
 
     private void CommitBinding(KeybindRow row, KeyCode key)
@@ -160,6 +167,37 @@ public class GeneralUI : MonoBehaviourPunCallbacks
         row.ClearKey();
         PlayerPrefs.SetString(row.PlayerPrefsKey, KeyCode.None.ToString());
         PushToInputHandler(row.ActionName, KeyCode.None);
+        PlayerPrefs.Save();
+    }
+
+    private void ResetToDefaults()
+    {
+        // Cancel any active listen
+        if (listeningRow != null)
+        {
+            listeningRow.SetListening(false);
+            listeningRow = null;
+        }
+
+        foreach (var (_, action, prefsKey, def) in KeybindDefs)
+        {
+            var row = rows.Find(r => r.PlayerPrefsKey == prefsKey);
+            if (row == null) continue;
+
+            // Clear any other row that currently holds the default key
+            foreach (var other in rows)
+            {
+                if (other.PlayerPrefsKey == prefsKey || other.CurrentKey != def) continue;
+                other.ClearKey();
+                PlayerPrefs.SetString(other.PlayerPrefsKey, KeyCode.None.ToString());
+                PushToInputHandler(other.ActionName, KeyCode.None);
+            }
+
+            row.SetKey(def);
+            PlayerPrefs.SetString(prefsKey, def.ToString());
+            PushToInputHandler(action, def);
+        }
+
         PlayerPrefs.Save();
     }
 

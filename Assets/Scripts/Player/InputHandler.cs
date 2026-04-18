@@ -165,7 +165,7 @@ public class InputHandler : MonoBehaviourPunCallbacks
         var menuManager = PauseMenuManager.Instance;
         if (menuManager != null)
         {
-            if (Input.GetKeyDown(keybindings["Pause"]))
+            if (Input.GetKeyDown(Key("Pause")))
                 menuManager.TogglePauseMenu();
 
             if (menuManager.Paused) return;
@@ -174,19 +174,23 @@ public class InputHandler : MonoBehaviourPunCallbacks
         MoveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
         LookInput = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
-        Jump   = Input.GetKeyDown(keybindings["Jump"]);
-        Sprint = Input.GetKey(keybindings["Sprint"]);
-        Prone  = Input.GetKeyDown(keybindings["Prone"]);
-        Crouch = Input.GetKeyDown(keybindings["Crouch"]);
-        Grab   = Input.GetKeyDown(keybindings["Grab"]);
+        KeyCode jumpKey   = Key("Jump");
+        KeyCode sprintKey = Key("Sprint");
+        KeyCode crouchKey = Key("Crouch");
+
+        Jump   = jumpKey   != KeyCode.None && Input.GetKeyDown(jumpKey);
+        Sprint = sprintKey != KeyCode.None && Input.GetKey(sprintKey);
+        Prone  = Key("Prone") != KeyCode.None && Input.GetKeyDown(Key("Prone"));
+        Crouch = crouchKey != KeyCode.None && Input.GetKeyDown(crouchKey);
+        Grab   = Key("Grab")  != KeyCode.None && Input.GetKeyDown(Key("Grab"));
 
         // Held crouch key used by grapple logic (distinct from the tap-to-toggle Crouch bool)
-        Down = Input.GetKey(keybindings["Crouch"]);
+        Down = crouchKey != KeyCode.None && Input.GetKey(crouchKey);
 
         // Re-evaluate Idle speed when sprint key changes (walk ↔ sprint transition)
         if (player.currentState == Player.MovementState.Idle)
         {
-            if (Input.GetKeyDown(keybindings["Sprint"]) || Input.GetKeyUp(keybindings["Sprint"]))
+            if (sprintKey != KeyCode.None && (Input.GetKeyDown(sprintKey) || Input.GetKeyUp(sprintKey)))
                 player.SetState(Player.MovementState.Idle);
         }
 
@@ -197,9 +201,10 @@ public class InputHandler : MonoBehaviourPunCallbacks
         }
 
         // Action key (LMB by default) confirms/releases the currently active ability
-        if (Input.GetKeyDown(keybindings["Action"]))
+        KeyCode actionKey = Key("Action");
+        if (actionKey != KeyCode.None && Input.GetKeyDown(actionKey))
             AbilityHandler.TryConfirmAction();
-        if (Input.GetKeyUp(keybindings["Action"]))
+        if (actionKey != KeyCode.None && Input.GetKeyUp(actionKey))
             AbilityHandler.TryConfirmActionUp();
 
         // Route all non-core keybinding presses to AbilityHandler by ability name
@@ -221,6 +226,10 @@ public class InputHandler : MonoBehaviourPunCallbacks
     }
 
     // ─── Helpers / Public API ─────────────────────────────────────────────────
+
+    // Safe lookup — returns KeyCode.None if the action has no binding
+    private KeyCode Key(string action) =>
+        keybindings.TryGetValue(action, out KeyCode kc) ? kc : KeyCode.None;
 
     // Core bindings are handled in Update directly; all other keys belong to abilities
     private bool IsCoreBinding(string name)
