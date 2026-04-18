@@ -1,10 +1,16 @@
-
 using UnityEngine;
 using DG.Tweening;
 using Photon.Pun;
 
+/// <summary>
+/// First-person camera controller. Handles mouse-look with smoothing, cursor lock management,
+/// camera offset transitions between stances (standing/prone), and FOV tweens.
+/// Attach to: CameraHolder child of ThePlayer prefab — must reference the player's Transform
+/// and a PhotonView so it only runs on the owning client.
+/// </summary>
 public class PlayerCam : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     private static PlayerCam _instance;
     public static PlayerCam Instance
     {
@@ -17,14 +23,17 @@ public class PlayerCam : MonoBehaviour
         private set => _instance = value;
     }
 
+    // ─── References ───────────────────────────────────────────────────────────
     [Header("References")]
     public Player player;
     public JimmyMove pm;
     public Transform playerTransform;
     public Transform camHolder;
 
+    // ─── Sensitivity ──────────────────────────────────────────────────────────
     [Header("Camera Settings")]
     [SerializeField] private float _sensitivity;
+    // Property fires an event so any UI sliders can react immediately
     public float sensitivity
     {
         get => _sensitivity;
@@ -36,14 +45,17 @@ public class PlayerCam : MonoBehaviour
     }
     public static event System.Action<float> OnSensitivityChange;
 
+    // ─── Camera Offsets / Smoothing ───────────────────────────────────────────
     public Vector3 normalCameraOffset = new(0, 2f, 0);
     public Vector3 proneCameraOffset = new(0, 1f, 0);
     private Vector3 currentCameraOffset;
     private Vector3 cameraVelocity = Vector3.zero;
 
     public float positionSmoothTime = 0.1f;
+    // rotationSmoothTime feeds into an exponential smoothing formula, not a direct lerp speed
     public float rotationSmoothTime = 80f;
 
+    // Accumulated euler angles; xRotation is pitch (clamped), yRotation is yaw
     private float xRotation;
     private float yRotation;
 
@@ -114,14 +126,15 @@ public class PlayerCam : MonoBehaviour
 
         if (paused) return;
 
+        // Normalize sensitivity: 100 = 1:1 mouse delta
         float mouseX = Input.GetAxisRaw("Mouse X") * (sensitivity / 100f);
         float mouseY = Input.GetAxisRaw("Mouse Y") * (sensitivity / 100f);
 
         yRotation += mouseX;
-        xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+        xRotation -= mouseY;                               // Subtract so moving mouse up pitches camera up
+        xRotation = Mathf.Clamp(xRotation, -90f, 90f);    // Prevent over-rotation past vertical
 
-        // Smooth camera offset (e.g., between standing/prone)
+        // Smooth camera height when switching stances (e.g. prone lowers the camera)
         transform.localPosition = Vector3.SmoothDamp(
             transform.localPosition,
             currentCameraOffset,
@@ -129,7 +142,7 @@ public class PlayerCam : MonoBehaviour
             positionSmoothTime
         );
 
-        // Smooth camera rotation
+        // Exponential smoothing: higher rotationSmoothTime = snappier feel
         Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, 0);
         transform.rotation = Quaternion.Lerp(
             transform.rotation,
@@ -137,7 +150,7 @@ public class PlayerCam : MonoBehaviour
             1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime)
         );
 
-        // Rotate player body horizontally
+        // Player body only rotates horizontally; vertical look stays on the camera
         playerTransform.rotation = Quaternion.Euler(0, yRotation, 0);
     }
 

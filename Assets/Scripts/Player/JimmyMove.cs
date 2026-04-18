@@ -1,59 +1,51 @@
 using System;
 using UnityEngine;
 using Photon.Pun;
-// Note: UnityEditorInternal is an editor-only namespace and is not used at runtime here.
 
-
-/*
- * 
- * Turbo Tag Player Movement Script
- * Covers all core movement abilties for the player that they will have at any given point in the game.
- * 
- */
+/// <summary>
+/// Core player movement: grounded locomotion, wall-running, climbing, ledge-hanging,
+/// and physics-based acceleration model. All movement is driven through Rigidbody forces
+/// in FixedUpdate; input sampling happens in Update to avoid missed key events.
+/// Attach to: ThePlayer prefab — requires Player, Rigidbody, and PhotonView on the same object.
+/// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(PhotonView))]
 public class JimmyMove : MonoBehaviour
 {
+    // ─── References ───────────────────────────────────────────────────────────
     [Header("References")]
     public Player player;
     public InputHandler input;
     public Rigidbody rb;
     public Camera cam;
     public LayerMask structureLayer;
-    public Transform throwPoint; // Reference to ThrowPoint child transform
+    public Transform throwPoint;
 
     PhotonView view;
 
-    // Wall Running
+    // ─── Wall-Run State ───────────────────────────────────────────────────────
     private float timeOnWall = 0f;
-    private Vector3 lastWallNormal = new(0, 0, 0);
+    private Vector3 lastWallNormal = new(0, 0, 0);     // Wall used last — prevents immediately re-using the same wall
     private Vector3 currentWallNormal = new(0, 0, 0);
 
+    // ─── Surface Detection ────────────────────────────────────────────────────
     [Header("Don't Change")]
-    // Raycasts
     public bool onGround;
     public bool wallLeft;
     public bool wallRight;
     private bool wallForward;
 
-    /*
-    * When starting the game, initialize variables
-    */
     void Start()
     {
         view = GetComponent<PhotonView>();
         if (rb == null && view.IsMine)
         {
             rb = GetComponent<Rigidbody>();
+            // Interpolation smooths visual movement between physics ticks for the local player
             rb.interpolation = RigidbodyInterpolation.Interpolate;
         }
-
     }
 
-    /*
-    * For every fixed amount of time, check for surfaces, input, and state to move the player accordingly.
-    * Display stats with a call to UIController. (FixedUpdate is used for anything physics related)
-    */
     void FixedUpdate()
     {
         if (!view.IsMine) return;
@@ -61,12 +53,10 @@ public class JimmyMove : MonoBehaviour
         MovePlayer();
     }
 
-    /*
-     * For every frame, check for input because FixedUpdate is not called every frame.
-     */
     void Update()
     {
         if (!view.IsMine) return;
+        // Input is sampled in Update so key-down events are never missed between physics ticks
         InputHandler();
     }
 
@@ -78,7 +68,7 @@ public class JimmyMove : MonoBehaviour
         // Track previous grounded state so we can fire landing events
         bool wasGrounded = onGround;
 
-        // Raycasts that checks for ground
+        // Short downward raycast — 20% of player height keeps it from firing while barely airborne
         onGround = Physics.Raycast(transform.position, Vector3.down, player.height * 0.2f, ~0);
 
         // Fire event when player lands on ground
@@ -106,7 +96,7 @@ public class JimmyMove : MonoBehaviour
         else
             currentWallNormal = new Vector3(0, 0, 0);
 
-        // Allows us to use the last wall if we touch the ground
+        // Reset last-wall memory when grounded so the player can re-use the same wall after landing
         if (onGround)
             lastWallNormal = new Vector3(0, 0, 0);
 
@@ -169,7 +159,7 @@ public class JimmyMove : MonoBehaviour
      */
     void MovePlayer()
     {
-        // When dashing, don't execute other movement AND limit speed
+        // During a dash, brake if above the dash speed cap and skip normal movement
         if (player.IsDashing && rb.linearVelocity.magnitude > 30f)
         {
             Vector3 holdyourhorses = -rb.linearVelocity / 5f;
@@ -234,31 +224,31 @@ public class JimmyMove : MonoBehaviour
             intendedDir = flatVel;
         }
 
-        Vector3 velDiff = intendedDir - flatVel; // how much horizontal velocity we need to add
+        Vector3 velDiff = intendedDir - flatVel; // horizontal velocity deficit this frame
 
-        // Desired acceleration to correct velocity this FixedUpdate
+        // Convert position error to an acceleration over this physics step
         Vector3 desiredAcc = velDiff / Time.fixedDeltaTime;
 
-        // Maximum acceleration (m/s^2) from player settings
         float maxAccel = Mathf.Max(1f, player.Acceleration);
 
-        // Control multiplier (reduced control in air / swinging)
+        // Reduce steering authority in air or while swinging (feel of momentum)
         float controlMult = 1f;
         if (player.IsSwinging) controlMult = player.SwingControlMult;
         else if (!onGround) controlMult = player.AirControlMult;
 
         float cappedAccel = maxAccel * Mathf.Max(controlMult, 0.0001f);
 
-        // Cap desired acceleration but preserve small magnitudes (use ClampMagnitude instead of normalization)
+        // ClampMagnitude preserves direction even when magnitude is very small
         desiredAcc = Vector3.ClampMagnitude(desiredAcc, cappedAccel);
 
-        // Slope correction when on ground (mitigate gravity on slopes)
+        // Counter the gravity component that would push the player into/along a slope
         if (onGround)
         {
             Vector3 groundNormal = Vector3.up;
             if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit groundHit, player.height + 0.5f, ~0))
                 groundNormal = groundHit.normal;
 
+            // Project gravity onto the slope surface and negate it so we don't slide
             Vector3 slopeCorrection = groundNormal * Physics.gravity.y / Mathf.Max(groundNormal.y, 0.0001f);
             slopeCorrection.y = 0f;
 
@@ -428,9 +418,10 @@ public class JimmyMove : MonoBehaviour
         else
             rb.AddForce(transform.right * 10); // * Time.deltaTime);
 
-        // The force pulling up on the player. At first it's zero, then exponentially decreases
+        // Upward pull starts near-zero then exponentially increases downward over time,
+        // so the player gradually slides down the wall the longer they run on it
         float pullForce = -1f * Mathf.Pow(4f, timeOnWall - 1f) - 2f;
-        rb.AddForce(transform.up * pullForce); // * Time.deltaTime);
+        rb.AddForce(transform.up * pullForce);
 
         // Can't fall faster than wallSlideDownMax
         if (rb.linearVelocity.y < -player.WallSlideDownMax)
@@ -574,7 +565,8 @@ public class JimmyMove : MonoBehaviour
         }
     }
 
-    // Networking RPCs for object syncing
+    // ─── Network RPCs ─────────────────────────────────────────────────────────
+    // These are invoked by Photon via reflection — "unused" IDE warnings are false positives.
     [PunRPC]
     private void RPC_SetHeldObject(int objectViewId)
     {

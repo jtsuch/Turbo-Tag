@@ -1,32 +1,41 @@
 using Photon.Pun;
 using UnityEngine;
 
+/// <summary>
+/// Base for placement-style abilities: player aims with a hologram preview, then confirms
+/// to place the real object or cancels to dismiss it.
+/// State machine: Idle → PlacementMode (ability key down) → place on LMB / cancel on key again.
+/// Hologram colour updates each frame to indicate valid (blue) or invalid (red) placement.
+/// Child classes override EnterPlacementMode or add post-placement logic via AttemptPlacement.
+/// Attach to: ThePlayer prefab — requires a cameraHolder reference and a hologramMaterial in
+/// the Inspector, plus a matching prefab at Resources/Object/[abilityName].
+/// </summary>
 public abstract class TrapAbility : Ability
 {
-    
     protected override void Awake()
     {
         base.Awake();
         abilityType = AbilityType.Trap;
     }
 
+    // ─── Inspector ────────────────────────────────────────────────────────────
     [Header("Object Settings")]
     protected GameObject objectPrefab;
     [SerializeField] protected float placingDistance = 15f;
     [SerializeField] protected LayerMask placementLayers;
-    
+
     [Header("Hologram Settings")]
     [SerializeField] protected Material hologramMaterial;
     [SerializeField] private Color validColor = new Color(0, 0.5f, 1f, 0.5f);
     [SerializeField] private Color invalidColor = new Color(1f, 0, 0, 0.5f);
-    
+
     [Header("Camera Reference")]
     [SerializeField] private GameObject cameraHolder;
 
     [Header("Modifiers")]
     public float cooldownTime;
 
-    // --- private variables ---
+    // ─── State ────────────────────────────────────────────────────────────────
     protected GameObject hologramObject;
     protected bool isPlacementMode = false;
     protected bool canPlace = false;

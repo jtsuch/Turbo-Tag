@@ -2,12 +2,19 @@ using Photon.Pun;
 using UnityEngine;
 using System.Collections.Generic;
 
+/// <summary>
+/// Mediates between InputHandler and the Ability components on the same GameObject.
+/// Maintains a dictionary of abilities by name, routes input events, and enforces the
+/// one-active-ability-at-a-time rule for conflicting ability types (Throw/Trap).
+/// Attach to: ThePlayer prefab — alongside all Ability components.
+/// </summary>
 [RequireComponent(typeof(PhotonView))]
 public class AbilityHandler : MonoBehaviour
 {
+    // ─── State ────────────────────────────────────────────────────────────────
     private Ability[] abilities;
     private Dictionary<string, Ability> abilityMap;
-    private Ability activeAbility; // Tracks whichever ability is mid-flow
+    private Ability activeAbility; // The ability currently awaiting a confirm/cancel action
 
     void Awake()
     {
@@ -20,8 +27,10 @@ public class AbilityHandler : MonoBehaviour
         }
     }
 
-    // Returns true when two abilities should block each other.
-    // Throw and Trap are mutually exclusive; Basic and Quick can overlap freely.
+    // ─── Conflict Detection ───────────────────────────────────────────────────
+
+    // Throw and Trap are mutually exclusive (both require aim/placement mode).
+    // Basic and Quick are fire-and-forget so they never need to block each other.
     private static bool Conflicts(Ability a, Ability b)
     {
         static bool isBlockingType(Ability x) =>
@@ -30,11 +39,13 @@ public class AbilityHandler : MonoBehaviour
         return isBlockingType(a) && isBlockingType(b);
     }
 
+    // ─── Input Routing ────────────────────────────────────────────────────────
+
     public void TryUseAbility(string abilityName, AbilityInputEvent inputEvent)
     {
         if (!abilityMap.TryGetValue(abilityName, out Ability ability)) return;
 
-        // If a conflicting ability is already active, cancel it before starting the new one
+        // Cancel the conflicting active ability before starting the new one
         if (inputEvent == AbilityInputEvent.Down
             && activeAbility != null
             && activeAbility != ability
@@ -47,25 +58,26 @@ public class AbilityHandler : MonoBehaviour
 
         ability.TryActivate(inputEvent);
 
-        // Track this as the active ability if it entered an active state
+        // Update tracking: set or clear activeAbility based on the ability's new state
         if (ability.IsAwaitingAction)
             activeAbility = ability;
         else if (activeAbility == ability)
-            activeAbility = null; // It finished or was cancelled
+            activeAbility = null;
     }
 
+    // Called on Action key down — forwards to whichever ability is mid-flow (e.g. charge a throw)
     public void TryConfirmAction()
     {
         if (activeAbility != null && activeAbility.IsAwaitingAction)
             activeAbility.OnActionConfirm();
     }
 
+    // Called on Action key up — releases (e.g. executes a charged throw)
     public void TryConfirmActionUp()
     {
         if (activeAbility != null && activeAbility.IsAwaitingAction)
         {
             activeAbility.OnActionConfirmUp();
-            // Clear active if it's no longer awaiting after confirm
             if (!activeAbility.IsAwaitingAction)
                 activeAbility = null;
         }

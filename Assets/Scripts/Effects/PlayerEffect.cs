@@ -2,15 +2,16 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-/// Abstract base class for all temporary player effects.
-/// Attach to a player's GameObject via AddComponent from EffectBlock.
-/// Manages its own duration coroutine and guarantees OnEffectEnd runs exactly once.
+/// Abstract base for all temporary player effects. Added to a player's GameObject at runtime
+/// by EffectBlock.ApplyEffect() via AddComponent; never placed in the scene directly.
+/// Manages its own duration coroutine and guarantees OnEffectEnd runs exactly once,
+/// whether the effect expires naturally, is cancelled early, or the component is destroyed.
 ///
 /// To add a new effect:
-///  1. Subclass PlayerEffect.
-///  2. Implement OnEffectStart() and OnEffectEnd().
-///  3. Override Update() if the effect needs per-frame behaviour (e.g. input polling).
-///  4. Register the type in EffectBlock.CreateEffect().
+///  1. Subclass PlayerEffect and implement OnEffectStart() / OnEffectEnd().
+///  2. Override Update() if the effect needs per-frame behaviour (e.g. input polling).
+///  3. Add the type to EffectBlock.EffectType and GetEffectSystemType().
+/// Attach to: ThePlayer prefab (dynamically at runtime) — do not add in the Inspector.
 /// </summary>
 public abstract class PlayerEffect : MonoBehaviour
 {

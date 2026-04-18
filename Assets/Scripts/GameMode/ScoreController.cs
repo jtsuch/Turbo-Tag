@@ -3,14 +3,17 @@ using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// Tracks cumulative hide time for each player across all rounds.
-/// Master-client authoritative — only ticks and fires events on the master client.
+/// Tracks cumulative hide time per player across all rounds. Master-client authoritative —
+/// only ticks and fires events on the master client; other clients receive score data via
+/// GameModeManager RPCs when needed.
 ///
-/// Usage:
-///   BeginRound(hiderActorNumbers) — start accumulating for the given players
-///   FreezePlayerTimer(actorNumber) — stop accumulating for a player (e.g. when tagged)
-///   EndRound()                     — stop all accumulation until the next BeginRound
-///   GetWinner()                    — actor number of the player with the highest hide time
+/// API:
+///   BeginRound(hiderActorNumbers) — register hiders and start accumulation
+///   FreezePlayerTimer(actorNumber) — lock a player's time (called when tagged)
+///   EndRound()                     — pause all accumulation until the next round
+///   GetWinner()                    — actor number with the highest accumulated hide time
+///
+/// Attach to: the same GameObject as GameModeManager.
 /// </summary>
 public class ScoreController : MonoBehaviour
 {

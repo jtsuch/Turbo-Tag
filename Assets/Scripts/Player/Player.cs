@@ -4,6 +4,12 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System;
 
+/// <summary>
+/// Central data hub for a single player: holds stats, movement state, health, and references
+/// to all sibling components. Also acts as a singleton for the local player instance.
+/// Attach to: ThePlayer prefab — requires JimmyMove, Rigidbody, PhotonView, InputHandler,
+/// and PlayerAnimatorController on the same object.
+/// </summary>
 [RequireComponent(typeof(JimmyMove))]
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(PhotonView))]
@@ -11,7 +17,8 @@ using System;
 [RequireComponent(typeof(PlayerAnimatorController))]
 public class Player : MonoBehaviour
 {
-    // Singleton instance
+    // ─── Singleton ────────────────────────────────────────────────────────────
+    // Only the local player becomes the singleton; remote instances are separate objects.
     private static Player _instance;
     public static Player Instance
     {
@@ -24,29 +31,28 @@ public class Player : MonoBehaviour
         private set => _instance = value;
     }
 
-    // --- Identity / Profile ---
+    // ─── Identity / References ────────────────────────────────────────────────
     public string PlayerID { get; private set; }
     public string PlayerName { get; private set; }
-    
-    // --- References ---
+
     public JimmyMove Movement { get; private set; }
     public InputHandler Input { get; private set; }
     public PlayerAnimatorController Animator { get; private set; }
     public Rigidbody rb;
 
-    // --- Game Mode Related ---
+    // ─── Game Mode ────────────────────────────────────────────────────────────
     public bool isHunter;
     public int Score;
 
-    // --- Multiplayer Logic
+    // True only for the player instance owned by this client
     public bool IsLocalPlayer;
 
-    // --- Character Attributes ---
+    // ─── Character Attributes ─────────────────────────────────────────────────
     public float height = 1.8f;
     public int maxHealth = 100;
     private int currentHealth;
 
-    // --- Movement Speeds ---
+    // ─── Movement Speeds ──────────────────────────────────────────────────────
     public float WalkSpeed = 8f;
     public float SprintSpeed = 12f;
     public float CrouchSpeed = 5f;
@@ -59,9 +65,10 @@ public class Player : MonoBehaviour
     public float DashSpeed = 30f;
     public float SwingSpeed = 20f;
 
-    // --- Modifiers ---
-    public float   SpeedMultiplier = 1f;
-    public Vector2 MovementScale   = Vector2.one;
+    // ─── Physics / Movement Modifiers ────────────────────────────────────────
+    public float   SpeedMultiplier    = 1f;
+    public float   CooldownMultiplier = 1f;  // Multiplies all ability cooldown durations (cheats)
+    public Vector2 MovementScale   = Vector2.one;   // Per-axis input scale (effects can clamp to 0)
     public float Acceleration = 50f;
     public float JumpStrength = 16;
     public float currentXScale = 1f;
@@ -69,25 +76,24 @@ public class Player : MonoBehaviour
     public float currentZScale = 1f;
     public float CrouchHeight = 0.5f;
     public float WallSlideDownMax = 4f;
-    public float AirControlMult = 0.1f;
-    public float SwingControlMult = 0.01f;
+    public float AirControlMult = 0.1f;       // Reduces steering force while airborne
+    public float SwingControlMult = 0.01f;    // Near-zero control while on grapple swing
     public float DamageReductionPercent = 0f;
 
-    // --- Settings ---
+    // ─── Settings ─────────────────────────────────────────────────────────────
     public float Sensitivity = 100f;
 
-    // --- Status Effects ---
+    // ─── Status Effects ───────────────────────────────────────────────────────
     public bool IsInvincible = false;
     public bool CanMove = true;
 
-    // --- State ---
+    // ─── Movement State ───────────────────────────────────────────────────────
     public enum MovementState
     {
-        Idle,                   // Idle now handles walking and sprinting too 
-        Crouch,                 // Crouched state
-        Prone,                  // Prone and slide states
-        //Air,                  // In-air state
-        Climb, WallRun, Hang,   // Wall states
+        Idle,                   // Covers walking and sprinting (speed set by Sprint input)
+        Crouch,
+        Prone,                  // Also covers sliding when speed > ProneSpeed
+        Climb, WallRun, Hang,   // Wall-contact states
     }
     public MovementState currentState = MovementState.Idle;
     public MovementState lastState = MovementState.Idle;
@@ -95,7 +101,6 @@ public class Player : MonoBehaviour
     public event System.Action OnLand;
     public float targetSpeed = 8f;
 
-    // Event for state changes
     public event System.Action<MovementState> OnStateChanged;
 
     public bool IsAlive => currentHealth > 0;
@@ -104,24 +109,25 @@ public class Player : MonoBehaviour
     public bool IsHolding = false;
     public bool IsDashing = false;
 
-    //public Dictionary<string, Object> customProperties = new Dictionary<string, Object>();
-
+    // ─── Abilities ────────────────────────────────────────────────────────────
+    // Indices: 0=Basic, 1=Quick, 2=Throw, 3=Trap — filled from Photon custom properties
     public string[] abilityList = new string[4];
 
     private void Awake()
     {
-        // Determine ownership. Only the local/owned player should become the singleton.
+        // ─── Ownership check ──────────────────────────────────────────────────
+        // Determine whether this GameObject belongs to the local client.
         if (TryGetComponent<PhotonView>(out var view))
         {
             IsLocalPlayer = view.IsMine;
         }
         else
         {
-            // If there's no PhotonView, treat this as the local player (singleplayer or non-networked)
+            // No PhotonView — treat as local (singleplayer / offline testing)
             IsLocalPlayer = true;
         }
 
-        // Only set the global Instance for the local player. Do NOT destroy remote player objects.
+        // Only the local player becomes the singleton; remote players should not be destroyed.
         if (IsLocalPlayer)
         {
             if (Instance != null && Instance != this)
@@ -192,9 +198,12 @@ public class Player : MonoBehaviour
         OnLand?.Invoke();
     }
 
-    /*
-     * Determine the player's current movement state based on input and environment.
-     */
+    // ─── State Management ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Transitions to a new movement state, updates targetSpeed (factoring in SpeedMultiplier),
+    /// refreshes the animator, and fires OnStateChanged for subscribers.
+    /// </summary>
     public void SetState(MovementState newState)
     {
         switch (newState)
@@ -209,6 +218,7 @@ public class Player : MonoBehaviour
                 targetSpeed = CrouchSpeed;
                 break;
             case MovementState.Prone:
+                // When entering prone with enough momentum, use the faster slide speed
                 if (rb.linearVelocity.magnitude > ProneSpeed)
                     targetSpeed = SlideSpeed;
                 else
@@ -230,7 +240,7 @@ public class Player : MonoBehaviour
         OnStateChanged?.Invoke(newState);
     }
 
-    // --- Data/Stat Management ---
+    // ─── Data / Stat Management ───────────────────────────────────────────────
     public void SetPlayerScale()
     {
         //currentYScale = Mathf.Max(0.1f, newY);
@@ -260,7 +270,7 @@ public class Player : MonoBehaviour
 
     public void SetMaxHealth(int amount)
     {
-        maxHealth = Mathf.Max(1, amount);;
+        maxHealth = Mathf.Max(1, amount);
     }
 
     public void SetSensitivity(float amount)

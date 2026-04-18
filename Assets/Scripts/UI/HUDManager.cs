@@ -3,8 +3,15 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// Manages the in-game HUD: ability hotbar icons/keybinds, the basic-ability duration ring,
+/// and a debug text overlay. Initialize() must be called by Spawner after the local Player
+/// singleton is ready, as the HUD needs ability data from Photon custom properties.
+/// Attach to: the PlayerHUD Canvas GameObject in the gameplay scene.
+/// </summary>
 public class HUDManager : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     private static HUDManager _instance;
     public static HUDManager Instance
     {
@@ -16,6 +23,8 @@ public class HUDManager : MonoBehaviour
         }
         private set => _instance = value;
     }
+
+    // ─── References ───────────────────────────────────────────────────────────
     [Header("Basic Ability Reference")]
     private BasicAbility trackedBasicAbility;
 
@@ -60,12 +69,13 @@ public class HUDManager : MonoBehaviour
         if (trackedBasicAbility == null) return;
 
         float fillAmount = trackedBasicAbility.currentDuration / trackedBasicAbility.maxDuration;
+        // Hide the ring when the ability is fully recharged; show and update fill otherwise
         if (fillAmount == 1)
             timer.SetActive(false);
         else
         {
             timer.SetActive(true);
-            yellowCircle.fillAmount = trackedBasicAbility.currentDuration / trackedBasicAbility.maxDuration;
+            yellowCircle.fillAmount = fillAmount;
         }
     }
 
@@ -74,27 +84,29 @@ public class HUDManager : MonoBehaviour
         var props = PhotonNetwork.LocalPlayer.CustomProperties;
         if (props == null)
         {
-            Debug.Log("Couldn't retreive player info in HUD Manager");
+            Debug.Log("Couldn't retrieve player info in HUD Manager");
         }
+
         string[] abilityStringList = new string[4];
         abilityStringList[0] = props.ContainsKey("BasicAbility") ? (string)props["BasicAbility"] : "BasicGrapple";
         abilityStringList[1] = props.ContainsKey("QuickAbility") ? (string)props["QuickAbility"] : "BasicGrapple";
         abilityStringList[2] = props.ContainsKey("ThrowAbility") ? (string)props["ThrowAbility"] : "BasicGrapple";
-        abilityStringList[3] = props.ContainsKey("TrapAbility") ? (string)props["TrapAbility"] : "BasicGrapple";
-        string[] firstTimerKeybind = new string[] { "Mouse 1", "E", "Q", "X"};
+        abilityStringList[3] = props.ContainsKey("TrapAbility")  ? (string)props["TrapAbility"]  : "BasicGrapple";
+
+        // Default keybind labels shown before any PlayerPrefs entry exists
+        string[] firstTimerKeybind = new string[] { "Mouse 1", "E", "Q", "X" };
 
         for (int i = 0; i < 4; i++)
         {
             Transform parent = abilityList.transform.GetChild(i);
-            
-            // Get children components to modify
-            RawImage image = parent.GetChild(0).GetComponent<RawImage>();
-            TMP_Text keybind = parent.GetChild(1).GetComponent<TMP_Text>();
+
+            RawImage image       = parent.GetChild(0).GetComponent<RawImage>();
+            TMP_Text keybind     = parent.GetChild(1).GetComponent<TMP_Text>();
             TMP_Text abilityName = parent.GetChild(2).GetComponent<TMP_Text>();
 
-            // Modify children components
-            image.texture = Resources.Load<Texture2D>("AbilityIcons/" + abilityStringList[i] + "Icon"); // calls only from resources
-            keybind.text = PlayerPrefs.GetString("Keybind_Ability" + i, firstTimerKeybind[i]);
+            // Icons must live under Resources/AbilityIcons/
+            image.texture    = Resources.Load<Texture2D>("AbilityIcons/" + abilityStringList[i] + "Icon");
+            keybind.text     = PlayerPrefs.GetString("Keybind_Ability" + i, firstTimerKeybind[i]);
             abilityName.text = abilityStringList[i];
         }
     }

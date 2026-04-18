@@ -1,22 +1,33 @@
 using TMPro;
 using UnityEngine;
 
+/// <summary>
+/// Controls the pause menu panel and its tabbed pages (General, Rules, Cheats).
+/// Pause state is determined by whether this GameObject is active — no separate bool needed.
+/// Cursor lock/unlock is split between this class (unlock on pause) and PlayerCam (relock on resume)
+/// to avoid a same-frame race with the EventSystem.
+/// Attach to: the PauseMenu Canvas GameObject — starts inactive; Spawner calls Initialize() to
+/// confirm that and search for it with FindObjectsInactive so it's found even when hidden.
+/// </summary>
 public class PauseMenuManager : MonoBehaviour
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     private static PauseMenuManager _instance;
     public static PauseMenuManager Instance
     {
         get
         {
             if (_instance != null) return _instance;
+            // FindObjectsInactive.Include is required because this object starts hidden
             _instance = FindFirstObjectByType<PauseMenuManager>(FindObjectsInactive.Include);
             return _instance;
         }
     }
 
-    // Panel active = paused; panel inactive = not paused
+    // True when the panel is visible (active); false when hidden
     public bool Paused => gameObject.activeSelf;
 
+    // ─── Inspector ────────────────────────────────────────────────────────────
     [Header("Page References")]
     public GameObject generalPage;
     public GameObject rulesPage;
@@ -96,6 +107,8 @@ public class PauseMenuManager : MonoBehaviour
         else if (tab == cheatsTab) cheatsPage.SetActive(true);
     }
 
+    // ─── Legacy Tab Helpers (called by UI Button onClick events) ─────────────
+    // These mirror OpenTab() but are wired directly to buttons in the Inspector.
     public void GeneralTabChange()
     {
         generalPage.SetActive(true);

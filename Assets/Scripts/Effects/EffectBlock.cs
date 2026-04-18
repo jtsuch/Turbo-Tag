@@ -3,20 +3,17 @@ using Photon.Pun;
 using System.Collections.Generic;
 
 /// <summary>
-/// A world-space pickup block.  When the local player walks through it the block is
+/// A world-space pickup block. When the local player walks through it the block is
 /// consumed, a random effect from <see cref="effectPool"/> is applied to that player,
-/// and the block is destroyed for all clients.
+/// and the block is destroyed for all clients via RPC.
 ///
 /// To add a new effect type:
 ///  1. Add a value to <see cref="EffectType"/>.
-///  2. Add the corresponding <c>case</c> in <see cref="CreateEffect"/>.
+///  2. Add the corresponding case in <see cref="GetEffectSystemType"/>.
 ///  3. The new type is immediately available for the pool in the Inspector.
 ///
-/// Unity setup:
-///  - Attach to a prefab that has: BoxCollider (Is Trigger ✓), Rigidbody (Is Kinematic ✓),
-///    PhotonView.
-///  - Populate effectPool in the Inspector with desired effects, durations, and weights.
-///  - Instantiate with PhotonNetwork.Instantiate so it can be destroyed across the network.
+/// Attach to: EffectBlock prefab — requires BoxCollider (Is Trigger), Rigidbody (Is Kinematic),
+/// and PhotonView. Instantiate with PhotonNetwork.Instantiate so destruction syncs to all clients.
 /// </summary>
 [RequireComponent(typeof(Collider))]
 public class EffectBlock : MonoBehaviourPun

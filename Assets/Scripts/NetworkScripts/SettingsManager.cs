@@ -1,20 +1,26 @@
 using UnityEngine;
 using System;
 
+/// <summary>
+/// Persistent singleton that loads, saves, and applies global settings (sensitivity, FPS cap,
+/// volume). Each property setter applies the change immediately, fires a static event for any
+/// interested listeners (e.g. PlayerCam), and persists the new value via PlayerPrefs.
+/// Attach to: a DontDestroyOnLoad manager GameObject — one instance for the entire session.
+/// </summary>
 public class SettingsManager : MonoBehaviour
 {
     public static SettingsManager Instance { get; private set; }
 
-    // --- EVENTS ---
+    // ─── Events ───────────────────────────────────────────────────────────────
     public static event Action<float> OnSensitivityChanged;
-    public static event Action<int> OnFPSChanged;
+    public static event Action<int>   OnFPSChanged;
     public static event Action<float> OnVolumeChanged;
 
-    // --- SETTINGS DATA ---
+    // ─── Backing Fields ───────────────────────────────────────────────────────
     [Header("Settings")]
     [SerializeField] private float sensitivity = 100f;
-    [SerializeField] private int targetFPS = 60;
-    [SerializeField] private float volume = 100f;
+    [SerializeField] private int   targetFPS   = 60;
+    [SerializeField] private float volume      = 100f;
 
     private void Awake()
     {
@@ -32,7 +38,7 @@ public class SettingsManager : MonoBehaviour
         ApplySettings();
     }
 
-    // --- SAVE / LOAD ---
+    // ─── Save / Load ──────────────────────────────────────────────────────────
 
     public void LoadSettings()
     {
@@ -58,7 +64,7 @@ public class SettingsManager : MonoBehaviour
         AudioListener.volume = volume;
     }
 
-    // --- ACCESSORS ---
+    // ─── Accessors ────────────────────────────────────────────────────────────
 
     public float Sensitivity
     {

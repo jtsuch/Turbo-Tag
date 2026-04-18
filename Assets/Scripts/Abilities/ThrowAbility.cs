@@ -1,9 +1,18 @@
 using UnityEngine;
 using Photon.Pun;
 
+/// <summary>
+/// Base for projectile-throw abilities with an aim → charge → release flow.
+/// State machine: Idle → Aiming (ability key down) → Charging (LMB down) → release on LMB up.
+/// Pressing the ability key again while aiming or charging cancels the throw.
+/// Child classes set cooldownTime/minThrowForce/maxThrowForce/chargeTime in their Awake,
+/// and can override OnEnterAiming, OnEnterCharging, and OnThrow for custom behaviour.
+/// Attach to: ThePlayer prefab — requires a LineRenderer and a throwOrigin Transform assigned
+/// in the Inspector for trajectory preview.
+/// </summary>
 public abstract class ThrowAbility : Ability
 {
-    // Set by each child class in Awake — same pattern as QuickAbility.cooldownTime
+    // ─── Configuration (set by child in Awake) ────────────────────────────────
     protected float cooldownTime;
     protected float minThrowForce;
     protected float maxThrowForce;

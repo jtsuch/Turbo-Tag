@@ -2,11 +2,11 @@ using UnityEngine;
 using System;
 
 /// <summary>
-/// Three-phase match timer. Runs only on the master client; fires C# events for GameModeManager to react to.
-/// Phases: Countdown (counts down) → Hiding (counts down) → Active (counts up, optional cap).
-///
-/// DisplayTime is updated each frame and reflects the local master client's timer value.
-/// All display sync to other clients is handled by GameModeManager's RPCs.
+/// Three-phase match timer: Countdown (counts down) → Hiding (counts down) → Active (counts up).
+/// Runs only on the master client and fires C# events that GameModeManager subscribes to.
+/// DisplayTime is updated every frame on the master client; other clients receive the value
+/// through GameModeManager's RPCs rather than running their own timer.
+/// Attach to: the same GameObject as GameModeManager.
 /// </summary>
 public class MatchTimerController : MonoBehaviour
 {
@@ -33,7 +33,7 @@ public class MatchTimerController : MonoBehaviour
     public float DisplayTime { get; private set; }
 
     private float localTimer;
-    private bool eventFired;  // Prevents duplicate event invocations when timer hits zero
+    private bool eventFired; // Guard flag: ensures each phase-complete event fires exactly once
 
     // -------------------------------------------------------------------------
     // Public control API

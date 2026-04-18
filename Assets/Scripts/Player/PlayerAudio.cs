@@ -1,6 +1,12 @@
 using UnityEngine;
 using Photon.Pun;
 
+/// <summary>
+/// Plays positional audio for the local player's footsteps, jumps, lands, and sliding.
+/// The local client drives its own audio in Update; RPCs replicate one-shot and looping
+/// sounds to remote clients so they hear positional audio at this object's world position.
+/// Attach to: ThePlayer prefab — requires AudioSource and PhotonView on the same object.
+/// </summary>
 [RequireComponent(typeof(AudioSource))]
 [RequireComponent(typeof(PhotonView))]
 public class PlayerAudio : MonoBehaviour

@@ -3,14 +3,19 @@ using System.Collections.Generic;
 using Photon.Pun;
 using UnityEngine;
 
+/// <summary>
+/// Reads raw Unity input and routes it to movement flags and AbilityHandler each frame.
+/// Persists keybindings in PlayerPrefs and supports runtime rebinding. Ability keys are
+/// stored by ability name so they survive hot-reloads and Photon property updates.
+/// Attach to: ThePlayer prefab — disabled automatically on remote player instances.
+/// </summary>
 [RequireComponent(typeof(PhotonView))]
 public class InputHandler : MonoBehaviourPunCallbacks
 {
-    // --- Movement & Look ---
+    // ─── Input State ──────────────────────────────────────────────────────────
     public Vector2 MoveInput { get; private set; }
     public Vector2 LookInput { get; private set; }
 
-    // --- Core Actions ---
     public bool Jump { get; private set; }
     public bool Sprint { get; private set; }
     public bool Crouch { get; private set; }
@@ -21,14 +26,17 @@ public class InputHandler : MonoBehaviourPunCallbacks
     public bool AbilityZeroDown { get; private set; }
     public bool AbilityZeroUp { get; private set; }
 
+    // ─── References ───────────────────────────────────────────────────────────
     [Header("References")]
     public AbilityHandler AbilityHandler;
     public Player player;
 
     private PhotonView view;
+
+    // Key name → KeyCode; core actions and ability names share this dictionary
     private Dictionary<string, KeyCode> keybindings;
 
-    // Stored defaults for ability key slots so we can apply them when ability names arrive
+    // Cached key codes for ability slots, set at Start and reapplied when Photon properties arrive
     private KeyCode abilitySlotKey0;
     private KeyCode abilitySlotKey1;
     private KeyCode abilitySlotKey2;
@@ -38,9 +46,12 @@ public class InputHandler : MonoBehaviourPunCallbacks
     {
         view = GetComponent<PhotonView>();
         if (!view.IsMine)
-            enabled = false; // avoid wasting CPU on remote instances
+        {
+            enabled = false; // Skip Update on remote players — they don't drive local input
+            return;
+        }
 
-        // Retrieve player keybinds, unless it's their first time, then store
+        // Load saved keybindings from PlayerPrefs; defaults are used on first run
         string actionKey = PlayerPrefs.GetString("Keybind_Action", KeyCode.Mouse0.ToString());
         string jumpKey = PlayerPrefs.GetString("Keybind_Jump", KeyCode.Space.ToString());
         string sprintKey = PlayerPrefs.GetString("Keybind_Sprint", KeyCode.LeftShift.ToString());
@@ -64,7 +75,7 @@ public class InputHandler : MonoBehaviourPunCallbacks
         string abilityThreeName = GetAbilityName("ThrowAbility");
         string abilityFourName = GetAbilityName("TrapAbility");
 
-        // Sets the global dictionary to the keybinds of the players stored preferences
+        // Build the master keybinding dictionary from the loaded/default values
         keybindings = new()
         {
             {"Action", (KeyCode)System.Enum.Parse(typeof(KeyCode), actionKey)},
@@ -84,18 +95,12 @@ public class InputHandler : MonoBehaviourPunCallbacks
         if (!string.IsNullOrEmpty(abilityThreeName) && !keybindings.ContainsKey(abilityThreeName)) keybindings.Add(abilityThreeName, abilitySlotKey2);
         if (!string.IsNullOrEmpty(abilityFourName) && !keybindings.ContainsKey(abilityFourName)) keybindings.Add(abilityFourName, abilitySlotKey3);
 
-        // Initialize ability key dictionaries for any ability keys present
-        foreach (var entry in keybindings)
-        {
-            // We'll treat the core bindings specially; ability names are everything else
-            if (IsCoreBinding(entry.Key)) continue;
-            if (string.IsNullOrEmpty(entry.Key)) continue;
-            //if (!abilityKeyDown.ContainsKey(entry.Key)) abilityKeyDown[entry.Key] = false;
-            //if (!abilityKeyUp.ContainsKey(entry.Key)) abilityKeyUp[entry.Key] = false;
-        }
     }
 
-    // Called by Photon when any player's properties change. We care about our local player's ability properties.
+    // ─── Photon Callbacks ─────────────────────────────────────────────────────
+
+    // Fires on all clients when any player's custom properties change.
+    // Used to late-bind ability keys when ability names arrive after Start (common on reconnect).
     public override void OnPlayerPropertiesUpdate(Photon.Realtime.Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
     {
         base.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
@@ -117,23 +122,16 @@ public class InputHandler : MonoBehaviourPunCallbacks
         {
             if (raw is string abilityName && !string.IsNullOrEmpty(abilityName))
             {
-                // Add or update binding
+                // Add or overwrite — ability name is the key, slot key code is the value
                 if (keybindings.ContainsKey(abilityName))
-                {
                     keybindings[abilityName] = slotKey;
-                }
                 else
-                {
                     keybindings.Add(abilityName, slotKey);
-                }
-
-                // Initialize ability dictionaries
-                //if (!abilityKeyDown.ContainsKey(abilityName)) abilityKeyDown[abilityName] = false;
-                //if (!abilityKeyUp.ContainsKey(abilityName)) abilityKeyUp[abilityName] = false;
             }
         }
     }
 
+    // Reads an ability name from Photon custom properties by property key (e.g. "BasicAbility")
     private string GetAbilityName(string abilityNumber)
     {
         var localPlayer = PhotonNetwork.LocalPlayer;
@@ -143,81 +141,68 @@ public class InputHandler : MonoBehaviourPunCallbacks
             return "";
         }
         var props = localPlayer.CustomProperties;
-        string abilityName = "";
 
         if (props != null && props.TryGetValue(abilityNumber, out object rawAbility))
         {
             if (rawAbility is string stringAbility)
-            {
-                abilityName = stringAbility;
-            }
+                return stringAbility;
             else
-            {
                 Debug.LogWarning("Can't find ability name in props");
-            }
         }
         else
         {
             Debug.LogWarning("Props is null");
-            return "";
         }
-        return abilityName;
-
+        return "";
     }
 
-    // --- Update: Read Inputs Each Frame ---
+    // ─── Update ───────────────────────────────────────────────────────────────
     void Update()
     {
-        if (!view.IsMine) return; // Only process input for local player
+        if (!view.IsMine) return;
 
-        // First deal with pause menu input
+        // Pause key is always processed first; skip everything else while paused
         var menuManager = PauseMenuManager.Instance;
         if (menuManager != null)
         {
             if (Input.GetKeyDown(keybindings["Pause"]))
-            {
                 menuManager.TogglePauseMenu();
-            }
 
-            if (menuManager.Paused) return; // If paused, skip input handling (except pause key)
+            if (menuManager.Paused) return;
         }
-        
 
-        // --- Movement ---
         MoveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
         LookInput = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
-        // --- Core Actions ---
-        Jump = Input.GetKeyDown(keybindings["Jump"]);
+        Jump   = Input.GetKeyDown(keybindings["Jump"]);
         Sprint = Input.GetKey(keybindings["Sprint"]);
-        Prone = Input.GetKeyDown(keybindings["Prone"]);
+        Prone  = Input.GetKeyDown(keybindings["Prone"]);
         Crouch = Input.GetKeyDown(keybindings["Crouch"]);
-        Grab = Input.GetKeyDown(keybindings["Grab"]);
-        
-        // For grapples
+        Grab   = Input.GetKeyDown(keybindings["Grab"]);
+
+        // Held crouch key used by grapple logic (distinct from the tap-to-toggle Crouch bool)
         Down = Input.GetKey(keybindings["Crouch"]);
 
+        // Re-evaluate Idle speed when sprint key changes (walk ↔ sprint transition)
         if (player.currentState == Player.MovementState.Idle)
         {
-            if(Input.GetKeyDown(keybindings["Sprint"]) || Input.GetKeyUp(keybindings["Sprint"]))
-            {
-                // If the player is in Idle, but transitions to or from sprinting, update the state
+            if (Input.GetKeyDown(keybindings["Sprint"]) || Input.GetKeyUp(keybindings["Sprint"]))
                 player.SetState(Player.MovementState.Idle);
-            }
-        } 
+        }
 
-        if (AbilityHandler == null) 
+        if (AbilityHandler == null)
         {
             Debug.LogWarning("Cannot find AbilityHandler class");
             return;
         }
 
+        // Action key (LMB by default) confirms/releases the currently active ability
         if (Input.GetKeyDown(keybindings["Action"]))
             AbilityHandler.TryConfirmAction();
         if (Input.GetKeyUp(keybindings["Action"]))
             AbilityHandler.TryConfirmActionUp();
 
-        // Update ability key states and invoke ability actions/events
+        // Route all non-core keybinding presses to AbilityHandler by ability name
         foreach (var entry in keybindings)
         {
             var actionName = entry.Key;
@@ -235,13 +220,14 @@ public class InputHandler : MonoBehaviourPunCallbacks
         }
     }
 
-    // Helper to identify core (non-ability) action names
+    // ─── Helpers / Public API ─────────────────────────────────────────────────
+
+    // Core bindings are handled in Update directly; all other keys belong to abilities
     private bool IsCoreBinding(string name)
     {
         return name == "Action" || name == "Jump" || name == "Sprint" || name == "Crouch" || name == "Prone" || name == "Pause" || name == "Grab";
     }
 
-    // --- Public API: Rebinding ---
     public void RebindKey(string action, KeyCode newKey)
     {
         if (!view.IsMine) return;

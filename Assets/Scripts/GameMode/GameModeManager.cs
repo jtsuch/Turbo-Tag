@@ -19,10 +19,8 @@ using PhotonHashtable = ExitGames.Client.Photon.Hashtable;
 /// Round rotation: every player serves as the initial hunter at least once before the
 /// match can end. Highest cumulative hide time wins.
 ///
-/// Unity setup:
-///   - Place on a persistent scene GameObject.
-///   - Add MatchTimerController, ScoreController, and PhotonView to the same GameObject.
-///   - The PhotonView must be a scene view (set Scene ViewID in the Inspector).
+/// Attach to: a persistent scene GameObject — add MatchTimerController, ScoreController,
+/// and PhotonView to the same object. The PhotonView must use a scene ViewID.
 /// </summary>
 [RequireComponent(typeof(MatchTimerController))]
 [RequireComponent(typeof(ScoreController))]

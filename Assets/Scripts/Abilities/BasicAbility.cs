@@ -1,7 +1,14 @@
 using UnityEngine;
 
+/// <summary>
+/// Base for toggle-style abilities with a finite duration that drains while active and
+/// regenerates while inactive (e.g. a glider or speed boost with a stamina bar).
+/// Subclass this and override OnKeyDown/OnKeyUp/StopAbility for concrete behaviour.
+/// Attach to: ThePlayer prefab — alongside AbilityHandler.
+/// </summary>
 public abstract class BasicAbility : Ability
 {
+    // ─── Duration ─────────────────────────────────────────────────────────────
     public float maxDuration;
     public float currentDuration;
     public bool isActive = false;
@@ -11,7 +18,6 @@ public abstract class BasicAbility : Ability
         currentDuration = maxDuration;
     }
 
-    // --- Call to active child class ---
     public override void TryActivate(AbilityInputEvent inputEvent)
     {
         if (PauseMenuManager.Instance.Paused) return;
@@ -21,7 +27,7 @@ public abstract class BasicAbility : Ability
 
     private void FixedUpdate()
     {
-        // Decrement duration while gliding, increment otherwise
+        // Drain while active; refill while inactive (capped at maxDuration)
         if (isActive)
         {
             currentDuration -= Time.deltaTime;
@@ -31,13 +37,13 @@ public abstract class BasicAbility : Ability
         else
         {
             currentDuration += Time.deltaTime;
-            if (currentDuration >= maxDuration) 
+            if (currentDuration >= maxDuration)
                 currentDuration = maxDuration;
         }
     }
 
-    // --- To be defined by children ---
-    protected virtual void OnKeyDown() { }   
+    // ─── Hooks for subclasses ─────────────────────────────────────────────────
+    protected virtual void OnKeyDown() { }
     protected virtual void OnKeyUp() { }
     protected virtual void StopAbility() { }
 }

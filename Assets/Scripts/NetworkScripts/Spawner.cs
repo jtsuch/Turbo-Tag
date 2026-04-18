@@ -3,10 +3,16 @@ using Photon.Pun;
 using System.Collections;
 using System.Linq;
 
+/// <summary>
+/// Spawns the local player prefab when a scene loads and initialises the HUD and pause menu
+/// once the Player singleton is ready. Spawn position is determined by the player's hunter
+/// role and actor number so that players spread out in a circle rather than stacking.
+/// Attach to: a scene-persistent Spawner GameObject — one per gameplay scene.
+/// </summary>
 public class Spawner : MonoBehaviour
 {
     // Drag the scene's PlayerHUD and PauseMenu objects into these fields in the Inspector.
-    // If left empty, Spawner will locate them in the scene automatically.
+    // If left empty, Spawner will locate them in the scene automatically via their singletons.
     [SerializeField] private GameObject playerHUD;
     [SerializeField] private GameObject pauseMenu;
 
@@ -54,6 +60,7 @@ public class Spawner : MonoBehaviour
 
         bool isHunter = hunters.Contains(PhotonNetwork.LocalPlayer.ActorNumber);
 
+        // Hunters spawn in a tight circle (radius 1); hiders spread out wider (radius 5)
         Vector3 spawnPoint = isHunter
             ? GetCirclePosition(transform.position, 1f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount)
             : GetCirclePosition(transform.position, 5f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount);
@@ -95,6 +102,7 @@ public class Spawner : MonoBehaviour
         pm.Initialize();
     }
 
+    // Distributes players evenly around a circle. index is 0-based (ActorNumber - 1).
     Vector3 GetCirclePosition(Vector3 center, float radius, float index, float total)
     {
         float angle = (360f / total) * index * Mathf.Deg2Rad;
