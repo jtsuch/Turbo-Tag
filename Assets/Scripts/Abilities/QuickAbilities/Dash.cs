@@ -9,8 +9,11 @@ public class Dash : QuickAbility
     public Player player;
 
     [Header("Modifiers")]
+    [TunableParam("Dash Strength", 5f, 100f)]
     public float dashStrength = 40f;
+    [TunableParam("Duration", 0.05f, 2f)]
     public float dashDuration = 0.25f;
+    [TunableParam("Cooldown", 0.1f, 15f)]
     public float dashCooldown = 1f;
     private Coroutine dashCoroutine;
 

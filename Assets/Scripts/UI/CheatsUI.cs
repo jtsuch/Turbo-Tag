@@ -10,7 +10,7 @@ using Photon.Pun;
 /// own stats and abilities when cheats are active.
 ///
 /// Layout (five sub-tabs inside the Cheats panel):
-///   General   — movement speed, acceleration, jump, scale, cooldown multiplier
+///   Self      — movement speed, acceleration, jump, scale, cooldown multiplier
 ///   Basic     — Basic ability list (equipped at top, others bindable below)
 ///   Quick     — Quick ability list
 ///   Throw     — Throw ability list
@@ -27,50 +27,49 @@ public class CheatsUI : MonoBehaviour
 {
     // ─── Sub-tab panels ───────────────────────────────────────────────────────
     [Header("Sub-Tab Buttons")]
-    public Button generalTabButton;
+    public Button selfTabButton;
     public Button basicTabButton;
     public Button quickTabButton;
     public Button throwTabButton;
     public Button trapTabButton;
 
-    [Header("Sub-Tab Panels")]
-    public GameObject generalPanel;
+    // Each panel lives directly inside the shared ScrollView Content.
+    // The panel itself is the content container — no separate content Transform needed.
+    [Header("Sub-Tab Panels (inside ScrollView Content)")]
+    public GameObject selfPanel;
     public GameObject basicPanel;
     public GameObject quickPanel;
     public GameObject throwPanel;
     public GameObject trapPanel;
 
-    // ─── General tab sliders (existing + cooldown multiplier) ─────────────────
-    [Header("General — Speed")]
+    // ─── Self tab sliders ─────────────────────────────────────────────────────
+    [Header("Self — Speed")]
     public Slider         speedSlider;
     public TMP_InputField speedInput;
 
-    [Header("General — Acceleration")]
+    [Header("Self — Acceleration")]
     public Slider         accelerationSlider;
     public TMP_InputField accelerationInput;
 
-    [Header("General — Jump")]
+    [Header("Self — Jump")]
     public Slider         jumpSlider;
     public TMP_InputField jumpInput;
 
-    [Header("General — Scale")]
+    [Header("Self — Scale")]
     public Slider         scaleSizeSlider;
     public TMP_InputField scaleSizeInput;
 
-    [Header("General — Cooldown Multiplier")]
+    [Header("Self — Cooldown Multiplier")]
     public Slider         cooldownSlider;
     public TMP_InputField cooldownInput;
-
-    // ─── Ability tab containers ───────────────────────────────────────────────
-    [Header("Ability Tab Content (ScrollRect content transforms)")]
-    public Transform basicContent;
-    public Transform quickContent;
-    public Transform throwContent;
-    public Transform trapContent;
 
     [Header("Ability Row Prefab")]
     [Tooltip("Prefab with AbilityCheatRow component.")]
     public GameObject abilityRowPrefab;
+
+    [Header("Slider Row Prefab")]
+    [Tooltip("Prefab with SliderRow component — spawned inside each equipped ability's expanded panel.")]
+    public GameObject sliderRowPrefab;
 
     // ─── Cheats-disabled overlay ──────────────────────────────────────────────
     [Header("Cheats Lock")]
@@ -98,20 +97,19 @@ public class CheatsUI : MonoBehaviour
     private void Start()
     {
         // Wire sub-tab buttons
-        generalTabButton.onClick.AddListener(() => ShowSubTab(generalPanel));
-        basicTabButton  .onClick.AddListener(() => ShowSubTab(basicPanel));
-        quickTabButton  .onClick.AddListener(() => ShowSubTab(quickPanel));
-        throwTabButton  .onClick.AddListener(() => ShowSubTab(throwPanel));
-        trapTabButton   .onClick.AddListener(() => ShowSubTab(trapPanel));
+        selfTabButton .onClick.AddListener(() => ShowSubTab(selfPanel));
+        basicTabButton.onClick.AddListener(() => ShowSubTab(basicPanel));
+        quickTabButton.onClick.AddListener(() => ShowSubTab(quickPanel));
+        throwTabButton.onClick.AddListener(() => ShowSubTab(throwPanel));
+        trapTabButton .onClick.AddListener(() => ShowSubTab(trapPanel));
 
-        // Start on General tab
-        ShowSubTab(generalPanel);
+        ShowSubTab(selfPanel);
 
-        InitGeneralSliders();
-        BuildAbilityTab(basicContent, BasicAbilities, 0);
-        BuildAbilityTab(quickContent, QuickAbilities, 1);
-        BuildAbilityTab(throwContent, ThrowAbilities, 2);
-        BuildAbilityTab(trapContent,  TrapAbilities,  3);
+        InitSelfSliders();
+        BuildAbilityTab(basicPanel.transform, BasicAbilities, 0);
+        BuildAbilityTab(quickPanel.transform, QuickAbilities, 1);
+        BuildAbilityTab(throwPanel.transform, ThrowAbilities, 2);
+        BuildAbilityTab(trapPanel.transform,  TrapAbilities,  3);
     }
 
     private void OnEnable()
@@ -157,16 +155,16 @@ public class CheatsUI : MonoBehaviour
 
     private void ShowSubTab(GameObject panel)
     {
-        generalPanel.SetActive(panel == generalPanel);
+        selfPanel   .SetActive(panel == selfPanel);
         basicPanel  .SetActive(panel == basicPanel);
         quickPanel  .SetActive(panel == quickPanel);
         throwPanel  .SetActive(panel == throwPanel);
         trapPanel   .SetActive(panel == trapPanel);
     }
 
-    // ─── General tab initialisation ───────────────────────────────────────────
+    // ─── Self tab initialisation ──────────────────────────────────────────────
 
-    private void InitGeneralSliders()
+    private void InitSelfSliders()
     {
         if (Player.Instance == null) return;
         // Sliders are Inspector-configured with appropriate min/max ranges.
@@ -209,6 +207,19 @@ public class CheatsUI : MonoBehaviour
         row.Initialize(abilityName, isEquipped, existingBind);
         row.OnBindRequested += StartAbilityListening;
         abilityRows.Add(row);
+
+        if (isEquipped)
+            row.Populate(FindAbilityComponent(abilityName), sliderRowPrefab);
+    }
+
+    private MonoBehaviour FindAbilityComponent(string abilityName)
+    {
+        if (Player.Instance == null) return null;
+        foreach (var mb in Player.Instance.GetComponentsInChildren<MonoBehaviour>(includeInactive: true))
+        {
+            if (mb.GetType().Name == abilityName) return mb;
+        }
+        return null;
     }
 
     // ─── Ability key-binding ──────────────────────────────────────────────────
@@ -258,7 +269,7 @@ public class CheatsUI : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    // ─── General stat callbacks ───────────────────────────────────────────────
+    // ─── Self stat callbacks ──────────────────────────────────────────────────
 
     public void SliderSpeedMod(float value)
     {

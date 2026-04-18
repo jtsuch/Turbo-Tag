@@ -2,6 +2,7 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 using System;
+using System.Reflection;
 
 /// <summary>
 /// A single row in a CheatsUI ability tab list. Supports two modes:
@@ -69,6 +70,35 @@ public class AbilityCheatRow : MonoBehaviour
         expandedPanel.SetActive(expanded);
         expandButtonLabel.text = expanded ? "▲ Collapse" : "▼ Expand";
         OnExpandToggled?.Invoke(this);
+    }
+
+    /// <summary>
+    /// Scans <paramref name="abilityComp"/> for fields tagged with [TunableParam] and spawns
+    /// a SliderRow inside expandedPanel for each one. Call after Initialize() for equipped rows.
+    /// </summary>
+    public void Populate(MonoBehaviour abilityComp, GameObject sliderRowPrefab)
+    {
+        if (abilityComp == null || sliderRowPrefab == null) return;
+
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
+                                 | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+
+        // Walk the inheritance chain so base-class fields (e.g. cooldownTime) are included
+        var type = abilityComp.GetType();
+        while (type != null && type != typeof(MonoBehaviour))
+        {
+            foreach (var field in type.GetFields(flags))
+            {
+                var attr = field.GetCustomAttribute<TunableParamAttribute>();
+                if (attr == null || field.FieldType != typeof(float)) continue;
+
+                float current = (float)field.GetValue(abilityComp);
+                var row = Instantiate(sliderRowPrefab, expandedPanel.transform)
+                              .GetComponent<SliderRow>();
+                row.Initialize(attr.DisplayName, attr.Min, attr.Max, current, abilityComp, field);
+            }
+            type = type.BaseType;
+        }
     }
 
     private void RefreshBindLabel(bool listening)
