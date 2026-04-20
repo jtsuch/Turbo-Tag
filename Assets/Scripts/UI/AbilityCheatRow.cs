@@ -15,20 +15,20 @@ using System.Reflection;
 public class AbilityCheatRow : MonoBehaviour
 {
     [Header("UI References")]
-    public TMP_Text  abilityNameLabel;
-    public Button    expandButton;      // Shown when IsEquipped == true
-    public TMP_Text  expandButtonLabel;
-    public Button    bindButton;        // Shown when IsEquipped == false
-    public TMP_Text  bindButtonLabel;
-    public GameObject expandedPanel;   // Variable sliders live here; hidden by default
+    public TMP_Text   abilityNameLabel;
+    public Button     expandButton;
+    public TMP_Text   expandButtonLabel;
+    public Button     bindButton;
+    public TMP_Text   bindButtonLabel;
+    public Button     clearButton;
+    public GameObject expandedPanel;
 
     public string  AbilityName { get; private set; }
     public bool    IsEquipped  { get; private set; }
     public KeyCode BoundKey    { get; private set; } = KeyCode.None;
 
-    /// <summary>Fired when the player clicks the Bind Key button to start listening.</summary>
     public event Action<AbilityCheatRow> OnBindRequested;
-    /// <summary>Fired when the equipped-ability row is expanded or collapsed.</summary>
+    public event Action<AbilityCheatRow> OnClearRequested;
     public event Action<AbilityCheatRow> OnExpandToggled;
 
     private bool expanded = false;
@@ -40,14 +40,14 @@ public class AbilityCheatRow : MonoBehaviour
         BoundKey    = existingBind;
 
         abilityNameLabel.text = abilityName;
-        expandButton.gameObject.SetActive(isEquipped);
-        bindButton.gameObject.SetActive(!isEquipped);
         expandedPanel.SetActive(false);
 
         RefreshBindLabel(false);
 
         expandButton.onClick.AddListener(ToggleExpand);
         bindButton.onClick.AddListener(() => OnBindRequested?.Invoke(this));
+        if (clearButton != null)
+            clearButton.onClick.AddListener(() => OnClearRequested?.Invoke(this));
     }
 
     public void SetBoundKey(KeyCode key)

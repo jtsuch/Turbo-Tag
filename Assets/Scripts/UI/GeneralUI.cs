@@ -1,8 +1,9 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 using Photon.Pun;
-using System.Collections.Generic;
 
 /// <summary>
 /// Drives the General settings page: sensitivity / volume / FPS sliders plus a runtime-built
@@ -24,9 +25,13 @@ public class GeneralUI : MonoBehaviourPunCallbacks
     public TMP_InputField senseInput;
 
     // ─── Volume ───────────────────────────────────────────────────────────────
-    [Header("Volume")]
-    public Slider         volumeSlider;
-    public TMP_InputField volumeInput;
+    [Header("Music Volume")]
+    public Slider         musicVolumeSlider;
+    public TMP_InputField musicVolumeInput;
+
+    [Header("SFX Volume")]
+    public Slider         sfxVolumeSlider;
+    public TMP_InputField sfxVolumeInput;
 
     // ─── FPS ──────────────────────────────────────────────────────────────────
     [Header("FPS")]
@@ -75,19 +80,37 @@ public class GeneralUI : MonoBehaviourPunCallbacks
 
     void Start()
     {
-        var sm = SettingsManager.Instance;
-        senseSlider.value  = sm.Sensitivity;
-        senseInput.text    = sm.Sensitivity.ToString("F2");
-        volumeSlider.value = sm.Volume;
-        volumeInput.text   = sm.Volume.ToString("F2");
-        fpsSlider.value    = sm.TargetFPS;
-        fpsInput.text      = sm.TargetFPS.ToString();
+        // Wire sliders and inputs programmatically — never breaks on method rename
+        musicVolumeSlider.onValueChanged.AddListener(SliderMusicVolume);
+        sfxVolumeSlider  .onValueChanged.AddListener(SliderSfxVolume);
+        senseSlider      .onValueChanged.AddListener(SliderSense);
+        fpsSlider        .onValueChanged.AddListener(SliderFPS);
+
+        musicVolumeInput.onEndEdit.AddListener(_ => InputMusicVolume());
+        sfxVolumeInput  .onEndEdit.AddListener(_ => InputSfxVolume());
+        senseInput      .onEndEdit.AddListener(_ => InputSense());
+        fpsInput        .onEndEdit.AddListener(_ => InputFPS());
 
         SettingsManager.OnSensitivityChanged += HandleSensitivityChanged;
-        SettingsManager.OnVolumeChanged      += HandleVolumeChanged;
+        SettingsManager.OnMusicVolumeChanged += HandleMusicVolumeChanged;
+        SettingsManager.OnSfxVolumeChanged   += HandleSfxVolumeChanged;
         SettingsManager.OnFPSChanged         += HandleFPSChanged;
 
+        // Load saved values — guard updatingUI so listeners don't double-fire
+        var sm = SettingsManager.Instance;
+        updatingUI = true;
+        senseSlider.value        = sm.Sensitivity;
+        senseInput.text          = sm.Sensitivity.ToString("F2");
+        musicVolumeSlider.value  = sm.MusicVolume * 100f;
+        musicVolumeInput.text    = (sm.MusicVolume * 100f).ToString("F0");
+        sfxVolumeSlider.value    = sm.SfxVolume * 100f;
+        sfxVolumeInput.text      = (sm.SfxVolume * 100f).ToString("F0");
+        fpsSlider.value          = sm.TargetFPS;
+        fpsInput.text            = sm.TargetFPS.ToString();
+        updatingUI = false;
+
         BuildKeybindList();
+        StartCoroutine(ResetScrollToTop());
 
         if (resetKeybindsButton != null)
             resetKeybindsButton.onClick.AddListener(ResetToDefaults);
@@ -101,7 +124,8 @@ public class GeneralUI : MonoBehaviourPunCallbacks
     void OnDestroy()
     {
         SettingsManager.OnSensitivityChanged -= HandleSensitivityChanged;
-        SettingsManager.OnVolumeChanged      -= HandleVolumeChanged;
+        SettingsManager.OnMusicVolumeChanged -= HandleMusicVolumeChanged;
+        SettingsManager.OnSfxVolumeChanged   -= HandleSfxVolumeChanged;
         SettingsManager.OnFPSChanged         -= HandleFPSChanged;
     }
 
@@ -146,9 +170,16 @@ public class GeneralUI : MonoBehaviourPunCallbacks
         }
     }
 
+    private IEnumerator ResetScrollToTop()
+    {
+        yield return null;
+        var sr = GetComponentInParent<ScrollRect>();
+        if (sr != null) sr.verticalNormalizedPosition = 1f;
+    }
+
     private void StartListening(KeybindRow row)
     {
-        listeningRow?.SetListening(false);
+        if (listeningRow != null) listeningRow.SetListening(false);
         listeningRow        = row;
         skipFrameAfterClick = true;
         row.SetListening(true);
@@ -269,31 +300,58 @@ public class GeneralUI : MonoBehaviourPunCallbacks
     }
 
     // ─── Volume callbacks ─────────────────────────────────────────────────────
+    // Sliders and inputs both use 0–100. SettingsManager stores 0–1 internally.
 
-    public void SliderVolume(float value)
+    public void SliderMusicVolume(float value)
     {
         if (updatingUI) return;
-        updatingUI         = true;
-        volumeInput.text   = value.ToString("F2");
-        updatingUI         = false;
-        SettingsManager.Instance.Volume = value;
+        updatingUI = true;
+        musicVolumeInput.text = value.ToString("F0");
+        updatingUI = false;
+        SettingsManager.Instance.MusicVolume = value / 100f;
     }
 
-    public void InputVolume()
+    public void InputMusicVolume()
     {
-        if (updatingUI || !float.TryParse(volumeInput.text, out float v)) return;
-        updatingUI         = true;
-        volumeSlider.value = v;
-        updatingUI         = false;
-        SettingsManager.Instance.Volume = v;
+        if (updatingUI || !float.TryParse(musicVolumeInput.text, out float v)) return;
+        updatingUI = true;
+        musicVolumeSlider.value = v;
+        updatingUI = false;
+        SettingsManager.Instance.MusicVolume = v / 100f;
     }
 
-    private void HandleVolumeChanged(float v)
+    private void HandleMusicVolumeChanged(float v)
     {
-        updatingUI         = true;
-        volumeSlider.value = v;
-        volumeInput.text   = v.ToString("F2");
-        updatingUI         = false;
+        updatingUI = true;
+        musicVolumeSlider.value = v * 100f;
+        musicVolumeInput.text   = (v * 100f).ToString("F0");
+        updatingUI = false;
+    }
+
+    public void SliderSfxVolume(float value)
+    {
+        if (updatingUI) return;
+        updatingUI = true;
+        sfxVolumeInput.text = value.ToString("F0");
+        updatingUI = false;
+        SettingsManager.Instance.SfxVolume = value / 100f;
+    }
+
+    public void InputSfxVolume()
+    {
+        if (updatingUI || !float.TryParse(sfxVolumeInput.text, out float v)) return;
+        updatingUI = true;
+        sfxVolumeSlider.value = v;
+        updatingUI = false;
+        SettingsManager.Instance.SfxVolume = v / 100f;
+    }
+
+    private void HandleSfxVolumeChanged(float v)
+    {
+        updatingUI = true;
+        sfxVolumeSlider.value = v * 100f;
+        sfxVolumeInput.text   = (v * 100f).ToString("F0");
+        updatingUI = false;
     }
 
     // ─── FPS callbacks ────────────────────────────────────────────────────────

@@ -64,8 +64,10 @@ private int lastPlayedIndex = -1; // Avoids playing the same track twice in a ro
 
     private void Start()
     {
-        // Handle the very first scene manually since sceneLoaded
-        // won't fire for the scene that was already loaded
+        // Apply saved music volume (SettingsManager may have loaded before AudioManager existed)
+        if (SettingsManager.Instance != null)
+            SetMusicVolume(SettingsManager.Instance.MusicVolume);
+
         HandleMusicForScene(SceneManager.GetActiveScene().name);
     }
 

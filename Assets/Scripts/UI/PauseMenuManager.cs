@@ -107,35 +107,8 @@ public class PauseMenuManager : MonoBehaviour
         else if (tab == cheatsTab) cheatsPage.SetActive(true);
     }
 
-    // ─── Legacy Tab Helpers (called by UI Button onClick events) ─────────────
-    // These mirror OpenTab() but are wired directly to buttons in the Inspector.
-    public void GeneralTabChange()
-    {
-        generalPage.SetActive(true);
-        rulesPage.SetActive(false);
-        cheatsPage.SetActive(false);
-        GeneralText.fontSize = 40;
-        RulesText.fontSize   = 32;
-        CheatsText.fontSize  = 32;
-    }
-
-    public void RulesTabChange()
-    {
-        generalPage.SetActive(false);
-        rulesPage.SetActive(true);
-        cheatsPage.SetActive(false);
-        GeneralText.fontSize = 32;
-        RulesText.fontSize   = 40;
-        CheatsText.fontSize  = 32;
-    }
-
-    public void CheatsTabChange()
-    {
-        generalPage.SetActive(false);
-        rulesPage.SetActive(false);
-        cheatsPage.SetActive(true);
-        GeneralText.fontSize = 32;
-        RulesText.fontSize   = 32;
-        CheatsText.fontSize  = 40;
-    }
+    // ─── Tab Helpers (called by UI Button onClick events) ────────────────────
+    public void GeneralTabChange() => OpenTab(generalTab);
+    public void RulesTabChange()   => OpenTab(rulesTab);
+    public void CheatsTabChange()  => OpenTab(cheatsTab);
 }

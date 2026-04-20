@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ExitGames.Client.Photon;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -23,7 +24,7 @@ using Photon.Pun;
 ///
 /// Attach to: CheatsPage panel inside the PauseMenu canvas.
 /// </summary>
-public class CheatsUI : MonoBehaviour
+public class CheatsUI : MonoBehaviourPunCallbacks
 {
     // ─── Sub-tab panels ───────────────────────────────────────────────────────
     [Header("Sub-Tab Buttons")]
@@ -112,9 +113,16 @@ public class CheatsUI : MonoBehaviour
         BuildAbilityTab(trapPanel.transform,  TrapAbilities,  3);
     }
 
-    private void OnEnable()
+    public override void OnEnable()
     {
+        base.OnEnable();
         ApplyCheatsLock();
+    }
+
+    public override void OnRoomPropertiesUpdate(Hashtable changedProps)
+    {
+        if (changedProps.ContainsKey(RulesUI.KEY_CHEATS))
+            ApplyCheatsLock();
     }
 
     private void Update()
@@ -144,12 +152,11 @@ public class CheatsUI : MonoBehaviour
     private void ApplyCheatsLock()
     {
         if (cheatsLockOverlay == null || PhotonNetwork.CurrentRoom == null) return;
-        var props   = PhotonNetwork.CurrentRoom.CustomProperties;
-        bool active = props.TryGetValue(RulesUI.KEY_CHEATS, out object c) && (bool)c;
-        cheatsLockOverlay.interactable   = active;
-        cheatsLockOverlay.alpha          = active ? 0f : 0.6f;
-        cheatsLockOverlay.blocksRaycasts = !active;
+        var props     = PhotonNetwork.CurrentRoom.CustomProperties;
+        bool cheatsOn = props.TryGetValue(RulesUI.KEY_CHEATS, out object c) && (bool)c;
+        cheatsLockOverlay.gameObject.SetActive(!cheatsOn);
     }
+
 
     // ─── Sub-tab navigation ───────────────────────────────────────────────────
 
@@ -160,6 +167,10 @@ public class CheatsUI : MonoBehaviour
         quickPanel  .SetActive(panel == quickPanel);
         throwPanel  .SetActive(panel == throwPanel);
         trapPanel   .SetActive(panel == trapPanel);
+
+        // Force layout recalculation so rows aren't compressed on first activation
+        UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(
+            panel.GetComponent<RectTransform>());
     }
 
     // ─── Self tab initialisation ──────────────────────────────────────────────
@@ -188,16 +199,20 @@ public class CheatsUI : MonoBehaviour
                         ? Player.Instance.abilityList[slotIndex]
                         : null;
 
-        // Equipped ability first
+        // Equipped ability first — show its current slot keybind
         if (!string.IsNullOrEmpty(equipped))
-            SpawnAbilityRow(container, equipped, isEquipped: true);
+        {
+            string prefsKey = $"Keybind_Ability{slotIndex}";
+            KeyCode slotBind = System.Enum.TryParse(
+                PlayerPrefs.GetString(prefsKey, ""), out KeyCode kc) ? kc : KeyCode.None;
+            SpawnAbilityRow(container, equipped, isEquipped: true, slotBind);
+        }
 
         // Remaining abilities (excluding the equipped one)
         foreach (string name in abilities)
         {
             if (name == equipped) continue;
-            KeyCode savedBind = LoadCustomBind(name);
-            SpawnAbilityRow(container, name, isEquipped: false, savedBind);
+            SpawnAbilityRow(container, name, isEquipped: false);
         }
     }
 
@@ -205,11 +220,11 @@ public class CheatsUI : MonoBehaviour
     {
         var row = Instantiate(abilityRowPrefab, container).GetComponent<AbilityCheatRow>();
         row.Initialize(abilityName, isEquipped, existingBind);
-        row.OnBindRequested += StartAbilityListening;
+        row.OnBindRequested  += StartAbilityListening;
+        row.OnClearRequested += ClearAbilityBind;
         abilityRows.Add(row);
 
-        if (isEquipped)
-            row.Populate(FindAbilityComponent(abilityName), sliderRowPrefab);
+        row.Populate(FindAbilityComponent(abilityName), sliderRowPrefab);
     }
 
     private MonoBehaviour FindAbilityComponent(string abilityName)
@@ -236,37 +251,22 @@ public class CheatsUI : MonoBehaviour
     {
         var ih = Player.Instance != null ? Player.Instance.GetComponent<InputHandler>() : null;
 
-        // Clear any other ability row already using this key
         foreach (var other in abilityRows)
         {
             if (other == row || other.BoundKey != key) continue;
             other.ClearBoundKey();
-            ClearCustomBind(other.AbilityName);
             if (ih != null) ih.RemoveKeyBinding(other.AbilityName);
         }
 
         row.SetBoundKey(key);
-        SaveCustomBind(row.AbilityName, key);
         if (ih != null) ih.RebindKey(row.AbilityName, key);
     }
 
-    // Custom bind persistence — separate from the slot-based keys used by GeneralUI
-    private static KeyCode LoadCustomBind(string abilityName)
+    private void ClearAbilityBind(AbilityCheatRow row)
     {
-        string raw = PlayerPrefs.GetString($"Keybind_Custom_{abilityName}", "");
-        return System.Enum.TryParse(raw, out KeyCode kc) ? kc : KeyCode.None;
-    }
-
-    private static void SaveCustomBind(string abilityName, KeyCode key)
-    {
-        PlayerPrefs.SetString($"Keybind_Custom_{abilityName}", key.ToString());
-        PlayerPrefs.Save();
-    }
-
-    private static void ClearCustomBind(string abilityName)
-    {
-        PlayerPrefs.DeleteKey($"Keybind_Custom_{abilityName}");
-        PlayerPrefs.Save();
+        row.ClearBoundKey();
+        var ih = Player.Instance != null ? Player.Instance.GetComponent<InputHandler>() : null;
+        if (ih != null) ih.RemoveKeyBinding(row.AbilityName);
     }
 
     // ─── Self stat callbacks ──────────────────────────────────────────────────

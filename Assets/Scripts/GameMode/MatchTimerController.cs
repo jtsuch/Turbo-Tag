@@ -1,5 +1,6 @@
 using UnityEngine;
 using System;
+using TMPro;
 
 /// <summary>
 /// Three-phase match timer: Countdown (counts down) → Hiding (counts down) → Active (counts up).
@@ -13,6 +14,10 @@ public class MatchTimerController : MonoBehaviour
     public event Action OnCountdownComplete;
     public event Action OnHidePhaseComplete;
     public event Action OnTimeLimitReached;
+
+    [Header("HUD")]
+    [SerializeField] private TMP_Text timerText;
+    [SerializeField] private TMP_Text phaseText;
 
     [Header("Default Durations (overridden by room settings)")]
     [SerializeField] private float countdownDuration  = 10f;
@@ -101,6 +106,28 @@ public class MatchTimerController : MonoBehaviour
                     OnTimeLimitReached?.Invoke();
                 }
                 break;
+        }
+
+        UpdateHUD();
+    }
+
+    private void UpdateHUD()
+    {
+        if (timerText != null)
+        {
+            int total = Mathf.CeilToInt(DisplayTime);
+            timerText.text = $"{total / 60:D2}:{total % 60:D2}";
+        }
+
+        if (phaseText != null)
+        {
+            phaseText.text = CurrentPhase switch
+            {
+                Phase.Countdown => "Countdown",
+                Phase.Hiding    => "Hide!",
+                Phase.Active    => "Hunting",
+                _               => ""
+            };
         }
     }
 

@@ -324,7 +324,12 @@ public class RulesUI : MonoBehaviourPunCallbacks
 
     private static void WriteRoomProp(string key, object value)
     {
-        if (PhotonNetwork.CurrentRoom == null || !PhotonNetwork.IsMasterClient) return;
+        if (PhotonNetwork.CurrentRoom == null || !PhotonNetwork.IsMasterClient)
+        {
+            Debug.LogWarning($"[RulesUI] WriteRoomProp skipped: CurrentRoom={PhotonNetwork.CurrentRoom != null}, IsMaster={PhotonNetwork.IsMasterClient}");
+            return;
+        }
+        Debug.Log($"[RulesUI] Writing {key} = {value}");
         PhotonNetwork.CurrentRoom.SetCustomProperties(new Hashtable { [key] = value });
     }
 }

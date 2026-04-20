@@ -14,13 +14,15 @@ public class SettingsManager : MonoBehaviour
     // ─── Events ───────────────────────────────────────────────────────────────
     public static event Action<float> OnSensitivityChanged;
     public static event Action<int>   OnFPSChanged;
-    public static event Action<float> OnVolumeChanged;
+    public static event Action<float> OnMusicVolumeChanged;
+    public static event Action<float> OnSfxVolumeChanged;
 
     // ─── Backing Fields ───────────────────────────────────────────────────────
     [Header("Settings")]
-    [SerializeField] private float sensitivity = 100f;
-    [SerializeField] private int   targetFPS   = 60;
-    [SerializeField] private float volume      = 100f;
+    [SerializeField] private float sensitivity   = 100f;
+    [SerializeField] private int   targetFPS     = 60;
+    [SerializeField] private float musicVolume   = 100f;
+    [SerializeField] private float sfxVolume     = 100f;
 
     private void Awake()
     {
@@ -43,25 +45,27 @@ public class SettingsManager : MonoBehaviour
     public void LoadSettings()
     {
         sensitivity = PlayerPrefs.GetFloat("Sensitivity", 1f);
-        targetFPS = PlayerPrefs.GetInt("TargetFPS", 60);
-        volume = PlayerPrefs.GetFloat("Volume", 1f);
+        targetFPS   = PlayerPrefs.GetInt("TargetFPS", 60);
+        musicVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("MusicVolume", 0.5f));
+        sfxVolume   = Mathf.Clamp01(PlayerPrefs.GetFloat("SfxVolume", 0.7f));
     }
 
     public void SaveSettings()
     {
-        PlayerPrefs.SetFloat("Sensitivity", sensitivity);
-        PlayerPrefs.SetInt("TargetFPS", targetFPS);
-        PlayerPrefs.SetFloat("Volume", volume);
+        PlayerPrefs.SetFloat("Sensitivity",  sensitivity);
+        PlayerPrefs.SetInt("TargetFPS",      targetFPS);
+        PlayerPrefs.SetFloat("MusicVolume",  musicVolume);
+        PlayerPrefs.SetFloat("SfxVolume",    sfxVolume);
         PlayerPrefs.Save();
     }
 
     private void ApplySettings()
     {
-        // Apply FPS limit
         Application.targetFrameRate = targetFPS;
-
-        // Apply volume globally (assuming Unity Audio Listener)
-        AudioListener.volume = volume;
+        AudioListener.volume        = sfxVolume;
+        // AudioManager may not exist yet on first load; it reads MusicVolume in its own Start()
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.SetMusicVolume(musicVolume);
     }
 
     // ─── Accessors ────────────────────────────────────────────────────────────
@@ -91,15 +95,29 @@ public class SettingsManager : MonoBehaviour
         }
     }
 
-    public float Volume
+    public float MusicVolume
     {
-        get => volume;
+        get => musicVolume;
         set
         {
-            if (Mathf.Approximately(volume, value)) return;
-            volume = Mathf.Clamp01(value);
-            AudioListener.volume = volume;
-            OnVolumeChanged?.Invoke(value);
+            if (Mathf.Approximately(musicVolume, value)) return;
+            musicVolume = Mathf.Clamp01(value);
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.SetMusicVolume(musicVolume);
+            OnMusicVolumeChanged?.Invoke(musicVolume);
+            SaveSettings();
+        }
+    }
+
+    public float SfxVolume
+    {
+        get => sfxVolume;
+        set
+        {
+            if (Mathf.Approximately(sfxVolume, value)) return;
+            sfxVolume            = Mathf.Clamp01(value);
+            AudioListener.volume = sfxVolume;
+            OnSfxVolumeChanged?.Invoke(sfxVolume);
             SaveSettings();
         }
     }

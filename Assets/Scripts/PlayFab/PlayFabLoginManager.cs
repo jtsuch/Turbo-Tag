@@ -145,8 +145,7 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
     {
         if (resetWindowOpen)
         {
-            ResetPassword(emailInput.text);
-            SetLoginWindow();
+            ResetPassword(emailInput.text.Trim());
         }
         else if (onRegister)
         {
@@ -170,11 +169,31 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex UsernameRegex =
+        new System.Text.RegularExpressions.Regex(@"^[a-zA-Z0-9]{3,24}$");
+
     private void Register(string username, string email, string password, string confirmPassword)
     {
+        username = username.Trim();
+        email    = email.Trim();
+
+        if (string.IsNullOrEmpty(username) || !UsernameRegex.IsMatch(username))
+        {
+            errorMessage.text = "Username must be 3–24 characters, letters and numbers only.";
+            return;
+        }
+        if (!email.Contains("@") || !email.Contains("."))
+        {
+            errorMessage.text = "Please enter a valid email address.";
+            return;
+        }
+        if (password.Length < 6)
+        {
+            errorMessage.text = "Password must be at least 6 characters.";
+            return;
+        }
         if (password != confirmPassword)
         {
-            Debug.Log("Passwords don't match");
             errorMessage.text = "*Passwords do not match*";
             passwordInput.text = "";
             confirmPasswordInput.text = "";
@@ -182,6 +201,7 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
         }
         PlayFabClientAPI.RegisterPlayFabUser(new RegisterPlayFabUserRequest()
         {
+            Username = username,
             Email = email,
             DisplayName = username,
             Password = password,
@@ -218,7 +238,9 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
             PlayerPrefs.SetString(LAST_PASSWORD_KEY, password);
 
             // Set username as player prefs and Photon nickname
-            string username = result.InfoResultPayload.PlayerProfile.DisplayName;
+            string username = result.InfoResultPayload?.PlayerProfile?.DisplayName ?? "";
+            if (string.IsNullOrEmpty(username))
+                username = PlayerPrefs.GetString(LAST_USERNAME_KEY, "Player");
             PlayerPrefs.SetString(LAST_USERNAME_KEY, username);
             PhotonNetwork.NickName = username;
             loginWindow.SetActive(false);
@@ -234,6 +256,7 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
     private void PlayfabFailure(PlayFabError error)
     {
         Debug.Log("PlayFab API call failed: " + error.ErrorMessage);
+        errorMessage.text = error.ErrorMessage;
     }
 
     public void ForgotPasswordPressed()
@@ -250,14 +273,17 @@ public class PlayFabLoginManager : MonoBehaviourPunCallbacks
 
     public void ResetPassword(string email)
     {
-        Debug.Log("Sending email to: " + email);
         PlayFabClientAPI.SendAccountRecoveryEmail(new SendAccountRecoveryEmailRequest()
         {
             Email = email,
             TitleId = "158B53"
-            //Action = "PasswordReset"
         },
-        successResult =>Debug.Log("Password reset email sent successfully."),
+        successResult =>
+        {
+            Debug.Log("Password reset email sent successfully.");
+            errorMessage.text = "Reset email sent! Check your inbox.";
+            SetLoginWindow();
+        },
         PlayfabFailure);
     }
     private void SetLoginWindow()
