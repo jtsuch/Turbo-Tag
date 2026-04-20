@@ -42,6 +42,13 @@ public class GeneralUI : MonoBehaviourPunCallbacks
     [Tooltip("Resets all keybinds to their defaults.")]
     public Button     resetKeybindsButton;
 
+    // ─── Session buttons ──────────────────────────────────────────────────────
+    [Header("Session")]
+    [Tooltip("Returns to the main menu without closing the application.")]
+    public Button exitLevelButton;
+    [Tooltip("Closes the application entirely.")]
+    public Button quitGameButton;
+
     // ─── Internal state ───────────────────────────────────────────────────────
     private bool       updatingUI          = false;
     private KeybindRow listeningRow        = null;
@@ -84,6 +91,11 @@ public class GeneralUI : MonoBehaviourPunCallbacks
 
         if (resetKeybindsButton != null)
             resetKeybindsButton.onClick.AddListener(ResetToDefaults);
+
+        if (exitLevelButton != null)
+            exitLevelButton.onClick.AddListener(ExitLevelPressed);
+        if (quitGameButton != null)
+            quitGameButton.onClick.AddListener(QuitGamePressed);
     }
 
     void OnDestroy()
@@ -312,21 +324,36 @@ public class GeneralUI : MonoBehaviourPunCallbacks
         updatingUI      = false;
     }
 
-    // ─── Quit ─────────────────────────────────────────────────────────────────
+    // ─── Session buttons ──────────────────────────────────────────────────────
 
-    public void QuitButtonPress()
+    private bool quittingApp = false;
+
+    private void ExitLevelPressed()
     {
-        Debug.Log("Quitting game...");
+        quittingApp = false;
+        PhotonNetwork.LeaveRoom();
+    }
+
+    private void QuitGamePressed()
+    {
+        quittingApp = true;
         PhotonNetwork.LeaveRoom();
     }
 
     public override void OnLeftRoom()
     {
+        if (quittingApp)
+        {
 #if UNITY_STANDALONE
-        Application.Quit();
+            Application.Quit();
 #endif
 #if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
+            UnityEditor.EditorApplication.isPlaying = false;
 #endif
+        }
+        else
+        {
+            PhotonNetwork.LoadLevel("MainMenu");
+        }
     }
 }

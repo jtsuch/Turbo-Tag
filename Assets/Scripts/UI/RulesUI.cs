@@ -1,77 +1,150 @@
-using UnityEngine;
-using TMPro;
-using UnityEngine.UI;
-using Photon.Pun;
 using ExitGames.Client.Photon;
+using Photon.Pun;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
-/// Drives the Rules settings page. All players can read the values, but only the master
-/// client (host) can change them. Non-host players see a dimmed overlay that blocks interaction.
+/// Drives the Rules settings page. Only the host can edit; non-hosts see a dimmed overlay.
 ///
-/// Settings are stored in Photon room custom properties so every client stays in sync via
-/// OnRoomPropertiesUpdate. Other systems that need to react to rule changes should also
-/// override OnRoomPropertiesUpdate and read from the same property keys (exposed as public
-/// constants on this class).
+/// Time fields (Hide Time, Seek Time) split into separate minute and second integer inputs
+/// and are stored as total seconds in room properties.
 ///
-/// Gravity is the one exception: it is a local physics-world value, so each client applies
-/// it directly when room properties update.
+/// Seek Time Limit and Score Limit are opt-in: their toggle enables or disables the rule
+/// and unmasks the input fields. When disabled the room property is set to 0 (no limit).
 ///
-/// Attach to: RulesPage panel inside the PauseMenu canvas — requires a PhotonView on the
-/// same or parent GameObject (inherited via MonoBehaviourPunCallbacks).
+/// Percent fields (Hunter Cooldown, Global Cooldown, Gravity) store the integer percentage;
+/// GameModeApplicator divides by 100 when applying (e.g. 50 % → × 0.5 of base value).
+///
+/// Attach to: RulesPage panel inside the PauseMenu canvas.
 /// </summary>
 public class RulesUI : MonoBehaviourPunCallbacks
 {
-    // ─── Room property keys (read by other systems too) ───────────────────────
-    public const string KEY_CHEATS        = "Rule_CheatsEnabled";
-    public const string KEY_TIMER_PAUSED  = "Rule_TimerPaused";
-    public const string KEY_HIDE_DURATION = "Rule_HideDuration";
-    public const string KEY_SEEK_DURATION = "Rule_SeekDuration";
-    public const string KEY_GRAVITY       = "Rule_Gravity";
+    // ─── Room property keys ───────────────────────────────────────────────────
+    public const string KEY_CHEATS              = "Rule_CheatsEnabled";
+    public const string KEY_TIMER_PAUSED        = "Rule_TimerPaused";
+    public const string KEY_GAME_MODE           = "GameMode";
+    public const string KEY_HIDE_TIME           = "Rule_HideTime";
+    public const string KEY_SEEK_TIME           = "Rule_SeekTime";
+    public const string KEY_SEEK_TIME_ENABLED   = "Rule_SeekTimeEnabled";
+    public const string KEY_MAX_SEEK_TIME       = "Rule_MaxSeekTime";
+    public const string KEY_SEEKER_DELAY        = "Rule_SeekerDelay";
+    public const string KEY_HUNTER_COUNT        = "Rule_HunterCount";
+    public const string KEY_HUNTER_COOLDOWN     = "Rule_HunterCooldown";
+    public const string KEY_TAG_COOLDOWN        = "Rule_TagCooldown";
+    public const string KEY_GRAVITY             = "Rule_Gravity";
+    public const string KEY_EFFECTS_RESPAWN     = "Rule_EffectsRespawn";
+    public const string KEY_GLOBAL_COOLDOWN     = "Rule_GlobalCooldown";
+    public const string KEY_HUNTED_BONUS        = "Rule_HuntedBonus";
+    public const string KEY_SCORE_LIMIT         = "Rule_ScoreLimit";
+    public const string KEY_SCORE_LIMIT_ENABLED = "Rule_ScoreLimitEnabled";
+    public const string KEY_TEAMS               = "Rule_Teams";
+    public const string KEY_ROUND_COUNT         = "Rule_RoundCount";
+    public const string KEY_ALLOW_KILLS         = "Rule_AllowKills";
+    public const string KEY_PLAYER_HEALTH       = "Rule_PlayerHealth";
+    public const string KEY_FALL_DAMAGE         = "Rule_FallDamage";
 
     // ─── Inspector references ─────────────────────────────────────────────────
-    [Header("Cheats Toggle")]
-    public Button   cheatsButton;
-    public TMP_Text cheatsButtonLabel;
+    [Header("Action Buttons")]
+    [SerializeField] private Button   pauseTimerButton;
+    [SerializeField] private TMP_Text pauseTimerLabel;
+    [SerializeField] private Button   enableCheatsButton;
+    [SerializeField] private TMP_Text enableCheatsLabel;
 
-    [Header("Timer Toggle")]
-    public Button   timerButton;
-    public TMP_Text timerButtonLabel;
+    [Header("Hide Time (min + sec)")]
+    [SerializeField] private TMP_InputField hideTimeMinInput;
+    [SerializeField] private TMP_InputField hideTimeSecInput;
 
-    [Header("Hide Duration")]
-    public Slider         hideDurationSlider;
-    public TMP_InputField hideDurationInput;
+    [Header("Seek Time Limit (toggle + min + sec)")]
+    [SerializeField] private Toggle         seekTimeToggle;
+    [SerializeField] private TMP_InputField seekTimeMinInput;
+    [SerializeField] private TMP_InputField seekTimeSecInput;
+    [Tooltip("CanvasGroup wrapping only the seek-time input fields — dimmed when toggle is off.")]
+    [SerializeField] private CanvasGroup    seekTimeFieldsMask;
 
-    [Header("Seek Duration")]
-    public Slider         seekDurationSlider;
-    public TMP_InputField seekDurationInput;
+    [Header("Round Count")]
+    [SerializeField] private TMP_InputField roundCountInput;
 
-    [Header("Gravity")]
-    public Slider         gravitySlider;
-    public TMP_InputField gravityInput;
+    [Header("Starting Hunters")]
+    [SerializeField] private TMP_InputField hunterCountInput;
 
-    [Header("Host Lock")]
-    [Tooltip("CanvasGroup covering the controls area. Set non-interactable + dimmed for non-hosts.")]
-    public CanvasGroup controlsGroup;
+    [Header("Hunter Cooldown (%)")]
+    [SerializeField] private TMP_InputField hunterCooldownInput;
 
-    // ─── Defaults used until room properties are written ─────────────────────
-    private const float DEFAULT_HIDE_DURATION =  60f;
-    private const float DEFAULT_SEEK_DURATION = 300f;
-    private const float DEFAULT_GRAVITY       = -9.81f;
+    [Header("Global Cooldown (%)")]
+    [SerializeField] private TMP_InputField globalCooldownInput;
 
-    private bool updatingUI = false;
+    [Header("Gravity (%)")]
+    [SerializeField] private TMP_InputField gravityInput;
+
+    [Header("Effects Respawn Rate (sec)")]
+    [SerializeField] private TMP_InputField effectsRespawnInput;
+
+    [Header("Tag Bonus (sec, can be negative)")]
+    [SerializeField] private TMP_InputField taggingBonusInput;
+
+    [Header("Score Limit (toggle + value)")]
+    [SerializeField] private Toggle         scoreLimitToggle;
+    [SerializeField] private TMP_InputField scoreLimitInput;
+    [Tooltip("CanvasGroup wrapping only the score-limit input field — dimmed when toggle is off.")]
+    [SerializeField] private CanvasGroup    scoreLimitFieldsMask;
+
+    [Header("Host Lock Overlay")]
+    [Tooltip("CanvasGroup covering the whole panel. Add a LayoutElement (Ignore Layout) so it sits outside the layout group.")]
+    [SerializeField] private CanvasGroup hostLockOverlay;
+
+    // ─── Defaults ─────────────────────────────────────────────────────────────
+    private const int DEF_HIDE_TIME_SEC    = 120;   // 2 min
+    private const int DEF_SEEK_TIME_SEC    = 900;   // 15 min
+    private const int DEF_ROUND_COUNT      =   3;
+    private const int DEF_HUNTER_COUNT     =   1;
+    private const int DEF_HUNTER_COOLDOWN  =   0;   // %
+    private const int DEF_GLOBAL_COOLDOWN  = 100;   // %
+    private const int DEF_GRAVITY          = 100;   // %
+    private const int DEF_EFFECTS_RESPAWN  =  30;   // sec
+    private const int DEF_TAG_BONUS        =   0;   // sec (can be negative)
+    private const int DEF_SCORE_LIMIT      =   0;
+
+    private bool updatingUI;
 
     // ─── Unity lifecycle ──────────────────────────────────────────────────────
 
-    void Start()
+    private void Start()
     {
+        // Action buttons
+        if (pauseTimerButton   != null) pauseTimerButton  .onClick.AddListener(TogglePauseTimer);
+        if (enableCheatsButton != null) enableCheatsButton.onClick.AddListener(ToggleCheats);
+
+        // Hide Time
+        if (hideTimeMinInput != null) hideTimeMinInput.onEndEdit.AddListener(_ => CommitHideTime());
+        if (hideTimeSecInput != null) hideTimeSecInput.onEndEdit.AddListener(_ => CommitHideTime());
+
+        // Seek Time (toggle + fields)
+        if (seekTimeToggle   != null) seekTimeToggle  .onValueChanged.AddListener(OnSeekTimeToggle);
+        if (seekTimeMinInput != null) seekTimeMinInput.onEndEdit.AddListener(_ => CommitSeekTime());
+        if (seekTimeSecInput != null) seekTimeSecInput.onEndEdit.AddListener(_ => CommitSeekTime());
+
+        // Simple integer inputs
+        if (roundCountInput     != null) roundCountInput    .onEndEdit.AddListener(_ => CommitInt(roundCountInput,     KEY_ROUND_COUNT));
+        if (hunterCountInput    != null) hunterCountInput   .onEndEdit.AddListener(_ => CommitInt(hunterCountInput,    KEY_HUNTER_COUNT));
+        if (hunterCooldownInput != null) hunterCooldownInput.onEndEdit.AddListener(_ => CommitInt(hunterCooldownInput, KEY_HUNTER_COOLDOWN));
+        if (globalCooldownInput != null) globalCooldownInput.onEndEdit.AddListener(_ => CommitInt(globalCooldownInput, KEY_GLOBAL_COOLDOWN));
+        if (gravityInput        != null) gravityInput       .onEndEdit.AddListener(_ => CommitInt(gravityInput,        KEY_GRAVITY));
+        if (effectsRespawnInput != null) effectsRespawnInput.onEndEdit.AddListener(_ => CommitInt(effectsRespawnInput, KEY_EFFECTS_RESPAWN));
+        if (taggingBonusInput   != null) taggingBonusInput  .onEndEdit.AddListener(_ => CommitInt(taggingBonusInput,   KEY_HUNTED_BONUS));
+
+        // Score Limit (toggle + field)
+        if (scoreLimitToggle != null) scoreLimitToggle.onValueChanged.AddListener(OnScoreLimitToggle);
+        if (scoreLimitInput  != null) scoreLimitInput .onEndEdit.AddListener(_ => CommitInt(scoreLimitInput, KEY_SCORE_LIMIT));
+
         RefreshAll();
     }
 
-    // Re-read whenever the panel becomes visible (e.g. switching tabs)
     public override void OnEnable()
     {
         base.OnEnable();
-        RefreshAll();
+        if (PhotonNetwork.CurrentRoom != null)
+            RefreshAll();
     }
 
     // ─── Photon callbacks ─────────────────────────────────────────────────────
@@ -81,7 +154,6 @@ public class RulesUI : MonoBehaviourPunCallbacks
         RefreshAll();
     }
 
-    // Host rights can transfer when the original host disconnects
     public override void OnMasterClientSwitched(Photon.Realtime.Player newMasterClient)
     {
         ApplyHostLock();
@@ -91,14 +163,14 @@ public class RulesUI : MonoBehaviourPunCallbacks
 
     private void ApplyHostLock()
     {
-        if (controlsGroup == null) return;
+        if (hostLockOverlay == null) return;
         bool isHost = PhotonNetwork.IsMasterClient;
-        controlsGroup.interactable   = isHost;
-        controlsGroup.alpha          = isHost ? 1f : 0.45f;
-        controlsGroup.blocksRaycasts = isHost;
+        hostLockOverlay.interactable   = isHost;
+        hostLockOverlay.alpha          = isHost ? 0f : 0.5f;
+        hostLockOverlay.blocksRaycasts = !isHost;
     }
 
-    // ─── Read room properties → update UI ────────────────────────────────────
+    // ─── Full refresh ─────────────────────────────────────────────────────────
 
     private void RefreshAll()
     {
@@ -106,127 +178,153 @@ public class RulesUI : MonoBehaviourPunCallbacks
         if (PhotonNetwork.CurrentRoom == null) return;
 
         updatingUI = true;
-        var props = PhotonNetwork.CurrentRoom.CustomProperties;
+        var p = PhotonNetwork.CurrentRoom.CustomProperties;
 
-        // Cheats
-        bool cheats = props.TryGetValue(KEY_CHEATS, out object c) && (bool)c;
-        cheatsButtonLabel.text = cheats ? "Cheats: ON" : "Cheats: OFF";
+        // Action button labels
+        bool timerPaused = BoolProp(p, KEY_TIMER_PAUSED);
+        if (pauseTimerLabel   != null) pauseTimerLabel  .text = timerPaused ? "Resume Timer" : "Pause Timer";
+        bool cheatsOn = BoolProp(p, KEY_CHEATS);
+        if (enableCheatsLabel != null) enableCheatsLabel.text = cheatsOn ? "Disable Cheats" : "Enable Cheats";
 
-        // Timer
-        bool timerPaused = props.TryGetValue(KEY_TIMER_PAUSED, out object t) && (bool)t;
-        timerButtonLabel.text = timerPaused ? "Timer: Paused" : "Timer: Running";
+        // Hide Time (stored as total seconds)
+        SplitSeconds((int)FloatProp(p, KEY_HIDE_TIME, DEF_HIDE_TIME_SEC),
+                     out int hideMin, out int hideSec);
+        SetIntInput(hideTimeMinInput, hideMin);
+        SetIntInput(hideTimeSecInput, hideSec);
 
-        // Hide duration
-        float hide = props.TryGetValue(KEY_HIDE_DURATION, out object h) ? (float)h : DEFAULT_HIDE_DURATION;
-        hideDurationSlider.value = hide;
-        hideDurationInput.text   = hide.ToString("F0");
+        // Seek Time Limit
+        bool seekEnabled = BoolProp(p, KEY_SEEK_TIME_ENABLED);
+        if (seekTimeToggle != null) seekTimeToggle.isOn = seekEnabled;
+        ApplyFieldMask(seekTimeFieldsMask, seekEnabled);
+        SplitSeconds((int)FloatProp(p, KEY_SEEK_TIME, DEF_SEEK_TIME_SEC),
+                     out int seekMin, out int seekSec);
+        SetIntInput(seekTimeMinInput, seekMin);
+        SetIntInput(seekTimeSecInput, seekSec);
 
-        // Seek duration
-        float seek = props.TryGetValue(KEY_SEEK_DURATION, out object s) ? (float)s : DEFAULT_SEEK_DURATION;
-        seekDurationSlider.value = seek;
-        seekDurationInput.text   = seek.ToString("F0");
+        // Integers
+        SetIntInput(roundCountInput,     (int)FloatProp(p, KEY_ROUND_COUNT,     DEF_ROUND_COUNT));
+        SetIntInput(hunterCountInput,    (int)FloatProp(p, KEY_HUNTER_COUNT,    DEF_HUNTER_COUNT));
+        SetIntInput(hunterCooldownInput, (int)FloatProp(p, KEY_HUNTER_COOLDOWN, DEF_HUNTER_COOLDOWN));
+        SetIntInput(globalCooldownInput, (int)FloatProp(p, KEY_GLOBAL_COOLDOWN, DEF_GLOBAL_COOLDOWN));
+        SetIntInput(gravityInput,        (int)FloatProp(p, KEY_GRAVITY,         DEF_GRAVITY));
+        SetIntInput(effectsRespawnInput, (int)FloatProp(p, KEY_EFFECTS_RESPAWN, DEF_EFFECTS_RESPAWN));
+        SetIntInput(taggingBonusInput,   (int)FloatProp(p, KEY_HUNTED_BONUS,    DEF_TAG_BONUS));
 
-        // Gravity — also apply locally so all clients keep physics in sync
-        float grav = props.TryGetValue(KEY_GRAVITY, out object g) ? (float)g : DEFAULT_GRAVITY;
-        gravitySlider.value  = grav;
-        gravityInput.text    = grav.ToString("F2");
-        Physics.gravity      = new Vector3(0f, grav, 0f);
+        // Score Limit
+        bool scoreEnabled = BoolProp(p, KEY_SCORE_LIMIT_ENABLED);
+        if (scoreLimitToggle != null) scoreLimitToggle.isOn = scoreEnabled;
+        ApplyFieldMask(scoreLimitFieldsMask, scoreEnabled);
+        SetIntInput(scoreLimitInput, (int)FloatProp(p, KEY_SCORE_LIMIT, DEF_SCORE_LIMIT));
 
         updatingUI = false;
     }
 
-    // ─── Cheats toggle ────────────────────────────────────────────────────────
+    // ─── Action button callbacks ──────────────────────────────────────────────
 
-    public void ToggleCheats()
+    private void TogglePauseTimer()
     {
         if (!PhotonNetwork.IsMasterClient) return;
-        var props  = PhotonNetwork.CurrentRoom.CustomProperties;
-        bool current = props.TryGetValue(KEY_CHEATS, out object c) && (bool)c;
+        bool current = BoolPropFromRoom(KEY_TIMER_PAUSED);
+        WriteRoomProp(KEY_TIMER_PAUSED, !current);
+        // MatchTimerController should subscribe to OnRoomPropertiesUpdate and read KEY_TIMER_PAUSED
+    }
+
+    private void ToggleCheats()
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+        bool current = BoolPropFromRoom(KEY_CHEATS);
         WriteRoomProp(KEY_CHEATS, !current);
     }
 
-    // ─── Timer pause / resume ─────────────────────────────────────────────────
+    // ─── Toggle callbacks ─────────────────────────────────────────────────────
 
-    public void ToggleTimer()
+    private void OnSeekTimeToggle(bool enabled)
     {
-        if (!PhotonNetwork.IsMasterClient) return;
-        var props = PhotonNetwork.CurrentRoom.CustomProperties;
-        bool current = props.TryGetValue(KEY_TIMER_PAUSED, out object t) && (bool)t;
-        WriteRoomProp(KEY_TIMER_PAUSED, !current);
-        // TODO: call MatchTimerController.Instance?.Pause() / Resume() once those are exposed
+        if (updatingUI) return;
+        ApplyFieldMask(seekTimeFieldsMask, enabled);
+        WriteRoomProp(KEY_SEEK_TIME_ENABLED, enabled);
+        // Also write 0 when disabling so other systems read "no limit"
+        if (!enabled) WriteRoomProp(KEY_SEEK_TIME, 0f);
     }
 
-    // ─── Hide duration ────────────────────────────────────────────────────────
-
-    public void SliderHideDuration(float value)
+    private void OnScoreLimitToggle(bool enabled)
     {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        updatingUI               = true;
-        hideDurationInput.text   = value.ToString("F0");
-        updatingUI               = false;
-        WriteRoomProp(KEY_HIDE_DURATION, value);
+        if (updatingUI) return;
+        ApplyFieldMask(scoreLimitFieldsMask, enabled);
+        WriteRoomProp(KEY_SCORE_LIMIT_ENABLED, enabled);
+        if (!enabled) WriteRoomProp(KEY_SCORE_LIMIT, 0f);
     }
 
-    public void InputHideDuration()
-    {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        if (!float.TryParse(hideDurationInput.text, out float v)) return;
-        updatingUI               = true;
-        hideDurationSlider.value = v;
-        updatingUI               = false;
-        WriteRoomProp(KEY_HIDE_DURATION, v);
-    }
+    // ─── Time field commits ───────────────────────────────────────────────────
 
-    // ─── Seek duration ────────────────────────────────────────────────────────
-
-    public void SliderSeekDuration(float value)
+    private void CommitHideTime()
     {
         if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        updatingUI               = true;
-        seekDurationInput.text   = value.ToString("F0");
-        updatingUI               = false;
-        WriteRoomProp(KEY_SEEK_DURATION, value);
+        int min = ParseInt(hideTimeMinInput, 0);
+        int sec = Mathf.Clamp(ParseInt(hideTimeSecInput, 0), 0, 59);
+        SetIntInput(hideTimeSecInput, sec);          // clamp-correct the display
+        WriteRoomProp(KEY_HIDE_TIME, (float)(min * 60 + sec));
     }
 
-    public void InputSeekDuration()
+    private void CommitSeekTime()
     {
         if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        if (!float.TryParse(seekDurationInput.text, out float v)) return;
-        updatingUI               = true;
-        seekDurationSlider.value = v;
-        updatingUI               = false;
-        WriteRoomProp(KEY_SEEK_DURATION, v);
+        if (seekTimeToggle != null && !seekTimeToggle.isOn) return;
+        int min = ParseInt(seekTimeMinInput, 0);
+        int sec = Mathf.Clamp(ParseInt(seekTimeSecInput, 0), 0, 59);
+        SetIntInput(seekTimeSecInput, sec);
+        WriteRoomProp(KEY_SEEK_TIME, (float)(min * 60 + sec));
     }
 
-    // ─── Gravity ──────────────────────────────────────────────────────────────
+    // ─── Generic integer commit ───────────────────────────────────────────────
 
-    public void SliderGravity(float value)
+    private void CommitInt(TMP_InputField field, string key)
     {
         if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        updatingUI          = true;
-        gravityInput.text   = value.ToString("F2");
-        updatingUI          = false;
-        WriteRoomProp(KEY_GRAVITY, value);
-        // Other clients apply gravity inside RefreshAll when OnRoomPropertiesUpdate fires
-        Physics.gravity = new Vector3(0f, value, 0f);
+        if (!int.TryParse(field.text, out int v)) return;
+        WriteRoomProp(key, (float)v);
     }
 
-    public void InputGravity()
+    // ─── Utilities ────────────────────────────────────────────────────────────
+
+    private static void ApplyFieldMask(CanvasGroup group, bool active)
     {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        if (!float.TryParse(gravityInput.text, out float v)) return;
-        updatingUI          = true;
-        gravitySlider.value = v;
-        updatingUI          = false;
-        WriteRoomProp(KEY_GRAVITY, v);
-        Physics.gravity = new Vector3(0f, v, 0f);
+        if (group == null) return;
+        group.alpha          = active ? 1f : 0.3f;
+        group.interactable   = active;
+        group.blocksRaycasts = active;
     }
 
-    // ─── Helper ───────────────────────────────────────────────────────────────
+    private static void SplitSeconds(int totalSeconds, out int minutes, out int seconds)
+    {
+        totalSeconds = Mathf.Max(0, totalSeconds);
+        minutes = totalSeconds / 60;
+        seconds = totalSeconds % 60;
+    }
+
+    private static void SetIntInput(TMP_InputField field, int value)
+    {
+        if (field != null) field.text = value.ToString();
+    }
+
+    private static int ParseInt(TMP_InputField field, int fallback) =>
+        field != null && int.TryParse(field.text, out int v) ? v : fallback;
+
+    private static float FloatProp(Hashtable p, string key, float def) =>
+        p.TryGetValue(key, out object v) && v is float f ? f : def;
+
+    private static bool BoolProp(Hashtable p, string key) =>
+        p.TryGetValue(key, out object v) && v is bool b && b;
+
+    private static bool BoolPropFromRoom(string key)
+    {
+        if (PhotonNetwork.CurrentRoom == null) return false;
+        return BoolProp(PhotonNetwork.CurrentRoom.CustomProperties, key);
+    }
 
     private static void WriteRoomProp(string key, object value)
     {
-        if (PhotonNetwork.CurrentRoom == null) return;
+        if (PhotonNetwork.CurrentRoom == null || !PhotonNetwork.IsMasterClient) return;
         PhotonNetwork.CurrentRoom.SetCustomProperties(new Hashtable { [key] = value });
     }
 }
