@@ -19,6 +19,15 @@ public class Flappy : BasicAbility
         view = GetComponent<PhotonView>();
     }
 
+    private void OnDisable()
+    {
+        // Restore default air control so it isn't permanently reduced if Flappy is disabled mid-glide
+        if (Player.Instance != null)
+            Player.Instance.AirControlMult = 0.1f;
+        isGliding = false;
+        isActive  = false;
+    }
+
     protected override void OnKeyDown()
     {
         if (view == null || rb == null) return;
@@ -38,11 +47,12 @@ public class Flappy : BasicAbility
         
         if (isGliding)
         {
-            if (Player.Instance.IsGrounded) isActive = false; // Regenerate the timer, but remain in glide state
-            else 
+            if (Player.Instance.IsGrounded) isActive = false;
+            else
             {
-                isActive = true; // Bring the timer back when air borne 
-                HUDManager.Instance.timer.SetActive(true);
+                isActive = true;
+                if (HUDManager.Instance != null && HUDManager.Instance.timer != null)
+                    HUDManager.Instance.timer.SetActive(true);
             }
 
             // Only limit downward velocity (negative y), not upward

@@ -1,4 +1,3 @@
-using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
@@ -16,17 +15,9 @@ public class IceTrap : TrapAbility
     [Header("IceTrap Settings")]
     [SerializeField] private float cooldown = 15f;
 
-    private PhotonView view;
-
     protected override void Awake()
     {
         base.Awake();
         cooldownTime = cooldown;
-    }
-
-    private void Start()
-    {
-        view          = GetComponent<PhotonView>();
-        isLocalPlayer = view.IsMine;
     }
 }

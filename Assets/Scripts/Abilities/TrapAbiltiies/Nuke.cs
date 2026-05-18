@@ -3,46 +3,28 @@ using UnityEngine;
 
 public class Nuke : TrapAbility
 {
-    protected PhotonView view;
-
-    private void Start()
-    {
-        view = GetComponent<PhotonView>();
-        isLocalPlayer = view.IsMine;
-    }
-
-    // Overriding this method in order to specifically disable the nuke's script while a hologram
+    // Overrides base EnterPlacementMode to disable the NukeSequence script on the hologram,
+    // preventing it from triggering while the player is still in placement mode.
     protected override void EnterPlacementMode()
     {
         isPlacementMode = true;
-        
-        // Create hologram object
-        hologramObject = PhotonNetwork.Instantiate("Object/"+abilityName, new(0, 0, 0), Quaternion.identity);
+
+        hologramObject = PhotonNetwork.Instantiate("Object/" + abilityName, Vector3.zero, Quaternion.identity);
         hologramObject.GetComponent<NukeSequence>().enabled = false;
-        // Apply hologram material to all renderers
+
         Renderer[] renderers = hologramObject.GetComponentsInChildren<Renderer>();
-        foreach (Renderer renderer in renderers)
+        foreach (Renderer r in renderers)
         {
-            Material[] mats = new Material[renderer.materials.Length];
+            Material[] mats = new Material[r.materials.Length];
             for (int i = 0; i < mats.Length; i++)
-            {
                 mats[i] = hologramMaterial;
-            }
-            renderer.materials = mats;
+            r.materials = mats;
         }
-        
-        // Disable colliders on hologram
-        Collider[] colliders = hologramObject.GetComponentsInChildren<Collider>();
-        foreach (Collider col in colliders)
-        {
+
+        foreach (Collider col in hologramObject.GetComponentsInChildren<Collider>())
             col.enabled = false;
-        }
-        
-        // Disable any rigidbodies
-        Rigidbody rb = hologramObject.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.isKinematic = true;
-        }
+
+        if (hologramObject.TryGetComponent<Rigidbody>(out var holoRb))
+            holoRb.isKinematic = true;
     }
 }

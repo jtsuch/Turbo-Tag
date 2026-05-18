@@ -1,5 +1,6 @@
 using UnityEngine;
 using Photon.Pun;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System;
@@ -46,6 +47,15 @@ public class Player : MonoBehaviour
 
     // True only for the player instance owned by this client
     public bool IsLocalPlayer;
+
+    // ─── Visual / Collider ────────────────────────────────────────────────────
+    [Header("Visual")]
+    [Tooltip("Mesh/rig roots to squish on crouch/prone. Assign Armature and Jimmy here.")]
+    [SerializeField] private Transform[] visualRoots;
+
+    private CapsuleCollider col;
+    private float baseColHeight;
+    private Vector3 baseColCenter;
 
     // ─── Character Attributes ─────────────────────────────────────────────────
     public float height = 1.8f;
@@ -145,6 +155,13 @@ public class Player : MonoBehaviour
         Animator = GetComponent<PlayerAnimatorController>();
         currentHealth = maxHealth;
 
+        col = GetComponent<CapsuleCollider>();
+        if (col != null)
+        {
+            baseColHeight = col.height;
+            baseColCenter = col.center;
+        }
+
         // Optional: generate unique ID if needed
         //PlayerID = System.Guid.NewGuid().ToString();
 
@@ -158,30 +175,26 @@ public class Player : MonoBehaviour
         var props = PhotonNetwork.LocalPlayer.CustomProperties;
         if (props == null)
         {
-            Debug.LogWarning("Could not load player properties in Player class");
-            return;
-        } 
-
-        // First, label player as hunter or not
-        isHunter = props.ContainsKey("IsHunter") ? (bool)props["IsHunter"] : false;
-
-        // Fill string list of player's starting abilities
-        if (!props.ContainsKey("BasicAbility") || !props.ContainsKey("QuickAbility") || !props.ContainsKey("ThrowAbility") || !props.ContainsKey("TrapAbility"))
-        {
-            Debug.LogWarning("Could not load player's abilities because no matching key was found");
+            Debug.LogWarning("Could not load player properties — using defaults.");
+            SetDefaultAbilities();
             return;
         }
-        abilityList[0] = (string)props["BasicAbility"];
-        abilityList[1] = (string)props["QuickAbility"];
-        abilityList[2] = (string)props["ThrowAbility"];
-        abilityList[3] = (string)props["TrapAbility"];
 
-        // In order to get whole dictionary, use the below code
-        //customProperties.Clear();
-        //foreach (var kvp in PhotonNetwork.LocalPlayer.CustomProperties)
-        //{
-        //    customProperties[kvp.Key.ToString()] = (Object)kvp.Value;
-        //}
+        isHunter = props.TryGetValue("IsHunter", out object isHunterVal) ? (bool)isHunterVal : false;
+
+        // Use defaults for any missing slot so the ability system never gets null names
+        abilityList[0] = props.TryGetValue("BasicAbility", out object b) ? (string)b : "BasicGrapple";
+        abilityList[1] = props.TryGetValue("QuickAbility",  out object q) ? (string)q : "Dash";
+        abilityList[2] = props.TryGetValue("ThrowAbility",  out object t) ? (string)t : "BoomStick";
+        abilityList[3] = props.TryGetValue("TrapAbility",   out object r) ? (string)r : "Box";
+    }
+
+    private void SetDefaultAbilities()
+    {
+        abilityList[0] = "BasicGrapple";
+        abilityList[1] = "Dash";
+        abilityList[2] = "BoomStick";
+        abilityList[3] = "Box";
     }
 
     // Jump event
@@ -235,29 +248,65 @@ public class Player : MonoBehaviour
                 break;
         }
         targetSpeed *= SpeedMultiplier;
+        lastState = currentState;
+
+        // Auto-restore standing scale if something forces us out of crouch/prone
+        if ((lastState == MovementState.Prone || lastState == MovementState.Crouch)
+            && newState != MovementState.Prone && newState != MovementState.Crouch)
+            ApplyScale(1f);
+
         currentState = newState;
         Animator.UpdateAnimator();
         OnStateChanged?.Invoke(newState);
     }
 
     // ─── Data / Stat Management ───────────────────────────────────────────────
-    public void SetPlayerScale()
+
+    // Scales only the visual mesh children and resizes the collider.
+    // The root transform is never scaled so the camera/gun are unaffected.
+    public void ApplyScale(float yFactor)
     {
-        //currentYScale = Mathf.Max(0.1f, newY);
-        transform.localScale = new Vector3(currentXScale, currentYScale, currentZScale);
+        foreach (var t in visualRoots)
+            if (t != null)
+                t.localScale = new Vector3(currentXScale, currentYScale * yFactor, currentZScale);
+
+        if (col != null)
+        {
+            col.height   = baseColHeight * yFactor;
+            col.center   = new Vector3(baseColCenter.x, baseColCenter.y * yFactor, baseColCenter.z);
+        }
     }
 
-    public void ToggleCrouchHeight() 
+    public void SetPlayerScale()
+    {
+        ApplyScale(1f);
+    }
+
+    public void ToggleCrouchHeight()
     {
         if (currentState == MovementState.Crouch)
         {
-            transform.localScale = new Vector3(currentXScale, currentYScale, currentZScale);
+            ApplyScale(1f);
             SetState(MovementState.Idle);
         }
         else
         {
-            transform.localScale = new Vector3(currentXScale, currentYScale * 0.7f, currentZScale);
+            ApplyScale(0.7f);
             SetState(MovementState.Crouch);
+        }
+    }
+
+    public void ToggleProneHeight()
+    {
+        if (currentState == MovementState.Prone)
+        {
+            ApplyScale(1f);
+            SetState(MovementState.Idle);
+        }
+        else
+        {
+            ApplyScale(0.35f);
+            SetState(MovementState.Prone);
         }
     }
 
@@ -281,6 +330,49 @@ public class Player : MonoBehaviour
     private void Die()
     {
         Debug.Log($"{PlayerName} has died.");
-        // Trigger death animation, disable input, etc.
+    }
+
+    // ─── Caught / Respawn ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called on the caught player's client via RPC. Disables movement, fakes a ragdoll
+    /// physics bump, hands off to caught-camera mode, updates the HUD, then respawns after 3 s.
+    /// </summary>
+    public void EnterCaughtState(float hideTime)
+    {
+        CanMove = false;
+
+        if (rb != null)
+        {
+            rb.AddForce(Vector3.up * 3f + UnityEngine.Random.insideUnitSphere * 2f, ForceMode.Impulse);
+            rb.AddTorque(UnityEngine.Random.insideUnitSphere * 4f, ForceMode.Impulse);
+        }
+
+        if (PlayerCam.Instance != null)  PlayerCam.Instance.EnterCaughtMode();
+        if (HUDManager.Instance != null) HUDManager.Instance.ShowCaught(hideTime);
+        StartCoroutine(RespawnAfterDelay(3f));
+    }
+
+    private IEnumerator RespawnAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        RespawnAsHunter();
+    }
+
+    private void RespawnAsHunter()
+    {
+        Vector3 spawnPos = Spawner.Instance != null
+            ? Spawner.Instance.GetHunterSpawnPosition()
+            : transform.position; // Stay put if no Spawner found — beats spawning at the origin
+
+        transform.position = spawnPos;
+        rb.linearVelocity  = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        CanMove = true;
+        SetState(MovementState.Idle);
+
+        if (HUDManager.Instance != null) HUDManager.Instance.HideCaught();
+        if (PlayerCam.Instance != null)  PlayerCam.Instance.ExitCaughtMode();
     }
 }

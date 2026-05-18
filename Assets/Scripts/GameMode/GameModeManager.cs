@@ -66,6 +66,10 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private readonly HashSet<int> currentHiders  = new();
     public int RoundNumber { get; private set; } = 0;
 
+    // Populated on ALL clients via RPC_SetPlayerRole — safe to query from any component.
+    public bool IsHunter(int actorNumber) => currentHunters.Contains(actorNumber);
+    public bool IsHider(int actorNumber)  => currentHiders.Contains(actorNumber);
+
     private static readonly WaitForSeconds WaitOneSecond  = new(1f);
     private static readonly WaitForSeconds WaitFiveSeconds = new(5f);
 
@@ -211,6 +215,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
     private void HandleCountdownComplete()
     {
+        if (!PhotonNetwork.IsMasterClient) return;
         // Hiders scatter; hunters stay frozen
         photonView.RPC(nameof(RPC_SetPhase),   RpcTarget.All, (int)MatchPhase.Hiding);
         photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, true, false); // hiders=true, hunters=false
@@ -219,6 +224,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
     private void HandleHidePhaseComplete()
     {
+        if (!PhotonNetwork.IsMasterClient) return;
         // Everyone active; score counting begins
         photonView.RPC(nameof(RPC_SetPhase),   RpcTarget.All, (int)MatchPhase.Active);
         photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, true, true); // everyone moves
@@ -226,9 +232,17 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         timerController.StartActivePhase();
     }
 
-    private void HandleTimeLimitReached() => EndRound();
+    private void HandleTimeLimitReached()
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+        EndRound();
+    }
 
-    private void HandleScoreLimitReached() => CheckRoundEndCondition();
+    private void HandleScoreLimitReached()
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+        CheckRoundEndCondition();
+    }
 
     // -------------------------------------------------------------------------
     // Tagging
@@ -251,7 +265,18 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         photonView.RPC(nameof(RPC_SetPlayerRole), RpcTarget.All, hiderActorNumber, true);
         scoreController.FreezePlayerTimer(hiderActorNumber);
 
+        float frozenTime = scoreController.GetHideTime(hiderActorNumber);
+        photonView.RPC(nameof(RPC_OnPlayerCaught), RpcTarget.All, hiderActorNumber, frozenTime);
+
         CheckRoundEndCondition();
+    }
+
+    // Called by hunters on this client; routed to master for authoritative validation.
+    [PunRPC]
+    public void RPC_RequestTag(int hiderActorNumber, PhotonMessageInfo info)
+    {
+        if (!currentHunters.Contains(info.Sender.ActorNumber)) return;
+        TagPlayer(hiderActorNumber);
     }
 
     private void CheckRoundEndCondition()
@@ -310,6 +335,19 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private void RPC_SetPhase(int phaseInt)
     {
         CurrentPhase = (MatchPhase)phaseInt;
+
+        // Master drives its own timer via HandleXxx callbacks.
+        // Non-master clients must start their local timer here so the HUD updates.
+        if (!PhotonNetwork.IsMasterClient)
+        {
+            switch (CurrentPhase)
+            {
+                case MatchPhase.Countdown: timerController.StartCountdown();   break;
+                case MatchPhase.Hiding:    timerController.StartHidePhase();   break;
+                case MatchPhase.Active:    timerController.StartActivePhase(); break;
+                default:                   timerController.Stop();             break;
+            }
+        }
     }
 
     /// <summary>
@@ -333,6 +371,13 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.LocalPlayer.ActorNumber == actorNumber && Player.Instance != null)
             Player.Instance.isHunter = isHunter;
+    }
+
+    [PunRPC]
+    private void RPC_OnPlayerCaught(int actorNumber, float hideTime)
+    {
+        if (PhotonNetwork.LocalPlayer.ActorNumber == actorNumber && Player.Instance != null)
+            Player.Instance.EnterCaughtState(hideTime);
     }
 
     [PunRPC]

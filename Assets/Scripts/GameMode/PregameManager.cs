@@ -30,17 +30,30 @@ public class PregameManager : MonoBehaviour
     [Header("Quick UI Elements")]
     public ToggleGroup quickToggleGroup;
     public Toggle dashToggle;
-    private Toggle activeQuickToggle; // Default quick toggle
+    public Toggle launchToggle;
+    public Toggle shrinkToggle;
+    private Toggle activeQuickToggle;
 
     [Header("Throw UI Elements")]
     public ToggleGroup throwToggleGroup;
     public Toggle boomBombToggle;
-    private Toggle activeThrowToggle; // Default throw toggle
+    public Toggle boomStickToggle;
+    public Toggle rockToggle;
+    public Toggle flashbangToggle;
+    public Toggle gravBallToggle;
+    public Toggle semtexToggle;
+    public Toggle snowballToggle;
+    public Toggle frisbeeToggle;
+    private Toggle activeThrowToggle;
 
     [Header("Trap UI Elements")]
     public ToggleGroup trapToggleGroup;
     public Toggle boxToggle;
-    private Toggle activeTrapToggle; // Default trap toggle
+    public Toggle ladderToggle;
+    public Toggle iceTrapToggle;
+    public Toggle gravityWellToggle;
+    public Toggle nukeToggle;
+    private Toggle activeTrapToggle;
 
     private float currentTimer = 10f;
     private bool isHunter = false;
@@ -154,18 +167,19 @@ public class PregameManager : MonoBehaviour
         if (activeBasicToggle == null) 
             UpdatePlayerProperty("BasicAbility", "BasicGrapple");
         else if (activeBasicToggle.TryGetComponent<AbilityToggle>(out var abilityToggle))
-        {
             UpdatePlayerProperty("BasicAbility", abilityToggle.abilityName);
-        }
-        //if (activeBasicToggle == null) activeBasicToggle = "BasicGrapple";
-        //int index = activeBasicToggle.transform.parent.GetSiblingIndex();
-        //UpdatePlayerProperty("BasicAbility", basicAbilityList[index]);
 
         // Quick Ability
-        UpdatePlayerProperty("QuickAbility", "Dash");
+        if (activeQuickToggle == null)
+            UpdatePlayerProperty("QuickAbility", "Dash");
+        else if (activeQuickToggle.TryGetComponent<AbilityToggle>(out var quickToggle))
+            UpdatePlayerProperty("QuickAbility", quickToggle.abilityName);
 
         // Throw Ability
-        UpdatePlayerProperty("ThrowAbility", "BoomStick");
+        if (activeThrowToggle == null)
+            UpdatePlayerProperty("ThrowAbility", "BoomStick");
+        else if (activeThrowToggle.TryGetComponent<AbilityToggle>(out var throwToggle))
+            UpdatePlayerProperty("ThrowAbility", throwToggle.abilityName);
 
         // Trap Ability
         if (activeTrapToggle == null) 

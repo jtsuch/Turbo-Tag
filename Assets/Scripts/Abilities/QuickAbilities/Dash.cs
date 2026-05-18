@@ -45,7 +45,7 @@ public class Dash : QuickAbility
             dashCoroutine = null;
         }
 
-        PlayerCam.Instance.ChangeFov(75f);
+        if (PlayerCam.Instance != null) PlayerCam.Instance.ChangeFov(75f);
         dashCoroutine = StartCoroutine(DashRoutine());
     }
 
@@ -102,7 +102,7 @@ public class Dash : QuickAbility
         {
             player.IsDashing = false;
             rbLocal.useGravity = true;
-            PlayerCam.Instance.ChangeFov(60f);
+            if (PlayerCam.Instance != null) PlayerCam.Instance.ChangeFov(60f);
         }
 
         dashCoroutine = null;

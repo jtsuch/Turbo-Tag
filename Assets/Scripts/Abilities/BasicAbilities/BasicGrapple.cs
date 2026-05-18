@@ -2,7 +2,7 @@ using UnityEngine;
 using Photon.Pun;
 
 [RequireComponent(typeof(PhotonView))]
-public class BasicGrapple : BasicAbility
+public class BasicGrapple : BasicAbility, IPunObservable
 {
     [Header("References")]
     public Player player;
@@ -31,10 +31,14 @@ public class BasicGrapple : BasicAbility
     {
         base.Awake();
         inputHandler = GetComponent<InputHandler>();
-        
+
         rope.SetActive(false);
         lr.positionCount = 0;
         view = GetComponent<PhotonView>();
+
+        // Auto-register so PUN2 calls OnPhotonSerializeView without needing Inspector setup.
+        if (view != null && !view.ObservedComponents.Contains(this))
+            view.ObservedComponents.Add(this);
     }
 
     protected override void OnKeyDown()
@@ -81,9 +85,11 @@ public class BasicGrapple : BasicAbility
     private void StartSwing()
     {
         if (player == null) return;
-        if (player.currentState == Player.MovementState.Prone || player.currentState == Player.MovementState.Hang) return;
+        if (player.currentState == Player.MovementState.Hang) return;
         player.IsSwinging = true;
-        player.SetState(Player.MovementState.Idle);
+
+        if (player.currentState != Player.MovementState.Prone)
+            player.SetState(Player.MovementState.Idle);
 
         if (Physics.Raycast(cam.position, cam.forward, out RaycastHit hit, grappleReach, canGrapple))
         {
@@ -135,67 +141,23 @@ public class BasicGrapple : BasicAbility
         joint.maxDistance += pushPullSpeed * Time.deltaTime;
     }
 
-    private string GetTransformPath(Transform target)
-    {
-        if (target == null) return "";
-        
-        string path = target.name;
-        Transform current = target.parent;
-        
-        while (current != null)
-        {
-            path = current.name + "/" + path;
-            current = current.parent;
-        }
-        
-        return path;
-    }
-
-    private Transform FindTransformByPath(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return null;
-        
-        string[] pathParts = path.Split('/');
-        GameObject[] rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
-        
-        Transform current = null;
-        foreach (GameObject root in rootObjects)
-        {
-            if (root.name == pathParts[0])
-            {
-                current = root.transform;
-                break;
-            }
-        }
-        
-        if (current == null) return null;
-        
-        for (int i = 1; i < pathParts.Length; i++)
-        {
-            current = current.Find(pathParts[i]);
-            if (current == null) return null;
-        }
-        
-        return current;
-    }
-
     private void DrawRope()
     {
-        if (!isSwinging) return;
+        if (!isSwinging)
+        {
+            if (lr.positionCount != 0) lr.positionCount = 0;
+            if (rope.activeSelf) rope.SetActive(false);
+            return;
+        }
 
-        Vector3 startPos;
-        if (view.IsMine)
-            startPos = gunTip.position;
-        else
-            startPos = remoteGunTip.position;
-        
-        Vector3 endPos = swingPoint;
+        if (!rope.activeSelf) rope.SetActive(true);
+        if (lr.positionCount != 2) lr.positionCount = 2;
 
-        lr.SetPosition(0, startPos);
-        lr.SetPosition(1, endPos);
+        lr.SetPosition(0, view.IsMine ? gunTip.position : remoteGunTip.position);
+        lr.SetPosition(1, swingPoint);
     }
 
-    private void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo _)
     {
         if (stream.IsWriting)
         {

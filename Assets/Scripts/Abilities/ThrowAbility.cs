@@ -10,6 +10,7 @@ using Photon.Pun;
 /// Attach to: ThePlayer prefab — requires a LineRenderer and a throwOrigin Transform assigned
 /// in the Inspector for trajectory preview.
 /// </summary>
+[RequireComponent(typeof(PhotonView))]
 public abstract class ThrowAbility : Ability
 {
     // ─── Configuration (set by child in Awake) ────────────────────────────────
@@ -28,9 +29,10 @@ public abstract class ThrowAbility : Ability
 
     protected GameObject heldObject;                         // The visual object held before throwing
 
+    private PhotonView playerView;
     private float lastUseTime = -999f;
     private float chargeStartTime;
-    private float currentCharge => Mathf.Clamp01((Time.time - chargeStartTime) / chargeTime);
+    private float CurrentCharge => Mathf.Clamp01((Time.time - chargeStartTime) / chargeTime);
     public override bool IsAwaitingAction => 
         state == ThrowState.Aiming || state == ThrowState.Charging;
 
@@ -41,6 +43,10 @@ public abstract class ThrowAbility : Ability
     {
         base.Awake();
         abilityType = AbilityType.Throw;
+        playerView  = GetComponent<PhotonView>();
+        // Ensure exactly one ThrowDispatcher exists — shared by all ThrowAbility components on this player.
+        if (GetComponent<ThrowDispatcher>() == null)
+            gameObject.AddComponent<ThrowDispatcher>();
     }
 
     // -------------------------------------------------------------------------
@@ -101,7 +107,7 @@ public abstract class ThrowAbility : Ability
         if (state == ThrowState.Aiming || state == ThrowState.Charging)
         {
             UpdateTrajectory();
-            //Debug.Log($"{abilityName} charge: {currentCharge * 100f:F1}%");
+            //Debug.Log($"{abilityName} charge: {CurrentCharge * 100f:F1}%");
         }
     }
 
@@ -138,7 +144,7 @@ public abstract class ThrowAbility : Ability
             return;
         }
 
-        float throwForce = Mathf.Lerp(minThrowForce, maxThrowForce, currentCharge);
+        float throwForce = Mathf.Lerp(minThrowForce, maxThrowForce, CurrentCharge);
         Vector3 throwDirection = throwOrigin.forward;
 
         // Destroy held visual
@@ -159,9 +165,14 @@ public abstract class ThrowAbility : Ability
             throwOrigin.rotation
         );
 
-        Rigidbody thrownRb = thrown.GetComponent<Rigidbody>();
-        if (thrownRb != null)
+        if (thrown.TryGetComponent<Rigidbody>(out var thrownRb))
             thrownRb.AddForce(throwDirection * throwForce, ForceMode.Impulse);
+
+        // Replicate throw impulse to remote clients so the projectile flies on every screen.
+        // Both owner and remotes start with identical initial velocity; physics diverges slightly
+        // but that is acceptable for a fast-moving projectile that explodes on first contact.
+        if (thrown.TryGetComponent<PhotonView>(out var thrownPv))
+            playerView.RPC("RPC_ApplyThrowForce", RpcTarget.Others, thrownPv.ViewID, throwDirection, throwForce);
 
         OnThrow(thrown, throwDirection, throwForce);
 
@@ -205,8 +216,8 @@ public abstract class ThrowAbility : Ability
         }
 
         // During Aiming the player hasn't started charging yet, so show the minimum-force arc.
-        // During Charging the arc grows in real time as currentCharge increases.
-        float charge = state == ThrowState.Charging ? currentCharge : 0f;
+        // During Charging the arc grows in real time as CurrentCharge increases.
+        float charge = state == ThrowState.Charging ? CurrentCharge : 0f;
         Vector3[] points = CalculateTrajectory(
             throwOrigin.position,
             throwOrigin.forward * Mathf.Lerp(minThrowForce, maxThrowForce, charge)
@@ -231,7 +242,7 @@ public abstract class ThrowAbility : Ability
             pos += vel * trajectoryTimeStep;
 
             // Stop drawing if arc hits something
-            if (Physics.Raycast(pos, vel.normalized, out RaycastHit hit, vel.magnitude * trajectoryTimeStep))
+            if (Physics.Raycast(pos, vel.normalized, out _, vel.magnitude * trajectoryTimeStep))
             {
                 // Trim array to hit point
                 Vector3[] trimmed = new Vector3[i + 1];
@@ -248,12 +259,15 @@ public abstract class ThrowAbility : Ability
     // -------------------------------------------------------------------------
 
     public bool CanActivate() => Time.time >= lastUseTime + cooldownTime;
-    public float CooldownRemaining() => Mathf.Max(0, (lastUseTime + cooldownTime) - Time.time);
+    public float CooldownRemaining() => Mathf.Max(0, lastUseTime + cooldownTime - Time.time);
 
-    // Spawns a visual-only held object parented to the throw origin
+    // Spawns a visual-only held object, attaches it locally, then tells remote clients
+    // to do the same via an RPC on the held object's own PhotonView.
+    // Sending the RPC on the held object (not the player) avoids PUN2's "method found Nx"
+    // error that occurs when the player has multiple ThrowAbility components.
     private void SpawnHeldObject()
     {
-        if (throwOrigin == null) return;
+        if (throwOrigin == null || playerView == null || !playerView.IsMine) return;
 
         heldObject = PhotonNetwork.Instantiate(
             "Object/" + abilityName,
@@ -261,24 +275,52 @@ public abstract class ThrowAbility : Ability
             throwOrigin.rotation
         );
 
-        // Disable physics on held object — it's just visual
+        if (heldObject == null)
+        {
+            Debug.LogError($"[{abilityName}] SpawnHeldObject: Instantiate returned null — verify Resources/Object/{abilityName} exists.");
+            return;
+        }
+
+        // Attach locally without going through the network
+        AttachHeldObject(heldObject);
+
+        // Tell remote clients to attach their copy via the player's own PhotonView → ThrowDispatcher.
+        // Using the player's PhotonView (single ThrowDispatcher) avoids the "found Nx" ambiguity.
+        if (!heldObject.TryGetComponent<PhotonView>(out var heldPv))
+        {
+            Debug.LogError($"[{abilityName}] SpawnHeldObject: prefab is missing a PhotonView component.");
+            return;
+        }
+
+        playerView.RPC("RPC_AttachHeld", RpcTarget.Others, heldPv.ViewID, abilityName);
+    }
+
+    // Parents the held object to this player's throw origin and freezes its physics.
+    // Called locally in SpawnHeldObject; also called on remote clients by HeldObjectSetup.RPC_SetupHeld.
+    public void AttachHeldObject(GameObject obj)
+    {
+        if (throwOrigin == null) return;
+
+        heldObject = obj;
+
         if (heldObject.TryGetComponent<Rigidbody>(out var heldRb))
         {
             heldRb.isKinematic = true;
-            heldRb.useGravity = false;
+            heldRb.useGravity  = false;
         }
 
         foreach (var col in heldObject.GetComponentsInChildren<Collider>())
             col.enabled = false;
 
-        // Parent to throw origin so it follows the camera
         heldObject.transform.SetParent(throwOrigin);
         heldObject.transform.SetLocalPositionAndRotation(Vector3.forward * 0.5f, Quaternion.identity);
     }
 
     private void OnDisable()
     {
-        // Clean up if ability is interrupted
+        // Only the owner manages networked lifetime; remote clients let Photon handle cleanup
+        if (playerView != null && !playerView.IsMine) return;
+
         if (heldObject != null)
         {
             PhotonNetwork.Destroy(heldObject);

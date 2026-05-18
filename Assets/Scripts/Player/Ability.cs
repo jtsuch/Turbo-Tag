@@ -13,7 +13,6 @@ public abstract class Ability : MonoBehaviour
     // ─── Identity ─────────────────────────────────────────────────────────────
     [Header("General Settings")]
     public string abilityName = "New Ability";
-    public int numberOfUses = 1;
     public enum AbilityType { Basic, Quick, Throw, Trap }
     [HideInInspector] public AbilityType abilityType = AbilityType.Basic;
 

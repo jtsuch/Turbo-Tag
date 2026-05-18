@@ -47,7 +47,8 @@ public class PlayerCam : MonoBehaviour
 
     // ─── Camera Offsets / Smoothing ───────────────────────────────────────────
     public Vector3 normalCameraOffset = new(0, 2f, 0);
-    public Vector3 proneCameraOffset = new(0, 1f, 0);
+    public Vector3 crouchCameraOffset = new(0, 1.4f, 0);
+    public Vector3 proneCameraOffset  = new(0, 1f, 0);
     private Vector3 currentCameraOffset;
     private Vector3 cameraVelocity = Vector3.zero;
 
@@ -58,6 +59,39 @@ public class PlayerCam : MonoBehaviour
     // Accumulated euler angles; xRotation is pitch (clamped), yRotation is yaw
     private float xRotation;
     private float yRotation;
+
+    // ─── Head Bob ─────────────────────────────────────────────────────────────
+    [Header("Head Bob")]
+    public float walkBobFreq    = 2.5f;
+    public float walkBobAmplY   = 0.18f;
+    public float walkBobAmplX   = 0.10f;
+    public float crouchBobFreq  = 1.8f;
+    public float crouchBobAmplY = 0.08f;
+    public float crouchBobAmplX = 0.04f;
+
+    private float   bobTimer  = 0f;
+    private Vector3 bobOffset = Vector3.zero;
+
+    // ─── Jump / Land Bump ─────────────────────────────────────────────────────
+    [Header("Jump / Land")]
+    public float jumpBumpAmount   = -0.12f;
+    public float landBumpAmount   = -0.18f;
+    public float bumpRecoverSpeed = 12f;
+
+    private float bumpOffset = 0f;
+
+    // ─── Wall Run Tilt ────────────────────────────────────────────────────────
+    [Header("Wall Run Tilt")]
+    public float wallTiltAngle = 8f;
+    public float wallTiltSpeed = 8f;
+
+    private float currentTilt = 0f;
+
+    // ─── Caught Spectator Camera ──────────────────────────────────────────────
+    private bool       caughtMode;
+    private Transform  camOriginalParent;
+    private Vector3    camOriginalLocalPos;
+    private Quaternion camOriginalLocalRot;
 
     public PhotonView view;
 
@@ -86,28 +120,52 @@ public class PlayerCam : MonoBehaviour
             sensitivity = 100f;
         }
 
-        // Subscribe to Player state changes
+        // Subscribe to Player state changes and events
         if (player != null)
         {
             player.OnStateChanged += HandlePlayerStateChanged;
+            player.OnJump         += HandleJump;
+            player.OnLand         += HandleLand;
         }
     }
 
     private void OnDestroy()
     {
-        // Unsubscribe from settings changes
         SettingsManager.OnSensitivityChanged -= HandleSensitivityChanged;
         if (player != null)
         {
             player.OnStateChanged -= HandlePlayerStateChanged;
+            player.OnJump         -= HandleJump;
+            player.OnLand         -= HandleLand;
         }
         DOTween.KillAll();
     }
+
+    private void HandleJump() => bumpOffset = jumpBumpAmount;
+    private void HandleLand() => bumpOffset = landBumpAmount;
 
     // Event handler for sensitivity changes
     private void HandleSensitivityChanged(float newSensitivity)
     {
         sensitivity = newSensitivity;
+    }
+
+    public void EnterCaughtMode()
+    {
+        if (cam == null) return;
+        caughtMode          = true;
+        camOriginalParent   = cam.transform.parent;
+        camOriginalLocalPos = cam.transform.localPosition;
+        camOriginalLocalRot = cam.transform.localRotation;
+        cam.transform.SetParent(null, true);
+    }
+
+    public void ExitCaughtMode()
+    {
+        if (cam == null) return;
+        caughtMode = false;
+        cam.transform.SetParent(camOriginalParent, false);
+        cam.transform.SetLocalPositionAndRotation(camOriginalLocalPos, camOriginalLocalRot);
     }
 
     private void LateUpdate()
@@ -116,8 +174,7 @@ public class PlayerCam : MonoBehaviour
 
         bool paused = PauseMenuManager.Instance != null && PauseMenuManager.Instance.Paused;
 
-        // Re-lock cursor every frame when not paused. This handles the frame after Resume()
-        // where the EventSystem or editor may have left the cursor in the wrong state.
+        // Re-lock cursor every frame when not paused.
         if (!paused && Cursor.lockState != CursorLockMode.Locked)
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -126,41 +183,101 @@ public class PlayerCam : MonoBehaviour
 
         if (paused) return;
 
+        // Spectator camera while caught — orbits above the player for 3 s until respawn
+        if (caughtMode && cam != null && player != null)
+        {
+            float    t          = Time.deltaTime * 5f;
+            Vector3  targetPos  = player.transform.position + Vector3.up * 4f;
+            Vector3  newPos     = Vector3.Lerp(cam.transform.position, targetPos, t);
+            Quaternion newRot   = Quaternion.Lerp(cam.transform.rotation, Quaternion.Euler(75f, player.transform.eulerAngles.y, 0f), t);
+            cam.transform.SetPositionAndRotation(newPos, newRot);
+            return;
+        }
+
         // Normalize sensitivity: 100 = 1:1 mouse delta
         float mouseX = Input.GetAxisRaw("Mouse X") * (sensitivity / 100f);
         float mouseY = Input.GetAxisRaw("Mouse Y") * (sensitivity / 100f);
 
         yRotation += mouseX;
-        xRotation -= mouseY;                               // Subtract so moving mouse up pitches camera up
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);    // Prevent over-rotation past vertical
+        xRotation -= mouseY;
+        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
 
-        // Smooth camera height when switching stances (e.g. prone lowers the camera)
+        // Stance height (standing / crouch / prone)
         transform.localPosition = Vector3.SmoothDamp(
             transform.localPosition,
             currentCameraOffset,
             ref cameraVelocity,
-            positionSmoothTime
-        );
+            positionSmoothTime);
 
-        // Exponential smoothing: higher rotationSmoothTime = snappier feel
-        Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, 0);
+        // Camera effects
+        UpdateHeadBob();
+        UpdateWallTilt();
+        bumpOffset = Mathf.Lerp(bumpOffset, 0f, Time.deltaTime * bumpRecoverSpeed);
+
+        if (cam != null)
+            cam.transform.localPosition = bobOffset + Vector3.up * bumpOffset;
+
+        // Rotation with wall tilt on Z
+        Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, currentTilt);
         transform.rotation = Quaternion.Lerp(
             transform.rotation,
             targetRotation,
-            1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime)
-        );
+            1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
 
-        // Player body only rotates horizontally; vertical look stays on the camera
         playerTransform.rotation = Quaternion.Euler(0, yRotation, 0);
+    }
+
+    private void UpdateHeadBob()
+    {
+        var state = player.currentState;
+
+        // Use input rather than velocity — velocity stays non-zero for several frames after
+        // releasing keys (friction braking), which would trigger the bob while "standing still".
+        bool hasInput = player.Input != null && player.Input.MoveInput.magnitude > 0.1f;
+
+        bool shouldBob = hasInput
+                      && player.IsGrounded
+                      && state != Player.MovementState.WallRun
+                      && state != Player.MovementState.Climb
+                      && state != Player.MovementState.Hang;
+
+        if (!shouldBob)
+        {
+            bobTimer  = 0f;
+            bobOffset = Vector3.Lerp(bobOffset, Vector3.zero, Time.deltaTime * 10f);
+            return;
+        }
+
+        bool crouched = state == Player.MovementState.Crouch || state == Player.MovementState.Prone;
+        float freq  = crouched ? crouchBobFreq  : walkBobFreq;
+        float amplY = crouched ? crouchBobAmplY : walkBobAmplY;
+        float amplX = crouched ? crouchBobAmplX : walkBobAmplX;
+
+        bobTimer += Time.deltaTime * freq;
+        bobOffset = new Vector3(
+            Mathf.Sin(bobTimer)        * amplX,
+            Mathf.Abs(Mathf.Sin(bobTimer * 2f)) * amplY,
+            0f);
+    }
+
+    private void UpdateWallTilt()
+    {
+        float target = player.currentState == Player.MovementState.WallRun
+            ? (pm.wallRight ? wallTiltAngle : -wallTiltAngle)
+            : 0f;
+        currentTilt = Mathf.Lerp(currentTilt, target, Time.deltaTime * wallTiltSpeed);
     }
 
     // Event handler for player state changes
     private void HandlePlayerStateChanged(Player.MovementState newState)
     {
         if (!view.IsMine) return;
-        currentCameraOffset = newState == Player.MovementState.Prone
-            ? proneCameraOffset
-            : normalCameraOffset;
+        currentCameraOffset = newState switch
+        {
+            Player.MovementState.Prone  => proneCameraOffset,
+            Player.MovementState.Crouch => crouchCameraOffset,
+            _                           => normalCameraOffset,
+        };
     }
 
     public void ChangeFov(float endValue)

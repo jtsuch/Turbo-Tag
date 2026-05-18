@@ -1,4 +1,3 @@
-using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
@@ -18,17 +17,9 @@ public class GravityWell : TrapAbility
     [Header("GravityWell Settings")]
     [SerializeField] private float cooldown = 20f;
 
-    private PhotonView view;
-
     protected override void Awake()
     {
         base.Awake();
         cooldownTime = cooldown;
-    }
-
-    private void Start()
-    {
-        view          = GetComponent<PhotonView>();
-        isLocalPlayer = view.IsMine;
     }
 }

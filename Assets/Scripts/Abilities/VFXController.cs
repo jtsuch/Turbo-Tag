@@ -5,7 +5,11 @@ public class VFXController : MonoBehaviour
     [Tooltip("If true, forces all particle systems to Local simulation space so transform scale works")]
     public bool forceLocalSimulation = true;
 
+    [Tooltip("Hard upper bound on VFX lifetime (seconds). Prevents looping particle systems from leaking forever.")]
+    [SerializeField] private float maxLifetime = 10f;
+
     private ParticleSystem[] systems;
+    private float elapsed;
 
     private void Awake()
     {
@@ -23,7 +27,14 @@ public class VFXController : MonoBehaviour
 
     private void Update()
     {
-        // Check if all particle systems have finished playing
+        elapsed += Time.deltaTime;
+
+        if (elapsed >= maxLifetime)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         bool allStopped = true;
         foreach (var ps in systems)
         {

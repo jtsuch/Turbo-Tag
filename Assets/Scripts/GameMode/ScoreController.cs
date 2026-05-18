@@ -25,10 +25,11 @@ public class ScoreController : MonoBehaviour
     public float MaxTotalTime { get => maxTotalTime; set => maxTotalTime = value; }
 
     // actorNumber → accumulated hide time
-    private readonly Dictionary<int, float> hideTimes  = new();
-    private readonly HashSet<int>           frozen      = new();
+    private readonly Dictionary<int, float> hideTimes   = new();
+    private readonly HashSet<int>           frozen       = new();
     private readonly HashSet<int>           activeHiders = new();
-    private bool isRunning = false;
+    private bool isRunning       = false;
+    private bool scoreLimitFired = false; // Guard: fire OnScoreLimitReached at most once per round
 
     // -------------------------------------------------------------------------
     // Public control API
@@ -39,6 +40,7 @@ public class ScoreController : MonoBehaviour
     {
         frozen.Clear();
         activeHiders.Clear();
+        scoreLimitFired = false;
         foreach (int actor in hiderActorNumbers)
         {
             activeHiders.Add(actor);
@@ -99,7 +101,11 @@ public class ScoreController : MonoBehaviour
             {
                 hideTimes[actor] = maxTotalTime;
                 frozen.Add(actor);
-                OnScoreLimitReached?.Invoke();
+                if (!scoreLimitFired)
+                {
+                    scoreLimitFired = true;
+                    OnScoreLimitReached?.Invoke();
+                }
             }
         }
     }

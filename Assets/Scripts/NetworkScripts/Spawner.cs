@@ -1,7 +1,6 @@
 using UnityEngine;
 using Photon.Pun;
 using System.Collections;
-using System.Linq;
 
 /// <summary>
 /// Spawns the local player prefab when a scene loads and initialises the HUD and pause menu
@@ -11,10 +10,25 @@ using System.Linq;
 /// </summary>
 public class Spawner : MonoBehaviour
 {
+    private static Spawner _instance;
+    public static Spawner Instance
+    {
+        get
+        {
+            if (_instance == null) _instance = FindFirstObjectByType<Spawner>();
+            return _instance;
+        }
+    }
+
     // Drag the scene's PlayerHUD and PauseMenu objects into these fields in the Inspector.
     // If left empty, Spawner will locate them in the scene automatically via their singletons.
     [SerializeField] private GameObject playerHUD;
     [SerializeField] private GameObject pauseMenu;
+
+    private void Awake()
+    {
+        _instance = this;
+    }
 
     void Start()
     {
@@ -41,29 +55,13 @@ public class Spawner : MonoBehaviour
             return;
         }
 
-        var props = room.CustomProperties;
-        int[] hunters = new int[0];
-
-        if (props != null && props.TryGetValue("Hunters", out object rawHunters))
-        {
-            if (rawHunters is int[] intHunters)
-                hunters = intHunters;
-            else if (rawHunters is object[] objArr)
-                hunters = objArr.OfType<int>().ToArray();
-            else
-                Debug.LogWarning($"[Spawner] Unexpected Hunters type: {rawHunters?.GetType()}");
-        }
-        else
-        {
-            Debug.LogWarning("[Spawner] No 'Hunters' property found. Defaulting to non-hunter.");
-        }
-
-        bool isHunter = hunters.Contains(PhotonNetwork.LocalPlayer.ActorNumber);
-
-        // Hunters spawn in a tight circle (radius 1); hiders spread out wider (radius 5)
-        Vector3 spawnPoint = isHunter
-            ? GetCirclePosition(transform.position, 1f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount)
-            : GetCirclePosition(transform.position, 5f, PhotonNetwork.LocalPlayer.ActorNumber - 1, PhotonNetwork.CurrentRoom.PlayerCount);
+        // Spread all players evenly in a circle at game start.
+        // Roles (hunter/hider) are assigned by GameModeManager RPCs after spawning,
+        // so we cannot reliably differentiate spawn positions by role here.
+        Vector3 spawnPoint = GetCirclePosition(
+            transform.position, 5f,
+            PhotonNetwork.LocalPlayer.ActorNumber - 1,
+            PhotonNetwork.CurrentRoom.PlayerCount);
 
         GameObject spawned = PhotonNetwork.Instantiate("Player/ThePlayer", spawnPoint, Quaternion.identity);
         if (spawned == null)
@@ -71,8 +69,6 @@ public class Spawner : MonoBehaviour
             Debug.LogError("[Spawner] PhotonNetwork.Instantiate returned null.");
             return;
         }
-
-        Debug.Log($"[Spawner] Spawned player. Name={spawned.name}");
     }
 
     private void InitializeHUD()
@@ -100,6 +96,12 @@ public class Spawner : MonoBehaviour
             return;
         }
         pm.Initialize();
+    }
+
+    public Vector3 GetHunterSpawnPosition()
+    {
+        int actorNum = PhotonNetwork.LocalPlayer.ActorNumber;
+        return GetCirclePosition(transform.position, 1f, actorNum - 1, PhotonNetwork.CurrentRoom.PlayerCount);
     }
 
     // Distributes players evenly around a circle. index is 0-based (ActorNumber - 1).

@@ -4,9 +4,6 @@ using Photon.Pun;
 using UnityEngine.UI;
 using System.Linq;
 using System.Collections;
-using System.Data;
-using System;
-using System.Runtime.CompilerServices;
 
 public class LobbyManager : MonoBehaviourPunCallbacks
 {
@@ -80,12 +77,13 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         StartCoroutine(BriefPauseToUploadData());
     }
 
+    private static readonly WaitForSeconds WaitHalfSecond = new(0.5f);
+
     private IEnumerator BriefPauseToUploadData()
     {
-        if(PhotonNetwork.IsMasterClient)
+        if (PhotonNetwork.IsMasterClient)
         {
-            // Small delay to allow Lproperties to be sent
-            yield return new WaitForSeconds(0.5f);
+            yield return WaitHalfSecond;
             photonView.RPC("EnterNextPhase", RpcTarget.All);
         }
     }
@@ -106,6 +104,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
     public void OnToggleChanged(Toggle changedToggle)
     {
+        if (!changedToggle.isOn) return;
         activeMapToggle = changedToggle;
         mapText.text = "Map: " + changedToggle.GetComponent<MapToggle>().mapName;
     }
@@ -158,7 +157,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         if (players.Count == 1) return; // No need to assign hunters if only one player
 
         // Shuffle them
-        players = players.OrderBy(x => UnityEngine.Random.value).ToList();
+        players = players.OrderBy(x => Random.value).ToList();
         Debug.Log("Players again: " + players);
 
         // Pick the hunters

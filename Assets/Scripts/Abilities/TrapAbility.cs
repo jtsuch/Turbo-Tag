@@ -10,12 +10,16 @@ using UnityEngine;
 /// Attach to: ThePlayer prefab — requires a cameraHolder reference and a hologramMaterial in
 /// the Inspector, plus a matching prefab at Resources/Object/[abilityName].
 /// </summary>
+[RequireComponent(typeof(PhotonView))]
 public abstract class TrapAbility : Ability
 {
+    protected PhotonView view;
+
     protected override void Awake()
     {
         base.Awake();
         abilityType = AbilityType.Trap;
+        view = GetComponent<PhotonView>();
     }
 
     // ─── Inspector ────────────────────────────────────────────────────────────
@@ -42,12 +46,11 @@ public abstract class TrapAbility : Ability
     private Vector3 targetPosition;
     private Quaternion targetRotation;
     private float lastUseTime;
-    protected bool isLocalPlayer = false;
     public override bool IsAwaitingAction => isPlacementMode;
 
     public override void TryActivate(AbilityInputEvent inputEvent)
     {
-        if (!isLocalPlayer) return;
+        if (view == null || !view.IsMine) return;
         if (inputEvent != AbilityInputEvent.Down) return;
 
         if (!isPlacementMode)
@@ -57,11 +60,9 @@ public abstract class TrapAbility : Ability
         }
         else
         {
-            // X pressed again while hologram is out = cancel
+            // X pressed again while hologram is out = cancel (no cooldown penalty)
             CancelPlacement();
         }
-
-        lastUseTime = Time.time;
     }
 
     public override void OnActionConfirm()
@@ -99,7 +100,7 @@ public abstract class TrapAbility : Ability
 
     private void Update()
     {
-        if (isLocalPlayer && isPlacementMode)
+        if (view != null && view.IsMine && isPlacementMode)
         {
             UpdateHologramPosition();
         }
@@ -279,25 +280,22 @@ public abstract class TrapAbility : Ability
 
     protected void AttemptPlacement()
     {
-        if (canPlace)
-        {
-            // Place the actual object
-            GameObject placedObject = PhotonNetwork.Instantiate("Object/"+abilityName, targetPosition, targetRotation);
-            
-            // Destroy hologram and exit placement mode
-            Destroy(hologramObject);
-            isPlacementMode = false;
-            hologramObject = null;
-        }
-        // If can't place, stay in placement mode (don't change states)
+        if (!canPlace) return;
+
+        PhotonNetwork.Instantiate("Object/" + abilityName, targetPosition, targetRotation);
+
+        PhotonNetwork.Destroy(hologramObject);
+        hologramObject  = null;
+        isPlacementMode = false;
+        lastUseTime     = Time.time; // Cooldown starts only after a successful placement
     }
 
     private void OnDisable()
     {
-        // Clean up if ability is disabled while in placement mode
         if (hologramObject != null)
         {
-            Destroy(hologramObject);
+            PhotonNetwork.Destroy(hologramObject);
+            hologramObject  = null;
             isPlacementMode = false;
         }
     }

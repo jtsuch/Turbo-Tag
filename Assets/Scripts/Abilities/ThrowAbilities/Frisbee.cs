@@ -1,61 +1,25 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
-public class Frisbee : MonoBehaviour
+/// <summary>
+/// A chargeable frisbee throw. Inherits the full aim → charge → release flow from ThrowAbility.
+/// Tune force, charge time, and cooldown in the Inspector.
+/// Requires a Frisbee prefab at Resources/Object/Frisbee with a Rigidbody and PhotonView.
+/// </summary>
+public class Frisbee : ThrowAbility
 {
+    [Header("Frisbee Settings")]
+    [TunableParam("Min Force",    5f,  60f)] [SerializeField] private float minForce      = 12f;
+    [TunableParam("Max Force",   20f, 120f)] [SerializeField] private float maxForce      = 50f;
+    [TunableParam("Charge Time", 0.1f, 2f)] [SerializeField] private float chargeSeconds = 0.8f;
+    [TunableParam("Cooldown",    0.5f, 15f)] [SerializeField] private float cooldown      = 5f;
 
-
-    [Header("References")]
-    public Transform playerCam;
-    public Transform throwPoint;
-    public GameObject disc;
-    public JimmyMove pm;
-
-    [Header("Throwing")]
-    public float throwForce;
-
-    [Header("Cooldown")]
-    public float discCd;
-/*
-    void Update()
+    protected override void Awake()
     {
-        if (UIController.GameIsPaused) return;
-        if (discCdTimer > 0)
-            discCdTimer -= Time.deltaTime;
-        else if (pm != null && Input.GetKeyDown(pm.discKey))
-            Toss();
+        base.Awake();
+        abilityName   = "Frisbee";
+        cooldownTime  = cooldown;
+        minThrowForce = minForce;
+        maxThrowForce = maxForce;
+        chargeTime    = chargeSeconds;
     }
-
-    void Toss()
-    {
-        discCdTimer = discCd;
-
-        // Correct the rotation of the disc
-        Quaternion newRotation = Quaternion.Euler(playerCam.eulerAngles.x-90, playerCam.eulerAngles.y, playerCam.eulerAngles.z);
-
-        // instantiate object to throw
-        GameObject discObj = Instantiate(disc, throwPoint.position, newRotation);
-
-        // get rigidbody component
-        Rigidbody projectileRb = discObj.GetComponent<Rigidbody>();
-
-        // calculate direction
-        //Vector3 forceDirection = cam.transform.forward;
-
-        //RaycastHit hit;
-
-        //if (Physics.Raycast(cam.position, cam.forward, out hit, 500f))
-        //{
-        //    forceDirection = (hit.point - attackPoint.position).normalized;
-        //}
-
-        // add force
-        //Vector3 forceToAdd = forceDirection * throwForce + transform.up * throwUpwardForce;
-        Vector3 forceToAdd = playerCam.forward * throwForce + transform.up * 1;
-
-        projectileRb.AddForce(forceToAdd, ForceMode.Impulse);
-
-    }
-    */
 }

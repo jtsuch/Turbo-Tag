@@ -52,39 +52,39 @@ public class InputHandler : MonoBehaviourPunCallbacks
         }
 
         // Load saved keybindings from PlayerPrefs; defaults are used on first run
-        string actionKey = PlayerPrefs.GetString("Keybind_Action", KeyCode.Mouse0.ToString());
-        string jumpKey = PlayerPrefs.GetString("Keybind_Jump", KeyCode.Space.ToString());
-        string sprintKey = PlayerPrefs.GetString("Keybind_Sprint", KeyCode.LeftShift.ToString());
-        string crouchKey = PlayerPrefs.GetString("Keybind_Crouch", KeyCode.LeftControl.ToString());
-        string proneKey = PlayerPrefs.GetString("Keybind_Prone", KeyCode.C.ToString());
-        string pauseKey = PlayerPrefs.GetString("Keybind_Pause", KeyCode.Escape.ToString());
-        string grabKey = PlayerPrefs.GetString("Keybind_Grab", KeyCode.F.ToString());
-        string abilityZero = PlayerPrefs.GetString("Keybind_Ability0", KeyCode.Mouse1.ToString());
-        string abilityOne = PlayerPrefs.GetString("Keybind_Ability1", KeyCode.E.ToString());
-        string abilityTwo = PlayerPrefs.GetString("Keybind_Ability2", KeyCode.Q.ToString());
-        string abilityThree = PlayerPrefs.GetString("Keybind_Ability3", KeyCode.X.ToString());
+        string actionKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ACTION,   KeyCode.Mouse0.ToString());
+        string jumpKey    = PlayerPrefs.GetString(NetworkKeys.KEYBIND_JUMP,     KeyCode.Space.ToString());
+        string sprintKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_SPRINT,   KeyCode.LeftShift.ToString());
+        string crouchKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_CROUCH,   KeyCode.LeftControl.ToString());
+        string proneKey   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_PRONE,    KeyCode.C.ToString());
+        string pauseKey   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_PAUSE,    KeyCode.Escape.ToString());
+        string grabKey    = PlayerPrefs.GetString(NetworkKeys.KEYBIND_GRAB,     KeyCode.F.ToString());
+        string abilityZero  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_0, KeyCode.Mouse1.ToString());
+        string abilityOne   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_1, KeyCode.E.ToString());
+        string abilityTwo   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_2, KeyCode.Q.ToString());
+        string abilityThree = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_3, KeyCode.X.ToString());
 
         // Cache parsed keycodes for ability slots so we can assign them later when ability names arrive
-        abilitySlotKey0 = (KeyCode)System.Enum.Parse(typeof(KeyCode), abilityZero);
-        abilitySlotKey1 = (KeyCode)System.Enum.Parse(typeof(KeyCode), abilityOne);
-        abilitySlotKey2 = (KeyCode)System.Enum.Parse(typeof(KeyCode), abilityTwo);
-        abilitySlotKey3 = (KeyCode)System.Enum.Parse(typeof(KeyCode), abilityThree);
+        abilitySlotKey0 = ParseKey(abilityZero,  KeyCode.Mouse1);
+        abilitySlotKey1 = ParseKey(abilityOne,   KeyCode.E);
+        abilitySlotKey2 = ParseKey(abilityTwo,   KeyCode.Q);
+        abilitySlotKey3 = ParseKey(abilityThree, KeyCode.X);
 
-        string abilityOneName = GetAbilityName("BasicAbility");
-        string abilityTwoName = GetAbilityName("QuickAbility");
-        string abilityThreeName = GetAbilityName("ThrowAbility");
-        string abilityFourName = GetAbilityName("TrapAbility");
+        string abilityOneName   = GetAbilityName(NetworkKeys.ABILITY_BASIC);
+        string abilityTwoName   = GetAbilityName(NetworkKeys.ABILITY_QUICK);
+        string abilityThreeName = GetAbilityName(NetworkKeys.ABILITY_THROW);
+        string abilityFourName  = GetAbilityName(NetworkKeys.ABILITY_TRAP);
 
         // Build the master keybinding dictionary from the loaded/default values
         keybindings = new()
         {
-            {"Action", (KeyCode)System.Enum.Parse(typeof(KeyCode), actionKey)},
-            {"Jump", (KeyCode)System.Enum.Parse(typeof(KeyCode), jumpKey)},
-            {"Sprint", (KeyCode)System.Enum.Parse(typeof(KeyCode), sprintKey)},
-            {"Crouch", (KeyCode)System.Enum.Parse(typeof(KeyCode), crouchKey)},
-            {"Prone", (KeyCode)System.Enum.Parse(typeof(KeyCode), proneKey)},
-            {"Pause", (KeyCode)System.Enum.Parse(typeof(KeyCode), pauseKey)},
-            {"Grab", (KeyCode)System.Enum.Parse(typeof(KeyCode), grabKey)},
+            {"Action", ParseKey(actionKey,  KeyCode.Mouse0)},
+            {"Jump",   ParseKey(jumpKey,    KeyCode.Space)},
+            {"Sprint", ParseKey(sprintKey,  KeyCode.LeftShift)},
+            {"Crouch", ParseKey(crouchKey,  KeyCode.LeftControl)},
+            {"Prone",  ParseKey(proneKey,   KeyCode.C)},
+            {"Pause",  ParseKey(pauseKey,   KeyCode.Escape)},
+            {"Grab",   ParseKey(grabKey,    KeyCode.F)},
         };
 
         Debug.Log("Ability names at start: " + abilityOneName + ", " + abilityTwoName + ", " + abilityThreeName + ", " + abilityFourName);
@@ -107,10 +107,10 @@ public class InputHandler : MonoBehaviourPunCallbacks
         if (!targetPlayer.IsLocal) return;
 
         // For each ability slot, if the property arrived, add/update keybinding
-        TryApplyAbilityProperty("BasicAbility", abilitySlotKey0);
-        TryApplyAbilityProperty("QuickAbility", abilitySlotKey1);
-        TryApplyAbilityProperty("ThrowAbility", abilitySlotKey2);
-        TryApplyAbilityProperty("TrapAbility", abilitySlotKey3);
+        TryApplyAbilityProperty(NetworkKeys.ABILITY_BASIC, abilitySlotKey0);
+        TryApplyAbilityProperty(NetworkKeys.ABILITY_QUICK, abilitySlotKey1);
+        TryApplyAbilityProperty(NetworkKeys.ABILITY_THROW, abilitySlotKey2);
+        TryApplyAbilityProperty(NetworkKeys.ABILITY_TRAP,  abilitySlotKey3);
     }
 
     private void TryApplyAbilityProperty(string propName, KeyCode slotKey)
@@ -230,6 +230,10 @@ public class InputHandler : MonoBehaviourPunCallbacks
     // Safe lookup — returns KeyCode.None if the action has no binding
     private KeyCode Key(string action) =>
         keybindings.TryGetValue(action, out KeyCode kc) ? kc : KeyCode.None;
+
+    // Safe KeyCode parse — returns fallback instead of throwing on corrupted PlayerPrefs values
+    private static KeyCode ParseKey(string str, KeyCode fallback = KeyCode.None) =>
+        Enum.TryParse(str, out KeyCode result) ? result : fallback;
 
     // Core bindings are handled in Update directly; all other keys belong to abilities
     private bool IsCoreBinding(string name)

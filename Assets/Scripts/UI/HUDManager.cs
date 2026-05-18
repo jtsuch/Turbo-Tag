@@ -32,6 +32,14 @@ public class HUDManager : MonoBehaviour
     public TextMeshProUGUI fpsText;
     public TextMeshProUGUI otherText;
 
+    [Header("Role Indicator")]
+    [Tooltip("TextMeshProUGUI that shows 'HUNTER' or 'HIDER'. Create a TMP text element on your HUD canvas and assign it here.")]
+    public TextMeshProUGUI roleText;
+
+    [Header("Caught / Score")]
+    public TextMeshProUGUI caughtText;
+    public TextMeshProUGUI totalTimeText;
+
     [Header("Ability References")]
     public GameObject abilityList;
     public GameObject timer;
@@ -40,6 +48,8 @@ public class HUDManager : MonoBehaviour
     private void Start()
     {
         timer.SetActive(false);
+        if (caughtText   != null) caughtText.gameObject.SetActive(false);
+        if (totalTimeText != null) totalTimeText.gameObject.SetActive(false);
         // Don't call Initialize here — Player.Instance isn't ready yet
     }
 
@@ -53,7 +63,6 @@ public class HUDManager : MonoBehaviour
             Debug.LogWarning("[HUDManager] Player.Instance is null during Initialize.");
     }
 
-    // Update is called once per frame
     void Update()
     {
         //fpsText.text = Mathf.RoundToInt(1f / Time.unscaledDeltaTime).ToString();
@@ -61,6 +70,22 @@ public class HUDManager : MonoBehaviour
         {
             UpdateDebugText();
             UpdateBasicAbilityHUD();
+            UpdateRoleText();
+        }
+    }
+
+    private void UpdateRoleText()
+    {
+        if (roleText == null) return;
+        if (Player.Instance.isHunter)
+        {
+            roleText.text  = "HUNTER";
+            roleText.color = new Color(1f, 0.25f, 0.2f); // red
+        }
+        else
+        {
+            roleText.text  = "HIDER";
+            roleText.color = new Color(0.3f, 0.85f, 1f); // cyan-blue
         }
     }
 
@@ -111,7 +136,29 @@ public class HUDManager : MonoBehaviour
         }
     }
 
-    private void UpdateDebugText() 
+    public void ShowCaught(float hideTime)
+    {
+        if (caughtText != null)
+        {
+            caughtText.text = "Caught!";
+            caughtText.gameObject.SetActive(true);
+        }
+
+        if (totalTimeText != null)
+        {
+            int total = Mathf.FloorToInt(hideTime);
+            totalTimeText.text = $"Total: {total / 60:D2}:{total % 60:D2}";
+            totalTimeText.gameObject.SetActive(true);
+        }
+    }
+
+    public void HideCaught()
+    {
+        if (caughtText != null)
+            caughtText.gameObject.SetActive(false);
+    }
+
+    private void UpdateDebugText()
     {
         otherText.text = 
             "Speed: " + Player.Instance.rb.linearVelocity.magnitude.ToString("F2") + "\n" + 
