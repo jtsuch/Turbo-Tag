@@ -1,59 +1,43 @@
+using System;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// A single parameter row inside an AbilityCheatRow's expanded panel.
-/// Drives a float field on a target MonoBehaviour via reflection — no switch statements needed.
-/// Attach to: SliderRow prefab — expected layout: [Label | Slider | InputField] in a Horizontal Layout Group.
+/// One tunable-parameter row inside an AbilityCheatRow's expanded panel. Drives a float value
+/// through a getter and setter: an ability's [TunableParam] field (by reflection) or a value the
+/// ability passes to its spawned object (ObjectTunables), so new parameters need no UI code.
+/// Attach to: SliderRow prefab — [Label | Slider | InputField].
 /// </summary>
 public class SliderRow : MonoBehaviour
 {
     [Header("UI References")]
-    public TMP_Text       paramLabel;
-    public Slider         paramSlider;
-    public TMP_InputField paramInput;
+    [SerializeField] private TMP_Text       paramLabel;
+    [SerializeField] private Slider         paramSlider;
+    [SerializeField] private TMP_InputField paramInput;
 
-    private object    target;
-    private FieldInfo field;
-    private bool      syncing;
+    private Func<float>     getter;
+    private SliderInputPair pair;
 
-    /// <param name="targetObj">The MonoBehaviour that owns the field (e.g. a Dash component).</param>
-    /// <param name="fieldInfo">Reflected FieldInfo for the float field to drive.</param>
-    public void Initialize(string displayName, float min, float max, float currentValue,
-                           object targetObj, FieldInfo fieldInfo)
+    /// <summary>Drives a [TunableParam] float field on <paramref name="target"/>.</summary>
+    public void Initialize(TunableParamAttribute attr, object target, FieldInfo field) =>
+        Initialize(attr, () => (float)field.GetValue(target), v => field.SetValue(target, v));
+
+    /// <param name="attr">Label and ranges: the slider covers Min–Max, the text box accepts anything from HardMin up.</param>
+    public void Initialize(TunableParamAttribute attr, Func<float> get, Action<float> set)
     {
-        target = targetObj;
-        field  = fieldInfo;
+        getter = get;
 
-        paramLabel.text      = displayName;
-        paramSlider.minValue = min;
-        paramSlider.maxValue = max;
-        paramSlider.value    = currentValue;
-        paramInput.text      = currentValue.ToString("F2");
+        paramLabel.text          = attr.DisplayName;
+        paramSlider.minValue     = attr.Min;
+        paramSlider.maxValue     = attr.Max;
+        paramSlider.wholeNumbers = false;
 
-        paramSlider.onValueChanged.AddListener(OnSlider);
-        paramInput.onEndEdit.AddListener(OnInput);
+        pair = new SliderInputPair(paramSlider, paramInput, "F2", get(), set,
+                                   inputMin: attr.HardMin, inputMax: float.MaxValue);
     }
 
-    private void OnSlider(float value)
-    {
-        if (syncing) return;
-        syncing = true;
-        paramInput.text = value.ToString("F2");
-        field?.SetValue(target, value);
-        syncing = false;
-    }
-
-    private void OnInput(string text)
-    {
-        if (syncing || !float.TryParse(text, out float v)) return;
-        syncing = true;
-        v = Mathf.Clamp(v, paramSlider.minValue, paramSlider.maxValue);
-        paramSlider.value = v;
-        paramInput.text   = v.ToString("F2");
-        field?.SetValue(target, v);
-        syncing = false;
-    }
+    /// <summary>Re-reads the value (e.g. after cheats reset it).</summary>
+    public void Refresh() => pair?.SetWithoutNotify(getter());
 }

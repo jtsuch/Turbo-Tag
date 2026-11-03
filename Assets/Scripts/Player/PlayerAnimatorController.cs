@@ -1,171 +1,177 @@
-using UnityEngine;
-using Photon.Pun;
 using System.Collections.Generic;
+using Photon.Pun;
+using UnityEngine;
 
 /// <summary>
-/// Drives the player Animator every frame and syncs all relevant parameters to remote clients
-/// via OnPhotonSerializeView. The owner samples real state each Update; remote clients receive
-/// the packed values and apply them identically.
+/// Drives the player Animator from Player/PlayerMovement state. The owner samples real values;
+/// remote copies receive speed, look angle and grounded state via OnPhotonSerializeView, while
+/// the movement state itself comes from Player's own sync.
 ///
-/// Animator parameter contract (set these up in the Animator Controller):
+/// Animator contract (names are case-sensitive):
 ///   Floats  : MovementSpeed (-1..1), VerticalDirectionLooking (0..1)
-///   Bools   : OnGround, IsWallRunning, IsClimbing, IsProned, IsCrouching, IsHanging
+///   Bools   : onGround, Prone, IsWallRunning, IsClimbing, IsCrouching, IsHanging
 ///   Triggers: Jump, Land
+/// Parameters missing from the controller are skipped silently.
 ///
-/// Layer weight contract (layers must match these indices):
-///   0 Base Layer     — always weight 1 (locomotion)
-///   1 RightArm       — always weight 1 (gun-arm pose, masked)
-///   2 Wall Run Layer — blends to 1 only while wall-running
-///   3 Climb Layer    — blends to 1 only while climbing
-///   4 HeadLayer      — always weight 1 (vertical aim, masked)
+/// Layers: 0 Base, 1 Right Arm (blended in only while grappling: the gun is out), 2 Wall Run (blended),
+/// 3 Climb (blended), 4 Head (always on).
+///
+/// Flappy: while the player glides with Flappy, the "Flappy Layer" (both arms) plays the Flappy clip.
+///
+/// The gun: hands are empty except while grappling. Both pistols (the first-person one under the camera
+/// and the third-person one in the right hand) are shown only then, on every client.
 ///
 /// MovementSpeed convention:
-///   Wall-run  : -1 = left wall,  +1 = right wall
-///   Climb     : -1 = descending, +1 = ascending
-///   Locomotion: 0 = idle, 0.5 = walk/crouch-move, 1 = sprint/slide
+///   Wall-run: -1 left wall / +1 right wall · Climb: -1 down / +1 up · Ground: 0 idle, 0.5 walk, 1 sprint/slide
 /// </summary>
-[RequireComponent(typeof(JimmyMove))]
-[RequireComponent(typeof(Rigidbody))]
-public class PlayerAnimatorController : MonoBehaviour, IPunObservable
+[RequireComponent(typeof(PlayerMovement))]
+public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 {
-    // ─── Inspector References ─────────────────────────────────────────────────
     [Header("References")]
-    public Animator   animator;
-    public Player     player;
-    public JimmyMove  pm;
-    public Rigidbody  rb;
-    public Transform  cameraHolder;
-    public PhotonView view;
+    [SerializeField] private Animator       animator;
+    [SerializeField] private Player         player;
+    [SerializeField] private PlayerMovement pm;
+    [SerializeField] private Rigidbody      rb;
+    [SerializeField] private Transform      cameraHolder;
+
+    [Header("Gun (out only while grappling)")]
+    [Tooltip("First-person pistol under the camera. Found by name if empty.")]
+    [SerializeField] private GameObject firstPersonGun;
+    [Tooltip("Third-person pistol in the right hand. Found by name if empty.")]
+    [SerializeField] private GameObject thirdPersonGun;
+    [Tooltip("How fast the aiming arm blends in and out (weight per second).")]
+    [SerializeField] private float gunBlendSpeed = 8f;
+
+    [Header("Head tilt while prone")]
+    [Tooltip("Constant lift of the head while prone (crawling or sliding), so a player looking ahead faces ahead (degrees).")]
+    [SerializeField] private float proneHeadLift = 70f;
+    [Tooltip("The head bone. Found by name ('Head' under the Armature) if empty.")]
+    [SerializeField] private Transform headBone;
+    [Tooltip("Most the head tilts up while sliding (degrees). It follows how far the player looks up.")]
+    [SerializeField] private float maxSlideHeadTilt = 50f;
+    [Tooltip("How fast the head tilt follows (degrees per second).")]
+    [SerializeField] private float headTiltSpeed = 240f;
 
     // ─── Layer Indices ────────────────────────────────────────────────────────
-    private const int L_ARM     = 1;
-    private const int L_WALLRUN = 2;
-    private const int L_CLIMB   = 3;
-    private const int L_HEAD    = 4;
+    private const int LayerArm     = 1;
+    private const int LayerWallRun = 2;
+    private const int LayerClimb   = 3;
+    private const int LayerHead    = 4;
 
-    // ─── Animator Parameter Hashes ────────────────────────────────────────────
+    // ─── Parameter Hashes ─────────────────────────────────────────────────────
     private static readonly int H_MoveSpeed   = Animator.StringToHash("MovementSpeed");
     private static readonly int H_VertLook    = Animator.StringToHash("VerticalDirectionLooking");
-    private static readonly int H_OnGround    = Animator.StringToHash("onGround");    // lowercase 'o'
+    private static readonly int H_OnGround    = Animator.StringToHash("onGround");
+    private static readonly int H_Prone       = Animator.StringToHash("Prone");
     private static readonly int H_WallRunning = Animator.StringToHash("IsWallRunning");
     private static readonly int H_Climbing    = Animator.StringToHash("IsClimbing");
-    private static readonly int H_Proned      = Animator.StringToHash("Prone");       // was "IsProned"
     private static readonly int H_Crouching   = Animator.StringToHash("IsCrouching");
     private static readonly int H_Hanging     = Animator.StringToHash("IsHanging");
     private static readonly int H_Jump        = Animator.StringToHash("Jump");
     private static readonly int H_Land        = Animator.StringToHash("Land");
 
-    // ─── Valid Parameter Cache ────────────────────────────────────────────────
-    // Populated from the Animator Controller's actual parameters at Start.
-    // Setters are no-ops for any hash not in this set, preventing per-frame
-    // "Parameter does not exist" spam when the Animator Controller is incomplete.
     private readonly HashSet<int> validHashes = new();
-    private int validLayerCount = 0;
+    private int layerCount;
+    private Ability[] abilities;
+    private float gunWeight;
+    private float headTilt;
 
-    // ─── Synced Parameters ────────────────────────────────────────────────────
-    private float netMovementSpeed;
-    private float netVerticalLook;
-    private bool  netOnGround;
-    private bool  netIsWallRunning;
-    private bool  netIsClimbing;
-    private bool  netIsProned;
-    private bool  netIsCrouching;
-    private bool  netIsHanging;
+    // Flappy (gliding is synced; the layer is found by name)
+    private const string FlappyLayerName = "Flappy Layer";
+    private Flappy flappy;
+    private int    flappyLayer = -1;
+    private bool   gliding;
+    private float  flappyWeight;
 
-    // ─── Remote Scale Tracking ────────────────────────────────────────────────
-    private bool _prevIsProned;
-    private bool _prevIsCrouching;
+    // ─── Synced values ────────────────────────────────────────────────────────
+    private float movementSpeed;
+    private float verticalLook;
+    private bool  onGround;
 
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
-        if (pm       == null) pm       = GetComponent<JimmyMove>();
-        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (player   == null) player   = GetComponent<Player>();
+        if (pm       == null) pm       = GetComponent<PlayerMovement>();
         if (rb       == null) rb       = GetComponent<Rigidbody>();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+
+        // The Rigidbody moves the player; animation must never move the root too (the two fighting made
+        // players vibrate on every screen). The model's imported Animator may have root motion on.
+        if (animator != null) animator.applyRootMotion = false;
+
+        abilities = GetComponents<Ability>();
+        flappy   = GetComponent<Flappy>();
+        if (firstPersonGun == null && cameraHolder != null) firstPersonGun = FindChild(cameraHolder, "Pistol");
+        if (thirdPersonGun == null)
+        {
+            var armature = transform.Find("Armature");
+            if (armature != null) thirdPersonGun = FindChild(armature, "Pistol");
+        }
+
+        if (headBone == null)
+        {
+            var armature = transform.Find("Armature");
+            var head = armature != null ? FindChild(armature, "Head") : null;
+            if (head != null) headBone = head.transform;
+        }
+
+        ShowGun(false);
+    }
+
+    private static GameObject FindChild(Transform root, string name)
+    {
+        foreach (var child in root.GetComponentsInChildren<Transform>(true))
+            if (child.name == name) return child.gameObject;
+        return null;
     }
 
     private void Start()
     {
         CacheAnimatorInfo();
 
-        // Auto-register so PUN2 calls OnPhotonSerializeView without needing Inspector setup.
-        if (view != null && !view.ObservedComponents.Contains(this))
-            view.ObservedComponents.Add(this);
+        if (!photonView.ObservedComponents.Contains(this))
+            photonView.ObservedComponents.Add(this);
 
-        if (player == null) return;
-        player.OnJump += HandleJump;
-        player.OnLand += HandleLand;
+        player.Jumped += HandleJump;
+        player.Landed += HandleLand;
     }
 
     private void OnDestroy()
     {
         if (player == null) return;
-        player.OnJump -= HandleJump;
-        player.OnLand -= HandleLand;
+        player.Jumped -= HandleJump;
+        player.Landed -= HandleLand;
     }
 
     private void CacheAnimatorInfo()
     {
         validHashes.Clear();
-        validLayerCount = 0;
         if (animator == null) return;
-
-        foreach (var param in animator.parameters)
-            validHashes.Add(param.nameHash);
-
-        validLayerCount = animator.layerCount;
+        foreach (var param in animator.parameters) validHashes.Add(param.nameHash);
+        layerCount = animator.layerCount;
+        flappyLayer = animator.GetLayerIndex(FlappyLayerName);
     }
 
     private void Update()
     {
         if (animator == null) return;
-
-        if (view.IsMine)
-            SampleLocalState();
-        else
-            SyncRemoteScale();
-
+        if (photonView.IsMine) SampleLocalState();
         PushToAnimator();
-        UpdateLayerWeights();
     }
 
-    // Drives visual scale on remote clients when their synced stance changes.
-    // The owner calls Player.ApplyScale directly; remote clients mirror it here.
-    private void SyncRemoteScale()
-    {
-        if (player == null) return;
-        if (netIsProned == _prevIsProned && netIsCrouching == _prevIsCrouching) return;
-
-        _prevIsProned    = netIsProned;
-        _prevIsCrouching = netIsCrouching;
-
-        if (netIsProned)
-            player.ApplyScale(0.35f);
-        else if (netIsCrouching)
-            player.ApplyScale(0.7f);
-        else
-            player.ApplyScale(1f);
-    }
-
-    // ─── Local Sampling ───────────────────────────────────────────────────────
+    // ─── Sampling ─────────────────────────────────────────────────────────────
 
     private void SampleLocalState()
     {
-        var   state = player.currentState;
-        float speed = rb.linearVelocity.magnitude;
+        gliding       = flappy != null && flappy.enabled && flappy.IsGliding;
+        onGround      = pm.OnGround;
+        movementSpeed = ComputeMovementSpeed(player.State, rb.linearVelocity.magnitude);
 
-        netOnGround      = pm.onGround;
-        netIsWallRunning = state == Player.MovementState.WallRun;
-        netIsClimbing    = state == Player.MovementState.Climb;
-        netIsProned      = state == Player.MovementState.Prone;
-        netIsCrouching   = state == Player.MovementState.Crouch;
-        netIsHanging     = state == Player.MovementState.Hang;
-        netMovementSpeed = ComputeMovementSpeed(state, speed);
-
-        float raw = cameraHolder.localEulerAngles.x;
-        if (raw > 180f) raw -= 360f;
-        netVerticalLook = Mathf.InverseLerp(90f, -90f, Mathf.Clamp(raw, -90f, 90f));
+        float pitch = cameraHolder.localEulerAngles.x;
+        if (pitch > 180f) pitch -= 360f;
+        verticalLook = Mathf.InverseLerp(90f, -90f, Mathf.Clamp(pitch, -90f, 90f));
     }
 
     private float ComputeMovementSpeed(Player.MovementState state, float speed)
@@ -173,130 +179,145 @@ public class PlayerAnimatorController : MonoBehaviour, IPunObservable
         switch (state)
         {
             case Player.MovementState.WallRun:
-                return pm.wallRight ? 1f : -1f;
+                return pm.WallRight ? 1f : -1f;
 
             case Player.MovementState.Climb:
                 return rb.linearVelocity.y > 0.1f ? 1f : -1f;
 
             case Player.MovementState.Prone:
                 if (speed < 0.3f) return 0f;
-                return speed < player.ProneSpeed + 1f ? 0.5f : 1f;
+                return speed < player.Stats.proneSpeed + 1f ? 0.5f : 1f;
 
             default:
-                // When grounded with no movement input, return idle regardless of residual velocity.
-                // This prevents floor-contact micro-forces from triggering the walk animation.
-                bool hasInput = player.Input != null && player.Input.MoveInput.magnitude > 0.1f;
-                if (pm.onGround && !hasInput) return 0f;
-                if (speed < 0.3f) return 0f;
-                return (player.Input != null && player.Input.Sprint) ? 1f : 0.5f;
+                // Idle when grounded without input, regardless of residual contact velocity
+                bool hasInput = player.Input.MoveInput.magnitude > 0.1f;
+                if ((pm.OnGround && !hasInput) || speed < 0.3f) return 0f;
+                return player.Input.SprintHeld ? 1f : 0.5f;
         }
     }
 
-    // ─── Animator Push ────────────────────────────────────────────────────────
+    // ─── Animator ─────────────────────────────────────────────────────────────
 
     private void PushToAnimator()
     {
-        SafeSetFloat(H_MoveSpeed, netMovementSpeed, 0.08f, Time.deltaTime);
-        SafeSetFloat(H_VertLook,  netVerticalLook,  0.08f, Time.deltaTime);
+        var state = player.State;
 
-        SafeSetBool(H_OnGround,    netOnGround);
-        SafeSetBool(H_WallRunning, netIsWallRunning);
-        SafeSetBool(H_Climbing,    netIsClimbing);
-        SafeSetBool(H_Proned,      netIsProned);
-        SafeSetBool(H_Crouching,   netIsCrouching);
-        SafeSetBool(H_Hanging,     netIsHanging);
-    }
+        SetFloat(H_MoveSpeed, movementSpeed);
+        SetFloat(H_VertLook,  verticalLook);
+        SetBool(H_OnGround,    onGround);
+        SetBool(H_Prone,       state == Player.MovementState.Prone);
+        SetBool(H_WallRunning, state == Player.MovementState.WallRun);
+        SetBool(H_Climbing,    state == Player.MovementState.Climb);
+        SetBool(H_Crouching,   state == Player.MovementState.Crouch);
+        SetBool(H_Hanging,     state == Player.MovementState.Hang);
 
-    private void UpdateLayerWeights()
-    {
-        if (validLayerCount > L_ARM)  animator.SetLayerWeight(L_ARM,  1f);
-        if (validLayerCount > L_HEAD) animator.SetLayerWeight(L_HEAD, 1f);
+        UpdateGun();
+        if (layerCount > LayerArm)  animator.SetLayerWeight(LayerArm,  gunWeight);
+
+        flappyWeight = Mathf.MoveTowards(flappyWeight, gliding ? 1f : 0f, Time.deltaTime * 8f);
+        if (flappyLayer >= 0) animator.SetLayerWeight(flappyLayer, flappyWeight);
+        if (layerCount > LayerHead) animator.SetLayerWeight(LayerHead, 1f);
 
         float blend = Time.deltaTime * 8f;
-        if (validLayerCount > L_WALLRUN)
-            animator.SetLayerWeight(L_WALLRUN,
-                Mathf.MoveTowards(animator.GetLayerWeight(L_WALLRUN), netIsWallRunning ? 1f : 0f, blend));
-        if (validLayerCount > L_CLIMB)
-            animator.SetLayerWeight(L_CLIMB,
-                Mathf.MoveTowards(animator.GetLayerWeight(L_CLIMB), netIsClimbing ? 1f : 0f, blend));
+        if (layerCount > LayerWallRun)
+            animator.SetLayerWeight(LayerWallRun, Mathf.MoveTowards(
+                animator.GetLayerWeight(LayerWallRun), state == Player.MovementState.WallRun ? 1f : 0f, blend));
+        if (layerCount > LayerClimb)
+            animator.SetLayerWeight(LayerClimb, Mathf.MoveTowards(
+                animator.GetLayerWeight(LayerClimb), state == Player.MovementState.Climb ? 1f : 0f, blend));
     }
 
-    // ─── Safe Animator Helpers ────────────────────────────────────────────────
-    // No-ops when the Animator Controller doesn't declare the parameter.
-    // Prevents per-frame "Parameter 'Hash XXXX' does not exist" spam.
+    // ─── Head tilt ────────────────────────────────────────────────────────────
 
-    private void SafeSetFloat(int hash, float value, float damp, float dt)
+    // After the Animator has posed the body. While prone the head is lifted by a constant amount (the prone
+    // pose faces the ground); while sliding it also follows how far the player looks up (only up, capped).
+    // Uses synced values, so every client sees the same tilt.
+    private void LateUpdate()
     {
-        if (validHashes.Contains(hash)) animator.SetFloat(hash, value, damp, dt);
+        if (headBone == null) return;
+
+        // Prone with the "fast" speed value is a slide (see ComputeMovementSpeed)
+        bool  prone   = player.State == Player.MovementState.Prone;
+        bool  sliding = prone && movementSpeed > 0.75f;
+        float lookUp  = Mathf.Clamp((verticalLook - 0.5f) * 180f, 0f, maxSlideHeadTilt);
+        float target  = (prone ? proneHeadLift : 0f) + (sliding ? lookUp : 0f);
+        headTilt = Mathf.MoveTowards(headTilt, target, headTiltSpeed * Time.deltaTime);
+
+        if (headTilt > 0.01f)
+            headBone.rotation = Quaternion.AngleAxis(-headTilt, transform.right) * headBone.rotation;
     }
 
-    private void SafeSetBool(int hash, bool value)
+    // ─── Gun ──────────────────────────────────────────────────────────────────
+
+    // Only an equipped (enabled) ability that uses the grapple gun brings it out; Flappy and others never do
+    private bool IsGrappling()
+    {
+        foreach (var ability in abilities)
+            if (ability != null && ability.enabled && ability.ShowsGrappleGun) return true;
+        return false;
+    }
+
+    // The arm raises as the gun comes out and lowers before it is put away
+    private void UpdateGun()
+    {
+        bool grappling = IsGrappling();
+        gunWeight = Mathf.MoveTowards(gunWeight, grappling ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
+        ShowGun(grappling || gunWeight > 0.4f);
+    }
+
+    private void ShowGun(bool show)
+    {
+        if (firstPersonGun != null && firstPersonGun.activeSelf != show) firstPersonGun.SetActive(show);
+        if (thirdPersonGun != null && thirdPersonGun.activeSelf != show) thirdPersonGun.SetActive(show);
+    }
+
+    private void SetFloat(int hash, float value)
+    {
+        if (validHashes.Contains(hash)) animator.SetFloat(hash, value, 0.08f, Time.deltaTime);
+    }
+
+    private void SetBool(int hash, bool value)
     {
         if (validHashes.Contains(hash)) animator.SetBool(hash, value);
     }
 
-    private void SafeSetTrigger(int hash)
+    private void SetTrigger(int hash)
     {
-        if (validHashes.Contains(hash)) animator.SetTrigger(hash);
+        if (animator != null && validHashes.Contains(hash)) animator.SetTrigger(hash);
     }
 
-    // ─── Events ───────────────────────────────────────────────────────────────
+    // ─── Triggers ─────────────────────────────────────────────────────────────
 
-    private void HandleJump()
-    {
-        if (animator == null) return;
-        SafeSetTrigger(H_Jump);
-        if (view.IsMine)
-            view.RPC(nameof(RPC_AnimTrigger), RpcTarget.Others, "Jump");
-    }
+    private void HandleJump() => FireTrigger(H_Jump);
+    private void HandleLand() => FireTrigger(H_Land);
 
-    private void HandleLand()
+    private void FireTrigger(int hash)
     {
-        if (animator == null) return;
-        SafeSetTrigger(H_Land);
-        if (view.IsMine)
-            view.RPC(nameof(RPC_AnimTrigger), RpcTarget.Others, "Land");
+        SetTrigger(hash);
+        if (photonView.IsMine)
+            photonView.RPC(nameof(RPC_AnimTrigger), RpcTarget.Others, hash);
     }
 
     [PunRPC]
-    private void RPC_AnimTrigger(string triggerName)
-    {
-        if (animator == null) return;
-        int hash = Animator.StringToHash(triggerName);
-        SafeSetTrigger(hash);
-    }
-
-    public void UpdateAnimator() { }
+    private void RPC_AnimTrigger(int hash) => SetTrigger(hash);
 
     // ─── Network Sync ─────────────────────────────────────────────────────────
 
-    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo _)
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
     {
         if (stream.IsWriting)
         {
-            stream.SendNext(netMovementSpeed);
-            stream.SendNext(netVerticalLook);
-            stream.SendNext(netOnGround);
-
-            byte bits = 0;
-            if (netIsWallRunning) bits |= 1;
-            if (netIsClimbing)    bits |= 2;
-            if (netIsProned)      bits |= 4;
-            if (netIsCrouching)   bits |= 8;
-            if (netIsHanging)     bits |= 16;
-            stream.SendNext(bits);
+            stream.SendNext(movementSpeed);
+            stream.SendNext(verticalLook);
+            stream.SendNext(onGround);
+            stream.SendNext(gliding);
         }
         else
         {
-            netMovementSpeed = (float)stream.ReceiveNext();
-            netVerticalLook  = (float)stream.ReceiveNext();
-            netOnGround      = (bool) stream.ReceiveNext();
-            byte bits        = (byte) stream.ReceiveNext();
-            netIsWallRunning = (bits & 1)  != 0;
-            netIsClimbing    = (bits & 2)  != 0;
-            netIsProned      = (bits & 4)  != 0;
-            netIsCrouching   = (bits & 8)  != 0;
-            netIsHanging     = (bits & 16) != 0;
+            movementSpeed = (float)stream.ReceiveNext();
+            verticalLook  = (float)stream.ReceiveNext();
+            onGround      = (bool) stream.ReceiveNext();
+            gliding       = (bool) stream.ReceiveNext();
         }
     }
 }

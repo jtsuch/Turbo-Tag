@@ -1,377 +1,394 @@
 using System.Collections.Generic;
-using ExitGames.Client.Photon;
+using Photon.Pun;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using Photon.Pun;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 /// <summary>
-/// Drives the Cheats settings page. Cheats are only functional when the room property
-/// "Rule_CheatsEnabled" is true (set by the host via RulesUI). Any player may modify their
-/// own stats and abilities when cheats are active.
+/// Cheats tab of the pause menu. Only usable while the host has cheats enabled; otherwise a
+/// lock overlay covers it. Turning cheats off undoes everything (handled by AbilityHandler).
 ///
-/// Layout (five sub-tabs inside the Cheats panel):
-///   Self      — movement speed, acceleration, jump, scale, cooldown multiplier
-///   Basic     — Basic ability list (equipped at top, others bindable below)
-///   Quick     — Quick ability list
-///   Throw     — Throw ability list
-///   Trap      — Trap ability list
+/// Every slider covers a sensible range, but its text box accepts any value (only negatives —
+/// and a zero size — are rejected).
 ///
-/// Ability tab behaviour:
-///   Equipped row  → "Expand" to reveal per-variable sliders (add sliders as the game grows).
-///   Available row → "Bind Key" to capture a keypress and hot-add that ability to InputHandler.
-///                   The binding is saved to PlayerPrefs as "Keybind_Custom_{abilityName}".
-///
-/// Attach to: CheatsPage panel inside the PauseMenu canvas.
+/// Sub-tabs:
+///   Self                     — speed, acceleration, jump, size, cooldown, air control, gravity,
+///                              ability power and ability duration as % of normal. The last four
+///                              rows are cloned from the Cooldown row at runtime (see ExtraSelfStats).
+///   Basic / Quick / Throw / Trap — every available ability in that slot. Rows expand to show
+///                              sliders for the ability's [TunableParam] fields (dash strength…)
+///                              and its spawned object's (fuse, blast radius…). Cooldowns live in
+///                              Self. Any ability can be bound to a key; a key drives one ability.
+///                              Active abilities (equipped, then bound extras) sit at the top.
+/// Everything sits in one ScrollRect; layout groups size every row (no nested size fitters).
+/// Attach to: the CheatsPage panel inside the PauseMenu.
 /// </summary>
 public class CheatsUI : MonoBehaviourPunCallbacks
 {
-    // ─── Sub-tab panels ───────────────────────────────────────────────────────
     [Header("Sub-Tab Buttons")]
-    public Button selfTabButton;
-    public Button basicTabButton;
-    public Button quickTabButton;
-    public Button throwTabButton;
-    public Button trapTabButton;
+    [SerializeField] private Button selfTabButton;
+    [SerializeField] private Button basicTabButton;
+    [SerializeField] private Button quickTabButton;
+    [SerializeField] private Button throwTabButton;
+    [SerializeField] private Button trapTabButton;
 
-    // Each panel lives directly inside the shared ScrollView Content.
-    // The panel itself is the content container — no separate content Transform needed.
-    [Header("Sub-Tab Panels (inside ScrollView Content)")]
-    public GameObject selfPanel;
-    public GameObject basicPanel;
-    public GameObject quickPanel;
-    public GameObject throwPanel;
-    public GameObject trapPanel;
+    [Header("Sub-Tab Panels (each is its own row container)")]
+    [SerializeField] private GameObject selfPanel;
+    [SerializeField] private GameObject basicPanel;
+    [SerializeField] private GameObject quickPanel;
+    [SerializeField] private GameObject throwPanel;
+    [SerializeField] private GameObject trapPanel;
 
-    // ─── Self tab sliders ─────────────────────────────────────────────────────
-    [Header("Self — Speed")]
-    public Slider         speedSlider;
-    public TMP_InputField speedInput;
+    [Header("Self (all 0–200, where 100 = normal)")]
+    [SerializeField] private Slider         speedSlider;
+    [SerializeField] private TMP_InputField speedInput;
+    [SerializeField] private Slider         accelerationSlider;
+    [SerializeField] private TMP_InputField accelerationInput;
+    [SerializeField] private Slider         jumpSlider;
+    [SerializeField] private TMP_InputField jumpInput;
+    [SerializeField] private Slider         scaleSizeSlider;
+    [SerializeField] private TMP_InputField scaleSizeInput;
+    [SerializeField] private Slider         cooldownSlider;
+    [SerializeField] private TMP_InputField cooldownInput;
 
-    [Header("Self — Acceleration")]
-    public Slider         accelerationSlider;
-    public TMP_InputField accelerationInput;
+    [Header("Prefabs")]
+    [SerializeField] private GameObject abilityRowPrefab;
+    [SerializeField] private GameObject sliderRowPrefab;
 
-    [Header("Self — Jump")]
-    public Slider         jumpSlider;
-    public TMP_InputField jumpInput;
-
-    [Header("Self — Scale")]
-    public Slider         scaleSizeSlider;
-    public TMP_InputField scaleSizeInput;
-
-    [Header("Self — Cooldown Multiplier")]
-    public Slider         cooldownSlider;
-    public TMP_InputField cooldownInput;
-
-    [Header("Ability Row Prefab")]
-    [Tooltip("Prefab with AbilityCheatRow component.")]
-    public GameObject abilityRowPrefab;
-
-    [Header("Slider Row Prefab")]
-    [Tooltip("Prefab with SliderRow component — spawned inside each equipped ability's expanded panel.")]
-    public GameObject sliderRowPrefab;
-
-    // ─── Cheats-disabled overlay ──────────────────────────────────────────────
     [Header("Cheats Lock")]
-    [Tooltip("CanvasGroup over the entire cheats panel — dims and blocks input when cheats are off.")]
-    public CanvasGroup cheatsLockOverlay;
+    [Tooltip("Overlay shown (and blocking input) while cheats are disabled.")]
+    [SerializeField] private CanvasGroup cheatsLockOverlay;
 
-    // ─── Known abilities by type ──────────────────────────────────────────────
-    // Extend these arrays as new abilities are added.
-    private static readonly string[] BasicAbilities = { "BasicGrapple", "Flappy", "SpringyGrapple", "StiffGrapple" };
-    private static readonly string[] QuickAbilities = { "Dash", "Launch", "Shrink" };
-    private static readonly string[] ThrowAbilities = { "BoomBomb", "BoomStick", "Flashbang", "Frisbee", "GravBall", "Rock", "Semtex", "Snowball" };
-    private static readonly string[] TrapAbilities  = { "Box", "GravityWell", "IceTrap", "Ladder", "Nuke" };
+    // Sliders cover sensible ranges, but typed values have no upper limit — only what's
+    // physically possible: nothing negative, and size can't reach zero.
+    private const float MinSizePercent = 0.1f;
 
-    // ─── Listening state for ability key-binding ──────────────────────────────
-    private AbilityCheatRow listeningAbilityRow = null;
-    private bool            skipFrameAfterClick = false;
+    // Self rows built in code by cloning the Cooldown row: (stat, label)
+    private static readonly (Stat stat, string label)[] ExtraSelfStats =
+    {
+        (Stat.AirControl,      "Air Control"),
+        (Stat.Gravity,         "Gravity"),
+        (Stat.AbilityPower,    "Ability Power"),
+        (Stat.AbilityDuration, "Ability Duration"),
+    };
 
-    // Track all spawned ability rows so we can check for key conflicts
+    private readonly Dictionary<Stat, (Slider slider, TMP_InputField input)> selfControls = new();
     private readonly List<AbilityCheatRow> abilityRows = new();
+    private readonly KeyListener           listener    = new();
+    private AbilityCheatRow listeningRow;
+    private Player          builtFor;
+    private string          builtSignature;
+    private ScrollRect      scroll;
 
-    private bool updating = false;
+    private static Player Local => Player.Local;
 
-    // ─── Unity lifecycle ──────────────────────────────────────────────────────
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Start()
     {
-        // Wire sub-tab buttons
         selfTabButton .onClick.AddListener(() => ShowSubTab(selfPanel));
         basicTabButton.onClick.AddListener(() => ShowSubTab(basicPanel));
         quickTabButton.onClick.AddListener(() => ShowSubTab(quickPanel));
         throwTabButton.onClick.AddListener(() => ShowSubTab(throwPanel));
         trapTabButton .onClick.AddListener(() => ShowSubTab(trapPanel));
 
+        scroll = GetComponentInChildren<ScrollRect>(true);
+        BuildSelfControls();
+        RefreshSelf();
         ShowSubTab(selfPanel);
-
-        InitSelfSliders();
-        BuildAbilityTab(basicPanel.transform, BasicAbilities, 0);
-        BuildAbilityTab(quickPanel.transform, QuickAbilities, 1);
-        BuildAbilityTab(throwPanel.transform, ThrowAbilities, 2);
-        BuildAbilityTab(trapPanel.transform,  TrapAbilities,  3);
     }
 
     public override void OnEnable()
     {
         base.OnEnable();
         ApplyCheatsLock();
+        RefreshSelf();
+
+        if (Local != null) BuildAbilityTabs();
+        foreach (var row in abilityRows) row.RefreshSliders();
     }
 
-    public override void OnRoomPropertiesUpdate(Hashtable changedProps)
+    public override void OnRoomPropertiesUpdate(Hashtable changed)
     {
-        if (changedProps.ContainsKey(RulesUI.KEY_CHEATS))
-            ApplyCheatsLock();
+        if (!changed.ContainsKey(RuleKeys.CheatsEnabled)) return;
+        ApplyCheatsLock();
+        RefreshSelf();
+        RefreshAbilityBindings();
+        foreach (var row in abilityRows) row.RefreshSliders();
     }
 
     private void Update()
     {
-        if (listeningAbilityRow == null) return;
-
-        if (skipFrameAfterClick)
-        {
-            skipFrameAfterClick = false;
-            return;
-        }
-
-        foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
-        {
-            if (kc == KeyCode.Escape) continue;
-            if (!Input.GetKeyDown(kc)) continue;
-
-            CommitAbilityBind(listeningAbilityRow, kc);
-            listeningAbilityRow.SetListening(false);
-            listeningAbilityRow = null;
-            return;
-        }
+        if (listeningRow == null || !listener.Poll(out KeyCode key)) return;
+        Bind(listeningRow, key);
+        listeningRow = null;
     }
-
-    // ─── Cheats lock ──────────────────────────────────────────────────────────
 
     private void ApplyCheatsLock()
     {
-        if (cheatsLockOverlay == null || PhotonNetwork.CurrentRoom == null) return;
-        var props     = PhotonNetwork.CurrentRoom.CustomProperties;
-        bool cheatsOn = props.TryGetValue(RulesUI.KEY_CHEATS, out object c) && (bool)c;
-        cheatsLockOverlay.gameObject.SetActive(!cheatsOn);
+        if (cheatsLockOverlay != null) cheatsLockOverlay.gameObject.SetActive(!Cheats.Enabled);
     }
-
-
-    // ─── Sub-tab navigation ───────────────────────────────────────────────────
 
     private void ShowSubTab(GameObject panel)
     {
-        selfPanel   .SetActive(panel == selfPanel);
-        basicPanel  .SetActive(panel == basicPanel);
-        quickPanel  .SetActive(panel == quickPanel);
-        throwPanel  .SetActive(panel == throwPanel);
-        trapPanel   .SetActive(panel == trapPanel);
+        selfPanel .SetActive(panel == selfPanel);
+        basicPanel.SetActive(panel == basicPanel);
+        quickPanel.SetActive(panel == quickPanel);
+        throwPanel.SetActive(panel == throwPanel);
+        trapPanel .SetActive(panel == trapPanel);
 
-        // Force layout recalculation so rows aren't compressed on first activation
-        UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(
-            panel.GetComponent<RectTransform>());
+        RebuildLayout(panel.transform);
+        if (scroll != null) scroll.verticalNormalizedPosition = 1f; // Each tab starts at the top
     }
 
-    // ─── Self tab initialisation ──────────────────────────────────────────────
-
-    private void InitSelfSliders()
+    /// <summary>Re-lays out the whole Cheats list now (rows added, removed, expanded or collapsed).</summary>
+    public static void RebuildLayout(Transform anyChild)
     {
-        if (Player.Instance == null) return;
-        // Sliders are Inspector-configured with appropriate min/max ranges.
-        // Multiplier sliders use a 0–200 scale where 100 = 1× multiplier.
-        cooldownSlider.value = Player.Instance.CooldownMultiplier * 100f;
-        cooldownInput.text   = (Player.Instance.CooldownMultiplier * 100f).ToString("F0");
+        var scrollRect = anyChild.GetComponentInParent<ScrollRect>(true);
+        var root = scrollRect != null && scrollRect.content != null ? scrollRect.content : anyChild as RectTransform;
+        if (root != null) LayoutRebuilder.ForceRebuildLayoutImmediate(root);
     }
 
-    // ─── Ability tab construction ─────────────────────────────────────────────
+    // ─── Self tab ─────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Populates one ability tab. The player's equipped ability for <paramref name="slotIndex"/>
-    /// is placed first with an Expand button; all others follow with Bind Key buttons.
-    /// </summary>
-    private void BuildAbilityTab(Transform container, string[] abilities, int slotIndex)
+    private (Slider slider, TMP_InputField input) Controls(Stat stat) =>
+        selfControls.TryGetValue(stat, out var controls) ? controls : (null, null);
+
+    private void BuildSelfControls()
     {
-        if (abilityRowPrefab == null || container == null) return;
+        // Speed…Size call the public methods below from their scene events
+        selfControls[Stat.Speed]        = (speedSlider, speedInput);
+        selfControls[Stat.Acceleration] = (accelerationSlider, accelerationInput);
+        selfControls[Stat.Jump]         = (jumpSlider, jumpInput);
+        selfControls[Stat.Size]         = (scaleSizeSlider, scaleSizeInput);
+        selfControls[Stat.Cooldown]     = (cooldownSlider, cooldownInput);
+        Listen(Stat.Cooldown);
 
-        string equipped = (Player.Instance != null && Player.Instance.abilityList != null
-                          && slotIndex < Player.Instance.abilityList.Length)
-                        ? Player.Instance.abilityList[slotIndex]
-                        : null;
+        // The rest are copies of the Cooldown row, so they always match the hand-made rows
+        if (cooldownSlider == null || cooldownInput == null) return;
+        Transform template = cooldownSlider.transform.parent;
 
-        // Equipped ability first — show its current slot keybind
-        if (!string.IsNullOrEmpty(equipped))
+        foreach (var (stat, label) in ExtraSelfStats)
         {
-            string prefsKey = $"Keybind_Ability{slotIndex}";
-            KeyCode slotBind = System.Enum.TryParse(
-                PlayerPrefs.GetString(prefsKey, ""), out KeyCode kc) ? kc : KeyCode.None;
-            SpawnAbilityRow(container, equipped, isEquipped: true, slotBind);
+            var row = Instantiate(template.gameObject, template.parent);
+            row.name = label;
+
+            var slider = row.GetComponentInChildren<Slider>(true);
+            var input  = row.GetComponentInChildren<TMP_InputField>(true);
+            MuteSceneEvents(slider.onValueChanged);
+            MuteSceneEvents(input.onEndEdit);
+
+            foreach (var text in row.GetComponentsInChildren<TMP_Text>(true))
+                if (text.GetComponentInParent<TMP_InputField>(true) == null && text.GetComponentInParent<Button>(true) == null)
+                    text.text = label;
+
+            selfControls[stat] = (slider, input);
+            Listen(stat);
+        }
+    }
+
+    private void Listen(Stat stat)
+    {
+        var (slider, input) = Controls(stat);
+        if (slider != null) slider.onValueChanged.AddListener(_ => FromSlider(stat));
+        if (input  != null) input.onEndEdit.AddListener(_ => FromInput(stat));
+    }
+
+    // A copied row still carries the template's inspector events; switch them off
+    private static void MuteSceneEvents(UnityEngine.Events.UnityEventBase unityEvent)
+    {
+        for (int i = 0; i < unityEvent.GetPersistentEventCount(); i++)
+            unityEvent.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+    }
+
+    private void RefreshSelf()
+    {
+        foreach (var stat in selfControls.Keys)
+        {
+            float percent = Local != null ? Local.Modifiers.Get(stat, Cheats.ModifierSource) * 100f : 100f;
+            Show(stat, percent);
+        }
+    }
+
+    private void Show(Stat stat, float percent)
+    {
+        var (slider, input) = Controls(stat);
+        if (slider != null) slider.SetValueWithoutNotify(percent);
+        if (input  != null) input.SetTextWithoutNotify(percent.ToString(percent < 10f ? "0.#" : "F0"));
+    }
+
+    private void FromSlider(Stat stat)
+    {
+        var (slider, _) = Controls(stat);
+        if (slider != null) Apply(stat, slider.value);
+    }
+
+    private void FromInput(Stat stat)
+    {
+        var (_, input) = Controls(stat);
+        if (input == null) return;
+
+        if (!SliderInputPair.TryParse(input.text, out float percent))
+        {
+            RefreshSelf();
+            return;
+        }
+        Apply(stat, percent);
+    }
+
+    private void Apply(Stat stat, float percent)
+    {
+        if (Local == null || !Cheats.Enabled)
+        {
+            RefreshSelf();
+            return;
         }
 
-        // Remaining abilities (excluding the equipped one)
-        foreach (string name in abilities)
+        percent = Mathf.Max(stat == Stat.Size ? MinSizePercent : 0f, percent);
+
+        Local.Modifiers.Set(stat, Cheats.ModifierSource, percent / 100f);
+        Show(stat, percent);
+    }
+
+    // Scene event entry points (sliders: On Value Changed, inputs: On End Edit)
+    public void SliderSpeedMod(float _)        => FromSlider(Stat.Speed);
+    public void InputSpeedMod()                => FromInput(Stat.Speed);
+    public void SliderAccelerationMod(float _) => FromSlider(Stat.Acceleration);
+    public void InputAccelerationMod()         => FromInput(Stat.Acceleration);
+    public void SliderJumpMod(float _)         => FromSlider(Stat.Jump);
+    public void InputJumpMod()                 => FromInput(Stat.Jump);
+    public void SliderScaleSizeMod(float _)    => FromSlider(Stat.Size);
+    public void InputScaleSizeMod()            => FromInput(Stat.Size);
+
+    // ─── Ability tabs ─────────────────────────────────────────────────────────
+
+    // Rebuilds only when the equipped abilities change. Binding a key also raises LoadoutChanged
+    // (the extra abilities are re-published), and rebuilding then collapsed and re-stacked the list.
+    private void BuildAbilityTabs()
+    {
+        string signature = Local != null ? LoadoutSignature(Local.Abilities) : null;
+        if (builtFor == Local && signature == builtSignature)
         {
-            if (name == equipped) continue;
-            SpawnAbilityRow(container, name, isEquipped: false);
+            RefreshAbilityBindings();
+            return;
+        }
+
+        foreach (var row in abilityRows)
+        {
+            if (row == null) continue;
+            row.gameObject.SetActive(false); // Out of the layout now; Destroy only lands at the end of the frame
+            Destroy(row.gameObject);
+        }
+        abilityRows.Clear();
+        listeningRow = null;
+
+        if (builtFor != null) builtFor.Abilities.LoadoutChanged -= BuildAbilityTabs;
+        builtFor       = Local;
+        builtSignature = signature;
+        if (builtFor == null || abilityRowPrefab == null) return;
+
+        BuildAbilityTab(basicPanel.transform, AbilitySlot.Basic);
+        BuildAbilityTab(quickPanel.transform, AbilitySlot.Quick);
+        BuildAbilityTab(throwPanel.transform, AbilitySlot.Throw);
+        BuildAbilityTab(trapPanel.transform,  AbilitySlot.Trap);
+
+        builtFor.Abilities.LoadoutChanged += BuildAbilityTabs;
+        SortRows();
+    }
+
+    private static string LoadoutSignature(AbilityHandler handler)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (AbilitySlot slot in System.Enum.GetValues(typeof(AbilitySlot)))
+            sb.Append(handler.GetEquipped(slot)?.Id).Append('|');
+        return sb.ToString();
+    }
+
+    private void BuildAbilityTab(Transform container, AbilitySlot slot)
+    {
+        var handler  = builtFor.Abilities;
+        var equipped = handler.GetEquipped(slot);
+
+        if (equipped != null) SpawnRow(container, equipped, isEquipped: true, Keybinds.ForSlot(slot));
+
+        foreach (string id in AbilityCatalog.InSlot(slot))
+        {
+            var ability = handler.Find(id);
+            if (ability == null || ability == equipped || !AbilityCatalog.IsAvailable(id)) continue;
+
+            handler.CustomBindings.TryGetValue(id, out KeyCode key);
+            SpawnRow(container, ability, isEquipped: false, key);
         }
     }
 
-    private void SpawnAbilityRow(Transform container, string abilityName, bool isEquipped, KeyCode existingBind = KeyCode.None)
+    private void SpawnRow(Transform container, Ability ability, bool isEquipped, KeyCode key)
     {
         var row = Instantiate(abilityRowPrefab, container).GetComponent<AbilityCheatRow>();
-        row.Initialize(abilityName, isEquipped, existingBind);
-        row.OnBindRequested  += StartAbilityListening;
-        row.OnClearRequested += ClearAbilityBind;
+        row.Initialize(ability, isEquipped, key, sliderRowPrefab);
+        row.BindRequested  += StartListening;
+        row.ClearRequested += r => Bind(r, KeyCode.None);
         abilityRows.Add(row);
-
-        row.Populate(FindAbilityComponent(abilityName), sliderRowPrefab);
     }
 
-    private MonoBehaviour FindAbilityComponent(string abilityName)
+    // The equipped ability's key is its slot key; any other ability gets an extra binding
+    private void Bind(AbilityCheatRow row, KeyCode key)
     {
-        if (Player.Instance == null) return null;
-        foreach (var mb in Player.Instance.GetComponentsInChildren<MonoBehaviour>(includeInactive: true))
-        {
-            if (mb.GetType().Name == abilityName) return mb;
-        }
-        return null;
+        if (Local == null) return;
+        if (row.IsEquipped) Local.Abilities.SetSlotBinding(row.Ability.Slot, key);
+        else                Local.Abilities.SetCustomBinding(row.Ability.Id, key);
+        RefreshAbilityBindings();
     }
 
-    // ─── Ability key-binding ──────────────────────────────────────────────────
-
-    private void StartAbilityListening(AbilityCheatRow row)
+    private void StartListening(AbilityCheatRow row)
     {
-        listeningAbilityRow?.SetListening(false);
-        listeningAbilityRow = row;
-        skipFrameAfterClick = true;
+        if (!Cheats.Enabled) return;
+        listeningRow?.SetListening(false);
+        listeningRow = row;
         row.SetListening(true);
+        listener.Start();
     }
 
-    private void CommitAbilityBind(AbilityCheatRow row, KeyCode key)
+    private void RefreshAbilityBindings()
     {
-        var ih = Player.Instance != null ? Player.Instance.GetComponent<InputHandler>() : null;
-
-        foreach (var other in abilityRows)
+        if (Local == null) return;
+        foreach (var row in abilityRows)
         {
-            if (other == row || other.BoundKey != key) continue;
-            other.ClearBoundKey();
-            if (ih != null) ih.RemoveKeyBinding(other.AbilityName);
+            KeyCode key;
+            if (row.IsEquipped) key = Keybinds.ForSlot(row.Ability.Slot);
+            else                Local.Abilities.CustomBindings.TryGetValue(row.Ability.Id, out key);
+            row.SetBoundKey(key);
         }
-
-        row.SetBoundKey(key);
-        if (ih != null) ih.RebindKey(row.AbilityName, key);
+        SortRows();
     }
 
-    private void ClearAbilityBind(AbilityCheatRow row)
+    // Active abilities at the top of each tab: the equipped one, then extras with a key, then the rest
+    private void SortRows()
     {
-        row.ClearBoundKey();
-        var ih = Player.Instance != null ? Player.Instance.GetComponent<InputHandler>() : null;
-        if (ih != null) ih.RemoveKeyBinding(row.AbilityName);
+        var sorted = new List<AbilityCheatRow>(abilityRows);
+        sorted.RemoveAll(r => r == null);
+        sorted.Sort((x, y) =>
+        {
+            int rank = Rank(x).CompareTo(Rank(y));
+            return rank != 0 ? rank : string.CompareOrdinal(x.Ability.Id, y.Ability.Id);
+        });
+
+        var next = new Dictionary<Transform, int>();
+        foreach (var row in sorted)
+        {
+            Transform parent = row.transform.parent;
+            next.TryGetValue(parent, out int index);
+            row.transform.SetSiblingIndex(index);
+            next[parent] = index + 1;
+        }
+        if (sorted.Count > 0) RebuildLayout(sorted[0].transform);
     }
 
-    // ─── Self stat callbacks ──────────────────────────────────────────────────
+    private static int Rank(AbilityCheatRow row) =>
+        row.IsEquipped ? 0 : row.BoundKey != KeyCode.None ? 1 : 2;
 
-    public void SliderSpeedMod(float value)
+    private void OnDestroy()
     {
-        if (Player.Instance == null || updating) return;
-        updating                       = true;
-        speedInput.text                = value.ToString("F2");
-        Player.Instance.SpeedMultiplier = value / 100f;
-        updating                       = false;
-    }
-
-    public void InputSpeedMod()
-    {
-        if (Player.Instance == null || updating) return;
-        if (!float.TryParse(speedInput.text, out float v)) return;
-        updating                       = true;
-        speedSlider.value              = v;
-        Player.Instance.SpeedMultiplier = v / 100f;
-        updating                       = false;
-    }
-
-    public void SliderAccelerationMod(float value)
-    {
-        if (Player.Instance == null || updating) return;
-        updating                     = true;
-        accelerationInput.text       = value.ToString("F2");
-        Player.Instance.Acceleration = value * 0.2f;
-        updating                     = false;
-    }
-
-    public void InputAccelerationMod()
-    {
-        if (Player.Instance == null || updating) return;
-        if (!float.TryParse(accelerationInput.text, out float v)) return;
-        updating                     = true;
-        accelerationSlider.value     = v;
-        Player.Instance.Acceleration = v * 0.2f;
-        updating                     = false;
-    }
-
-    public void SliderJumpMod(float value)
-    {
-        if (Player.Instance == null || updating) return;
-        updating                      = true;
-        jumpInput.text                = value.ToString("F2");
-        Player.Instance.JumpStrength  = value * 0.16f;
-        updating                      = false;
-    }
-
-    public void InputJumpMod()
-    {
-        if (Player.Instance == null || updating) return;
-        if (!float.TryParse(jumpInput.text, out float v)) return;
-        updating                      = true;
-        jumpSlider.value              = v;
-        Player.Instance.JumpStrength  = v * 0.16f;
-        updating                      = false;
-    }
-
-    public void SliderScaleSizeMod(float value)
-    {
-        if (Player.Instance == null || updating) return;
-        updating                       = true;
-        scaleSizeInput.text            = value.ToString("F2");
-        Player.Instance.currentXScale  = value / 100f;
-        Player.Instance.currentYScale  = value / 100f;
-        Player.Instance.currentZScale  = value / 100f;
-        Player.Instance.SetPlayerScale();
-        updating                       = false;
-    }
-
-    public void InputScaleSizeMod()
-    {
-        if (Player.Instance == null || updating) return;
-        if (!float.TryParse(scaleSizeInput.text, out float v)) return;
-        updating                       = true;
-        scaleSizeSlider.value          = v;
-        Player.Instance.currentXScale  = v / 100f;
-        Player.Instance.currentYScale  = v / 100f;
-        Player.Instance.currentZScale  = v / 100f;
-        Player.Instance.SetPlayerScale();
-        updating                       = false;
-    }
-
-    // ─── Cooldown multiplier ──────────────────────────────────────────────────
-    // Abilities should multiply their cooldownTime by Player.Instance.CooldownMultiplier.
-
-    public void SliderCooldownMod(float value)
-    {
-        if (Player.Instance == null || updating) return;
-        updating                           = true;
-        cooldownInput.text                 = value.ToString("F0");
-        Player.Instance.CooldownMultiplier = value / 100f;
-        updating                           = false;
-    }
-
-    public void InputCooldownMod()
-    {
-        if (Player.Instance == null || updating) return;
-        if (!float.TryParse(cooldownInput.text, out float v)) return;
-        updating                           = true;
-        cooldownSlider.value               = v;
-        Player.Instance.CooldownMultiplier = v / 100f;
-        updating                           = false;
+        if (builtFor != null) builtFor.Abilities.LoadoutChanged -= BuildAbilityTabs;
     }
 }

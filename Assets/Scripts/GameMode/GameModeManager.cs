@@ -1,406 +1,254 @@
-using UnityEngine;
+using System;
 using Photon.Pun;
-using System.Collections;
-using System.Collections.Generic;
-using PhotonPlayer   = Photon.Realtime.Player;
-using PhotonHashtable = ExitGames.Client.Photon.Hashtable;
+using UnityEngine;
+using Hashtable    = ExitGames.Client.Photon.Hashtable;
+using PhotonPlayer = Photon.Realtime.Player;
 
 /// <summary>
-/// Central game-mode orchestrator for the Hide-and-Seek match type.
+/// Scene-level match driver. Creates the active <see cref="GameMode"/> from the room's
+/// "GameMode" property, forwards scene/network events to it, and owns the networked match
+/// state (phase, round, roles) stored in room and player properties.
 ///
-/// Responsibilities:
-///   - Reads match settings from room custom properties (HideTime, MaxHideTime,
-///     AllowCheats, InitialHunterCount).
-///   - Drives the round lifecycle: Countdown → Hiding → Active → RoundEnd → (repeat or MatchEnd).
-///   - Delegates timer tracking to MatchTimerController and score tracking to ScoreController.
-///   - Syncs phase changes and player roles to all clients via RPCs.
-///   - Exposes TagPlayer() for hunter collision code to call.
+/// Every client reads the same properties, so movement locks, timers, roles and scores agree
+/// without per-frame RPCs. RPCs are only used for discrete moments (tag requests/announcements).
 ///
-/// Round rotation: every player serves as the initial hunter at least once before the
-/// match can end. Highest cumulative hide time wins.
-///
-/// Attach to: a persistent scene GameObject — add MatchTimerController, ScoreController,
-/// and PhotonView to the same object. The PhotonView must use a scene ViewID.
+/// Attach to: one GameObject per level, alongside MatchTimerController, ScoreController and a
+/// scene PhotonView.
 /// </summary>
 [RequireComponent(typeof(MatchTimerController))]
 [RequireComponent(typeof(ScoreController))]
 [RequireComponent(typeof(PhotonView))]
 public class GameModeManager : MonoBehaviourPunCallbacks
 {
+    // ─── Singleton ────────────────────────────────────────────────────────────
     private static GameModeManager _instance;
-    public static GameModeManager Instance
-    {
-        get
-        {
-            if (_instance == null) _instance = FindFirstObjectByType<GameModeManager>();
-            return _instance;
-        }
-        private set => _instance = value;
-    }
+    public static GameModeManager Instance => _instance;
 
-    // -------------------------------------------------------------------------
-    // Match settings (loaded from room custom properties)
-    // -------------------------------------------------------------------------
+    // ─── Events ───────────────────────────────────────────────────────────────
+    public event Action<MatchPhase>               PhaseChanged;
+    public event Action<PhotonPlayer, PlayerRole> RoleChanged;
+    /// <summary>(tagger, target)</summary>
+    public event Action<PhotonPlayer, PhotonPlayer> PlayerTagged;
 
-    private float hideTime          = 60f;   // "HideTime"         — hide-phase duration
-    private float maxHideTime       = 0f;    // "MaxHideTime"      — per-player score cap (0 = none)
-    public bool   AllowCheats { get; private set; } = false; // "AllowCheats"
-    private int   initialHunterCount = 1;    // "InitialHunterCount"
+    // ─── State ────────────────────────────────────────────────────────────────
+    public GameMode             Mode       { get; private set; }
+    public GameModeDefinition   Definition { get; private set; }
+    public MatchTimerController Clock      { get; private set; }
+    public ScoreController      Scores     { get; private set; }
 
-    // -------------------------------------------------------------------------
-    // Match phase
-    // -------------------------------------------------------------------------
+    /// <summary>
+    /// Current phase. On the master client a just-written phase is returned immediately, before
+    /// Photon echoes the property back, so master logic never acts twice on a stale phase.
+    /// </summary>
+    public MatchPhase Phase => pendingPhase ?? (MatchPhase)NetProps.Room(RoomKeys.Phase, (int)MatchPhase.Waiting);
+    public int        Round => NetProps.Room(RoomKeys.Round, 0);
+    public int        WinnerActorNumber => NetProps.Room(RoomKeys.Winner, -1);
 
-    public enum MatchPhase { Countdown, Hiding, Active, RoundEnd, MatchEnd }
-    public MatchPhase CurrentPhase { get; private set; }
+    [Tooltip("Longest the master waits for every player to spawn before starting anyway.")]
+    [SerializeField] private float maxWaitForPlayers = 6f;
 
-    // DisplayTime forwarded from MatchTimerController for UI
-    public float DisplayTime => timerController != null ? timerController.DisplayTime : 0f;
+    private MatchPhase? pendingPhase;
+    private float       pendingSince;
+    private MatchPhase  lastAnnouncedPhase;
+    private float       sceneStartTime;
 
-    // -------------------------------------------------------------------------
-    // Round state (master client)
-    // -------------------------------------------------------------------------
+    private const float PendingTimeout = 3f;
 
-    private readonly HashSet<int> servedAsHunter = new();  // Actor numbers that have been initial hunter
-    private readonly HashSet<int> currentHunters = new();
-    private readonly HashSet<int> currentHiders  = new();
-    public int RoundNumber { get; private set; } = 0;
+    // The same on every client, and above the ids handed out to other scene objects.
+    private const int FallbackViewId = 999;
 
-    // Populated on ALL clients via RPC_SetPlayerRole — safe to query from any component.
-    public bool IsHunter(int actorNumber) => currentHunters.Contains(actorNumber);
-    public bool IsHider(int actorNumber)  => currentHiders.Contains(actorNumber);
-
-    private static readonly WaitForSeconds WaitOneSecond  = new(1f);
-    private static readonly WaitForSeconds WaitFiveSeconds = new(5f);
-
-    // -------------------------------------------------------------------------
-    // References
-    // -------------------------------------------------------------------------
-
-    private MatchTimerController timerController;
-    private ScoreController      scoreController;
-
-    // -------------------------------------------------------------------------
-    // Unity Lifecycle
-    // -------------------------------------------------------------------------
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
         if (_instance != null && _instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        _instance = this;
 
-        timerController = GetComponent<MatchTimerController>();
-        scoreController = GetComponent<ScoreController>();
+        // A level whose scene PhotonView never got an id would fail every RPC ("Illegal view ID:0").
+        // Turbo Tag > Levels > Assign Scene PhotonView IDs fixes the scene; this keeps play working meanwhile.
+        if (photonView.ViewID == 0)
+        {
+            Debug.LogWarning($"[GameModeManager] Scene PhotonView has no id in '{gameObject.scene.name}'. " +
+                             "Run Turbo Tag > Levels > Assign Scene PhotonView IDs. Using a fallback id.");
+            photonView.ViewID = FallbackViewId;
+        }
+
+        Clock  = GetComponent<MatchTimerController>();
+        Scores = GetComponent<ScoreController>();
+        lastAnnouncedPhase = MatchPhase.Waiting;
+        sceneStartTime     = Time.time;
+
+        TryInitialize();
     }
 
-    private void Start()
+    // The room may not exist yet when a level is opened directly in the editor (offline debug
+    // mode), so the mode is created as soon as it does.
+    private bool TryInitialize()
     {
-        LoadSettingsFromRoom();
-        ApplySettingsToControllers();
+        if (Mode != null) return true;
+        if (PhotonNetwork.CurrentRoom == null) return false;
 
-        timerController.OnCountdownComplete += HandleCountdownComplete;
-        timerController.OnHidePhaseComplete += HandleHidePhaseComplete;
-        timerController.OnTimeLimitReached  += HandleTimeLimitReached;
-        scoreController.OnScoreLimitReached += HandleScoreLimitReached;
+        Definition = GameModeRegistry.Find(MatchRules.GameModeKey);
+        Mode       = GameModeRegistry.Create(MatchRules.GameModeKey);
+        Mode.Attach(this);
 
-        if (PhotonNetwork.IsMasterClient)
-            StartCoroutine(StartFirstRound());
+        // A freshly loaded level always starts from a clean match state
+        if (PhotonNetwork.IsMasterClient) ResetMatchState();
+        return true;
     }
 
     private void OnDestroy()
     {
-        if (timerController != null)
+        if (_instance == this) _instance = null;
+    }
+
+    private void Update()
+    {
+        if (!TryInitialize() || !PhotonNetwork.IsMasterClient) return;
+
+        // Wait for our own phase write to round-trip before making further decisions
+        if (pendingPhase.HasValue)
         {
-            timerController.OnCountdownComplete -= HandleCountdownComplete;
-            timerController.OnHidePhaseComplete -= HandleHidePhaseComplete;
-            timerController.OnTimeLimitReached  -= HandleTimeLimitReached;
-        }
-        if (scoreController != null)
-            scoreController.OnScoreLimitReached -= HandleScoreLimitReached;
-    }
-
-    // -------------------------------------------------------------------------
-    // Settings
-    // -------------------------------------------------------------------------
-
-    private void LoadSettingsFromRoom()
-    {
-        PhotonHashtable props = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.CustomProperties : null;
-        if (props == null) return;
-
-        if (props.TryGetValue("HideTime",          out object ht))  hideTime          = System.Convert.ToSingle(ht);
-        if (props.TryGetValue("MaxHideTime",        out object mht)) maxHideTime       = System.Convert.ToSingle(mht);
-        if (props.TryGetValue("AllowCheats",        out object ac))  AllowCheats       = (bool)ac;
-        if (props.TryGetValue("InitialHunterCount", out object ihc)) initialHunterCount = System.Convert.ToInt32(ihc);
-    }
-
-    private void ApplySettingsToControllers()
-    {
-        timerController.HidePhaseDuration = hideTime;
-        timerController.ActivePhaseLimit  = 0f;    // No hard active-phase time limit by default
-        scoreController.MaxTotalTime      = maxHideTime;
-    }
-
-    // -------------------------------------------------------------------------
-    // Round management (master client only)
-    // -------------------------------------------------------------------------
-
-    private IEnumerator StartFirstRound()
-    {
-        yield return WaitOneSecond;  // Brief pause for late-joining clients to settle
-        StartRound();
-    }
-
-    private void StartRound()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        RoundNumber++;
-        PickInitialHunters();
-        BroadcastRoles();
-
-        photonView.RPC(nameof(RPC_SetPhase), RpcTarget.All, (int)MatchPhase.Countdown);
-        photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, false, false); // nobody moves
-        timerController.StartCountdown();
-    }
-
-    private void PickInitialHunters()
-    {
-        currentHunters.Clear();
-        currentHiders.Clear();
-
-        PhotonPlayer[] allPlayers = PhotonNetwork.PlayerList;
-
-        // Collect players who haven't been the initial hunter yet
-        List<PhotonPlayer> eligible = new();
-        foreach (PhotonPlayer p in allPlayers)
-        {
-            if (!servedAsHunter.Contains(p.ActorNumber))
-                eligible.Add(p);
+            if (Time.time - pendingSince < PendingTimeout) return;
+            pendingPhase = null;
         }
 
-        // If everyone has served at least once, start a new rotation
-        if (eligible.Count == 0)
+        if (Phase == MatchPhase.Waiting)
         {
-            servedAsHunter.Clear();
-            foreach (PhotonPlayer p in allPlayers) eligible.Add(p);
+            if (AllPlayersSpawned() || Time.time - sceneStartTime > maxWaitForPlayers)
+                Mode.StartMatch();
+            return;
         }
 
-        Shuffle(eligible);
-        int count = Mathf.Clamp(initialHunterCount, 1, eligible.Count - 1);  // Keep at least 1 hider
-        for (int i = 0; i < count; i++)
+        Mode.MasterUpdate();
+    }
+
+    private static bool AllPlayersSpawned() =>
+        PhotonNetwork.CurrentRoom != null && Player.All.Count >= PhotonNetwork.CurrentRoom.PlayerCount;
+
+    // ─── Queries used by gameplay systems ─────────────────────────────────────
+
+    public bool CanMove(Player player) => Mode == null || Mode.CanMove(player.Role, Phase);
+
+    public bool CanUseAbilities(Player player) => Mode == null || Mode.CanUseAbilities(player.Role, Phase);
+
+    /// <summary>Combined mode and rule multiplier applied to the player's ability cooldowns.</summary>
+    public float CooldownMultiplier(Player player) =>
+        (Mode != null ? Mode.CooldownMultiplier(player.Role) : 1f) * MatchRules.GlobalCooldownMultiplier;
+
+    public string PhaseLabel => Mode != null ? Mode.GetPhaseLabel(Phase) : "";
+
+    // ─── Master-client API ────────────────────────────────────────────────────
+
+    /// <summary>Master: moves the match to <paramref name="phase"/> and restarts the clock.</summary>
+    public void SetPhase(MatchPhase phase, float duration, Hashtable extra = null)
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+
+        Hashtable props = Clock.BuildRestart(duration);
+        props[RoomKeys.Phase] = (int)phase;
+        if (extra != null)
+            foreach (var entry in extra) props[entry.Key] = entry.Value;
+
+        pendingPhase = phase;
+        pendingSince = Time.time;
+        NetProps.SetRoom(props);
+    }
+
+    /// <summary>Master: clears phase, round, roles and scores ready for a new match.</summary>
+    public void ResetMatchState()
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+
+        NetProps.SetRoom(new Hashtable
         {
-            currentHunters.Add(eligible[i].ActorNumber);
-            servedAsHunter.Add(eligible[i].ActorNumber);
-        }
+            [RoomKeys.Phase]          = (int)MatchPhase.Waiting,
+            [RoomKeys.Round]          = 0,
+            [RoomKeys.Winner]         = -1,
+            [RoomKeys.ServedAsHunter] = new int[0],
+            [RoomKeys.PausedAt]       = -1d,
+        });
 
-        foreach (PhotonPlayer p in allPlayers)
+        foreach (var player in PhotonNetwork.PlayerList)
         {
-            if (!currentHunters.Contains(p.ActorNumber))
-                currentHiders.Add(p.ActorNumber);
-        }
-    }
-
-    private void BroadcastRoles()
-    {
-        foreach (int actor in currentHunters)
-            photonView.RPC(nameof(RPC_SetPlayerRole), RpcTarget.All, actor, true);
-        foreach (int actor in currentHiders)
-            photonView.RPC(nameof(RPC_SetPlayerRole), RpcTarget.All, actor, false);
-    }
-
-    // -------------------------------------------------------------------------
-    // Timer event handlers (master client)
-    // -------------------------------------------------------------------------
-
-    private void HandleCountdownComplete()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        // Hiders scatter; hunters stay frozen
-        photonView.RPC(nameof(RPC_SetPhase),   RpcTarget.All, (int)MatchPhase.Hiding);
-        photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, true, false); // hiders=true, hunters=false
-        timerController.StartHidePhase();
-    }
-
-    private void HandleHidePhaseComplete()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        // Everyone active; score counting begins
-        photonView.RPC(nameof(RPC_SetPhase),   RpcTarget.All, (int)MatchPhase.Active);
-        photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, true, true); // everyone moves
-        scoreController.BeginRound(currentHiders);
-        timerController.StartActivePhase();
-    }
-
-    private void HandleTimeLimitReached()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        EndRound();
-    }
-
-    private void HandleScoreLimitReached()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        CheckRoundEndCondition();
-    }
-
-    // -------------------------------------------------------------------------
-    // Tagging
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Called by hunter collision/trigger logic when they tag a hider.
-    /// Only processed on the master client; ignored if the target is already a hunter
-    /// or the match is not in the Active phase.
-    /// </summary>
-    public void TagPlayer(int hiderActorNumber)
-    {
-        if (!PhotonNetwork.IsMasterClient)             return;
-        if (CurrentPhase != MatchPhase.Active)         return;
-        if (!currentHiders.Contains(hiderActorNumber)) return;
-
-        currentHiders.Remove(hiderActorNumber);
-        currentHunters.Add(hiderActorNumber);
-
-        photonView.RPC(nameof(RPC_SetPlayerRole), RpcTarget.All, hiderActorNumber, true);
-        scoreController.FreezePlayerTimer(hiderActorNumber);
-
-        float frozenTime = scoreController.GetHideTime(hiderActorNumber);
-        photonView.RPC(nameof(RPC_OnPlayerCaught), RpcTarget.All, hiderActorNumber, frozenTime);
-
-        CheckRoundEndCondition();
-    }
-
-    // Called by hunters on this client; routed to master for authoritative validation.
-    [PunRPC]
-    public void RPC_RequestTag(int hiderActorNumber, PhotonMessageInfo info)
-    {
-        if (!currentHunters.Contains(info.Sender.ActorNumber)) return;
-        TagPlayer(hiderActorNumber);
-    }
-
-    private void CheckRoundEndCondition()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        if (currentHiders.Count == 0)
-            EndRound();
-    }
-
-    // -------------------------------------------------------------------------
-    // Round / match end
-    // -------------------------------------------------------------------------
-
-    private void EndRound()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-
-        timerController.Stop();
-        scoreController.EndRound();
-
-        photonView.RPC(nameof(RPC_SetPhase),   RpcTarget.All, (int)MatchPhase.RoundEnd);
-        photonView.RPC(nameof(RPC_SetCanMove), RpcTarget.All, false, false);
-
-        // Match ends when every player has served as the initial hunter at least once
-        bool matchOver = true;
-        foreach (PhotonPlayer p in PhotonNetwork.PlayerList)
-        {
-            if (!servedAsHunter.Contains(p.ActorNumber)) { matchOver = false; break; }
-        }
-
-        if (matchOver)
-            StartCoroutine(EndMatch());
-        else
-            StartCoroutine(NextRoundDelay());
-    }
-
-    private IEnumerator NextRoundDelay()
-    {
-        yield return WaitFiveSeconds;
-        StartRound();
-    }
-
-    private IEnumerator EndMatch()
-    {
-        yield return WaitFiveSeconds;
-        int winner = scoreController.GetWinner();
-        photonView.RPC(nameof(RPC_SetPhase),       RpcTarget.All, (int)MatchPhase.MatchEnd);
-        photonView.RPC(nameof(RPC_AnnounceWinner), RpcTarget.All, winner);
-    }
-
-    // -------------------------------------------------------------------------
-    // RPCs
-    // -------------------------------------------------------------------------
-
-    [PunRPC]
-    private void RPC_SetPhase(int phaseInt)
-    {
-        CurrentPhase = (MatchPhase)phaseInt;
-
-        // Master drives its own timer via HandleXxx callbacks.
-        // Non-master clients must start their local timer here so the HUD updates.
-        if (!PhotonNetwork.IsMasterClient)
-        {
-            switch (CurrentPhase)
+            player.SetCustomProperties(new Hashtable
             {
-                case MatchPhase.Countdown: timerController.StartCountdown();   break;
-                case MatchPhase.Hiding:    timerController.StartHidePhase();   break;
-                case MatchPhase.Active:    timerController.StartActivePhase(); break;
-                default:                   timerController.Stop();             break;
-            }
+                [PlayerKeys.Role]  = (int)PlayerRole.None,
+                [PlayerKeys.Score] = 0f,
+            });
         }
     }
 
-    /// <summary>
-    /// Sets CanMove for the local player based on their role.
-    /// hidersCanMove applies to current hiders; huntersCanMove applies to current hunters.
-    /// </summary>
-    [PunRPC]
-    private void RPC_SetCanMove(bool hidersCanMove, bool huntersCanMove)
+    /// <summary>Master: reopens the room and takes everyone back to the lobby.</summary>
+    public void ReturnToLobby()
     {
-        if (Player.Instance == null) return;
-        int local = PhotonNetwork.LocalPlayer.ActorNumber;
-        if      (currentHiders.Contains(local))  Player.Instance.CanMove = hidersCanMove;
-        else if (currentHunters.Contains(local)) Player.Instance.CanMove = huntersCanMove;
+        if (!PhotonNetwork.IsMasterClient) return;
+
+        ResetMatchState();
+        PhotonNetwork.CurrentRoom.IsOpen    = true;
+        PhotonNetwork.CurrentRoom.IsVisible = true;
+        PhotonNetwork.LoadLevel(SceneNames.Lobby);
+    }
+
+    /// <summary>Master: tells every client that a tag happened (feedback + caught state).</summary>
+    public void BroadcastTag(PhotonPlayer tagger, PhotonPlayer target) =>
+        photonView.RPC(nameof(RPC_PlayerTagged), RpcTarget.All, tagger.ActorNumber, target.ActorNumber);
+
+    // ─── Client API ───────────────────────────────────────────────────────────
+
+    /// <summary>Asks the master to validate a tag on <paramref name="target"/> by the local player.</summary>
+    public void RequestTag(Player target) =>
+        photonView.RPC(nameof(RPC_RequestTag), RpcTarget.MasterClient, target.ActorNumber);
+
+    // ─── RPCs ─────────────────────────────────────────────────────────────────
+
+    [PunRPC]
+    private void RPC_RequestTag(int targetActor, PhotonMessageInfo info)
+    {
+        if (!PhotonNetwork.IsMasterClient || Mode == null) return;
+        Mode.HandleTagRequest(info.Sender, PhotonNetwork.CurrentRoom.GetPlayer(targetActor));
     }
 
     [PunRPC]
-    private void RPC_SetPlayerRole(int actorNumber, bool isHunter)
+    private void RPC_PlayerTagged(int taggerActor, int targetActor)
     {
-        if (isHunter) { currentHunters.Add(actorNumber); currentHiders.Remove(actorNumber); }
-        else          { currentHiders.Add(actorNumber);  currentHunters.Remove(actorNumber); }
+        var room   = PhotonNetwork.CurrentRoom;
+        var tagger = room?.GetPlayer(taggerActor);
+        var target = room?.GetPlayer(targetActor);
 
-        if (PhotonNetwork.LocalPlayer.ActorNumber == actorNumber && Player.Instance != null)
-            Player.Instance.isHunter = isHunter;
+        // Everyone leaves a ragdoll where the tagged player was; the tagged player then runs the caught flow
+        var tagged = Player.Find(targetActor);
+        if (tagged != null) tagged.LeaveCorpse();
+
+        if (targetActor == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null)
+            Player.Local.OnTagged(tagger);
+
+        PlayerTagged?.Invoke(tagger, target);
     }
 
-    [PunRPC]
-    private void RPC_OnPlayerCaught(int actorNumber, float hideTime)
+    // ─── Photon Callbacks ─────────────────────────────────────────────────────
+
+    public override void OnRoomPropertiesUpdate(Hashtable changed)
     {
-        if (PhotonNetwork.LocalPlayer.ActorNumber == actorNumber && Player.Instance != null)
-            Player.Instance.EnterCaughtState(hideTime);
+        if (!changed.ContainsKey(RoomKeys.Phase)) return;
+
+        var confirmed = (MatchPhase)NetProps.Get(changed, RoomKeys.Phase, (int)MatchPhase.Waiting);
+        if (pendingPhase == confirmed) pendingPhase = null;
+
+        if (confirmed == lastAnnouncedPhase) return;
+        lastAnnouncedPhase = confirmed;
+        Mode?.OnPhaseChanged(confirmed);
+        PhaseChanged?.Invoke(confirmed);
     }
 
-    [PunRPC]
-    private void RPC_AnnounceWinner(int winnerActorNumber)
+    public override void OnPlayerPropertiesUpdate(PhotonPlayer target, Hashtable changed)
     {
-        PhotonPlayer winner = PhotonNetwork.CurrentRoom != null
-            ? PhotonNetwork.CurrentRoom.GetPlayer(winnerActorNumber)
-            : null;
-        string name = winner != null ? winner.NickName : winnerActorNumber.ToString();
-        Debug.Log($"[GameModeManager] Match over! Winner: {name}");
-        // TODO: surface winner to the HUD
+        if (changed.ContainsKey(PlayerKeys.Role))
+            RoleChanged?.Invoke(target, PlayerRoles.Get(target));
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private static void Shuffle<T>(List<T> list)
+    public override void OnPlayerLeftRoom(PhotonPlayer otherPlayer)
     {
-        for (int i = list.Count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (list[i], list[j]) = (list[j], list[i]);
-        }
+        if (PhotonNetwork.IsMasterClient) Mode?.OnPlayerLeft(otherPlayer);
     }
 }

@@ -1,13 +1,11 @@
-using TMPro;
+using System;
 using UnityEngine;
 
 /// <summary>
-/// Controls the pause menu panel and its tabbed pages (General, Rules, Cheats).
-/// Pause state is determined by whether this GameObject is active — no separate bool needed.
-/// Cursor lock/unlock is split between this class (unlock on pause) and PlayerCam (relock on resume)
-/// to avoid a same-frame race with the EventSystem.
-/// Attach to: the PauseMenu Canvas GameObject — starts inactive; Spawner calls Initialize() to
-/// confirm that and search for it with FindObjectsInactive so it's found even when hidden.
+/// The in-level pause menu with General, Rules and Cheats tabs. Paused == this panel is active.
+/// Pausing never stops time (it's multiplayer) — it just frees the cursor and blocks gameplay
+/// input. Cursor re-locking on resume is handled by PlayerCam to avoid EventSystem races.
+/// Attach to: the PauseMenu panel in each level (may start inactive; Spawner calls Initialize).
 /// </summary>
 public class PauseMenuManager : MonoBehaviour
 {
@@ -17,34 +15,31 @@ public class PauseMenuManager : MonoBehaviour
     {
         get
         {
-            if (_instance != null) return _instance;
-            // FindObjectsInactive.Include is required because this object starts hidden
-            _instance = FindFirstObjectByType<PauseMenuManager>(FindObjectsInactive.Include);
+            // The panel usually starts inactive, so Awake may not have run yet
+            if (_instance == null)
+                _instance = FindFirstObjectByType<PauseMenuManager>(FindObjectsInactive.Include);
             return _instance;
         }
     }
 
-    // True when the panel is visible (active); false when hidden
-    public bool Paused => gameObject.activeSelf;
+    public static bool IsPaused => _instance != null && _instance.gameObject.activeSelf;
+
+    public static event Action<bool> PausedChanged;
 
     // ─── Inspector ────────────────────────────────────────────────────────────
-    [Header("Page References")]
-    public GameObject generalPage;
-    public GameObject rulesPage;
-    public GameObject cheatsPage;
+    [Header("Pages")]
+    [SerializeField] private GameObject generalPage;
+    [SerializeField] private GameObject rulesPage;
+    [SerializeField] private GameObject cheatsPage;
 
-    [Header("Tab Button References")]
-    public TabButton generalTab;
-    public TabButton rulesTab;
-    public TabButton cheatsTab;
+    [Header("Tabs")]
+    [SerializeField] private TabButton generalTab;
+    [SerializeField] private TabButton rulesTab;
+    [SerializeField] private TabButton cheatsTab;
+
     private TabButton activeTab;
 
-    [Header("Tab's Text References")]
-    public TextMeshProUGUI GeneralText;
-    public TextMeshProUGUI RulesText;
-    public TextMeshProUGUI CheatsText;
-
-    void Awake()
+    private void Awake()
     {
         if (_instance != null && _instance != this)
         {
@@ -52,62 +47,64 @@ public class PauseMenuManager : MonoBehaviour
             return;
         }
         _instance = this;
-        // Do NOT call SetActive here. If this object starts inactive, Awake fires on
-        // first activation — calling SetActive(false) here would immediately undo Pause().
-        // Initialize() called by Spawner handles the initial hidden state.
     }
 
-    /// <summary>Called by Spawner once the player is ready.</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
+    }
+
+    /// <summary>Called by Spawner once the local player exists: start hidden on the General tab.</summary>
     public void Initialize()
     {
+        _instance = this;
+        OpenTab(generalTab);
         gameObject.SetActive(false);
-        // Cursor lock is enforced by PlayerCam.LateUpdate every frame when not paused.
     }
 
-    public void TogglePauseMenu()
+    // ─── Pause state ──────────────────────────────────────────────────────────
+
+    public void Toggle()
     {
-        if (Paused) Resume();
-        else        Pause();
+        if (gameObject.activeSelf) Resume();
+        else                       Pause();
     }
 
-    public void Show() { if (!Paused) Pause(); }
-    public void Hide() { if (Paused)  Resume(); }
-
-    void Pause()
+    public void Pause()
     {
+        if (gameObject.activeSelf) return;
         gameObject.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
+        PausedChanged?.Invoke(true);
     }
 
-    void Resume()
+    public void Resume()
     {
+        if (!gameObject.activeSelf) return;
         gameObject.SetActive(false);
-        // Cursor re-lock is handled by PlayerCam.LateUpdate on the next frame,
-        // which avoids the same-frame EventSystem/editor cursor-state race.
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible   = false;
+        PausedChanged?.Invoke(false);
     }
+
+    // ─── Tabs ─────────────────────────────────────────────────────────────────
 
     public void OpenTab(TabButton tab)
     {
-        if (activeTab == tab) return;
-
-        generalTab.SetActive(false);
-        rulesTab.SetActive(false);
-        cheatsTab.SetActive(false);
-
-        generalPage.SetActive(false);
-        rulesPage.SetActive(false);
-        cheatsPage.SetActive(false);
-
-        tab.SetActive(true);
+        if (tab == null || activeTab == tab) return;
         activeTab = tab;
 
-        if (tab == generalTab)     generalPage.SetActive(true);
-        else if (tab == rulesTab)  rulesPage.SetActive(true);
-        else if (tab == cheatsTab) cheatsPage.SetActive(true);
+        generalTab.SetActive(tab == generalTab);
+        rulesTab.SetActive(tab == rulesTab);
+        cheatsTab.SetActive(tab == cheatsTab);
+
+        generalPage.SetActive(tab == generalTab);
+        rulesPage.SetActive(tab == rulesTab);
+        cheatsPage.SetActive(tab == cheatsTab);
     }
 
-    // ─── Tab Helpers (called by UI Button onClick events) ────────────────────
+    // Button onClick entry points (wired in the scene)
     public void GeneralTabChange() => OpenTab(generalTab);
     public void RulesTabChange()   => OpenTab(rulesTab);
     public void CheatsTabChange()  => OpenTab(cheatsTab);

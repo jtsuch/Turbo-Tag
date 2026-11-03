@@ -1,23 +1,13 @@
-using UnityEngine;
-
-/// <summary>
-/// Inverts the player's movement axes so W moves backward, S moves forward,
-/// A moves right, and D moves left, for the effect duration.
-///
-/// Requires Player.MovementScale (Vector2) and JimmyMove to multiply
-/// Input.GetAxis values by player.MovementScale.x/y respectively.
-/// </summary>
+/// <summary>Effect: inverts movement controls (W ↔ S, A ↔ D) for the duration.</summary>
 public class KeybindSwitchEffect : PlayerEffect
 {
     protected override void OnEffectStart()
     {
-        if (!IsLocalEffect) return;
-        player.MovementScale = new Vector2(-1f, -1f);
+        if (IsLocalEffect) player.Modifiers.Set(Stat.ControlDirection, this, -1f);
     }
 
     protected override void OnEffectEnd()
     {
-        if (player != null)
-            player.MovementScale = Vector2.one;
+        if (player != null) player.Modifiers.Remove(Stat.ControlDirection, this);
     }
 }

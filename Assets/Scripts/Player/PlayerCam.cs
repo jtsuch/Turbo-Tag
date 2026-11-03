@@ -1,242 +1,178 @@
-using UnityEngine;
 using DG.Tweening;
 using Photon.Pun;
+using UnityEngine;
 
 /// <summary>
-/// First-person camera controller. Handles mouse-look with smoothing, cursor lock management,
-/// camera offset transitions between stances (standing/prone), and FOV tweens.
-/// Attach to: CameraHolder child of ThePlayer prefab — must reference the player's Transform
-/// and a PhotonView so it only runs on the owning client.
+/// First-person camera for the local player: mouse-look with smoothing, stance height changes,
+/// head bob, jump/land bumps, wall-run tilt, FOV tweens and a spectator view while caught.
+/// Camera offsets scale with the player's size so shrinking also lowers the view.
+/// Attach to: CameraHolder child of ThePlayer prefab. Disabled on remote player instances.
 /// </summary>
 public class PlayerCam : MonoBehaviour
 {
-    // ─── Singleton ────────────────────────────────────────────────────────────
-    private static PlayerCam _instance;
-    public static PlayerCam Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindFirstObjectByType<PlayerCam>();
-            return _instance;
-        }
-        private set => _instance = value;
-    }
+    // ─── Singleton (local player only) ────────────────────────────────────────
+    private static PlayerCam _local;
+    public static PlayerCam Local => _local;
 
     // ─── References ───────────────────────────────────────────────────────────
     [Header("References")]
-    public Player player;
-    public JimmyMove pm;
-    public Transform playerTransform;
-    public Transform camHolder;
+    [SerializeField] private Player         player;
+    [SerializeField] private PlayerMovement pm;
+    [SerializeField] private Transform      playerTransform;
+    [SerializeField] private PhotonView     view;
+    [SerializeField] private Camera         cam;
 
-    // ─── Sensitivity ──────────────────────────────────────────────────────────
+    // ─── Stance Offsets / Smoothing ───────────────────────────────────────────
     [Header("Camera Settings")]
-    [SerializeField] private float _sensitivity;
-    // Property fires an event so any UI sliders can react immediately
-    public float sensitivity
-    {
-        get => _sensitivity;
-        private set
-        {
-            _sensitivity = value;
-            OnSensitivityChange?.Invoke(value);
-        }
-    }
-    public static event System.Action<float> OnSensitivityChange;
-
-    // ─── Camera Offsets / Smoothing ───────────────────────────────────────────
-    public Vector3 normalCameraOffset = new(0, 2f, 0);
-    public Vector3 crouchCameraOffset = new(0, 1.4f, 0);
-    public Vector3 proneCameraOffset  = new(0, 1f, 0);
-    private Vector3 currentCameraOffset;
-    private Vector3 cameraVelocity = Vector3.zero;
-
-    public float positionSmoothTime = 0.1f;
-    // rotationSmoothTime feeds into an exponential smoothing formula, not a direct lerp speed
-    public float rotationSmoothTime = 80f;
-
-    // Accumulated euler angles; xRotation is pitch (clamped), yRotation is yaw
-    private float xRotation;
-    private float yRotation;
+    [SerializeField] private Vector3 normalCameraOffset = new(0, 2f, 0);
+    [SerializeField] private Vector3 crouchCameraOffset = new(0, 1.4f, 0);
+    [SerializeField] private Vector3 proneCameraOffset  = new(0, 1f, 0);
+    [SerializeField] private float   positionSmoothTime = 0.1f;
+    [Tooltip("How high the caught spectator view floats above the ragdoll (m).")]
+    [SerializeField] private float   caughtCameraHeight = 8f;
+    [Tooltip("Exponential smoothing rate for rotation (higher = snappier).")]
+    [SerializeField] private float   rotationSmoothTime = 80f;
 
     // ─── Head Bob ─────────────────────────────────────────────────────────────
     [Header("Head Bob")]
-    public float walkBobFreq    = 2.5f;
-    public float walkBobAmplY   = 0.18f;
-    public float walkBobAmplX   = 0.10f;
-    public float crouchBobFreq  = 1.8f;
-    public float crouchBobAmplY = 0.08f;
-    public float crouchBobAmplX = 0.04f;
-
-    private float   bobTimer  = 0f;
-    private Vector3 bobOffset = Vector3.zero;
+    [SerializeField] private float walkBobFreq    = 2.5f;
+    [SerializeField] private float walkBobAmplY   = 0.18f;
+    [SerializeField] private float walkBobAmplX   = 0.10f;
+    [SerializeField] private float crouchBobFreq  = 1.8f;
+    [SerializeField] private float crouchBobAmplY = 0.08f;
+    [SerializeField] private float crouchBobAmplX = 0.04f;
 
     // ─── Jump / Land Bump ─────────────────────────────────────────────────────
     [Header("Jump / Land")]
-    public float jumpBumpAmount   = -0.12f;
-    public float landBumpAmount   = -0.18f;
-    public float bumpRecoverSpeed = 12f;
-
-    private float bumpOffset = 0f;
+    [SerializeField] private float jumpBumpAmount   = -0.12f;
+    [SerializeField] private float landBumpAmount   = -0.18f;
+    [SerializeField] private float bumpRecoverSpeed = 12f;
 
     // ─── Wall Run Tilt ────────────────────────────────────────────────────────
     [Header("Wall Run Tilt")]
-    public float wallTiltAngle = 8f;
-    public float wallTiltSpeed = 8f;
+    [SerializeField] private float wallTiltAngle = 8f;
+    [SerializeField] private float wallTiltSpeed = 8f;
 
-    private float currentTilt = 0f;
+    // ─── Runtime ──────────────────────────────────────────────────────────────
+    public Camera Camera     => cam;
+    public float  DefaultFov { get; private set; } = 60f;
 
-    // ─── Caught Spectator Camera ──────────────────────────────────────────────
+    private float   sensitivity = SettingsManager.DefaultSensitivity;
+    private Vector3 currentCameraOffset;
+    private Vector3 cameraVelocity;
+    private float   xRotation, yRotation;
+    private float   bobTimer;
+    private Vector3 bobOffset;
+    private float   bumpOffset;
+    private float   currentTilt;
+
     private bool       caughtMode;
     private Transform  camOriginalParent;
     private Vector3    camOriginalLocalPos;
     private Quaternion camOriginalLocalRot;
 
-    public PhotonView view;
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
-    public Camera cam;
     private void Awake()
     {
-        Instance = this;
-        //cam = GetComponentInChildren<Camera>();
+        if (view != null && !view.IsMine)
+        {
+            enabled = false;
+            return;
+        }
+        _local = this;
     }
 
     private void Start()
     {
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        if (!enabled) return;
+
         currentCameraOffset = normalCameraOffset;
+        yRotation = playerTransform.eulerAngles.y;
+        if (cam != null) DefaultFov = cam.fieldOfView;
 
-        // Subscribe to Settings changes
-        if (SettingsManager.Instance != null)
-        {
-            sensitivity = SettingsManager.Instance.Sensitivity;
-            SettingsManager.OnSensitivityChanged += HandleSensitivityChanged;
-        }
-        else
-        {
-            Debug.LogWarning("SettingsManager not found! Falling back to default sensitivity.");
-            sensitivity = 100f;
-        }
+        if (SettingsManager.Instance != null) sensitivity = SettingsManager.Instance.Sensitivity;
+        SettingsManager.SensitivityChanged += HandleSensitivityChanged;
 
-        // Subscribe to Player state changes and events
-        if (player != null)
-        {
-            player.OnStateChanged += HandlePlayerStateChanged;
-            player.OnJump         += HandleJump;
-            player.OnLand         += HandleLand;
-        }
+        player.StateChanged += HandlePlayerStateChanged;
+        player.Jumped       += HandleJump;
+        player.Landed       += HandleLand;
+        player.Caught       += EnterCaughtMode;
+        player.Respawned    += ExitCaughtMode;
     }
 
     private void OnDestroy()
     {
-        SettingsManager.OnSensitivityChanged -= HandleSensitivityChanged;
+        if (_local == this) _local = null;
+        SettingsManager.SensitivityChanged -= HandleSensitivityChanged;
+
         if (player != null)
         {
-            player.OnStateChanged -= HandlePlayerStateChanged;
-            player.OnJump         -= HandleJump;
-            player.OnLand         -= HandleLand;
+            player.StateChanged -= HandlePlayerStateChanged;
+            player.Jumped       -= HandleJump;
+            player.Landed       -= HandleLand;
+            player.Caught       -= EnterCaughtMode;
+            player.Respawned    -= ExitCaughtMode;
         }
-        DOTween.KillAll();
-    }
-
-    private void HandleJump() => bumpOffset = jumpBumpAmount;
-    private void HandleLand() => bumpOffset = landBumpAmount;
-
-    // Event handler for sensitivity changes
-    private void HandleSensitivityChanged(float newSensitivity)
-    {
-        sensitivity = newSensitivity;
-    }
-
-    public void EnterCaughtMode()
-    {
-        if (cam == null) return;
-        caughtMode          = true;
-        camOriginalParent   = cam.transform.parent;
-        camOriginalLocalPos = cam.transform.localPosition;
-        camOriginalLocalRot = cam.transform.localRotation;
-        cam.transform.SetParent(null, true);
-    }
-
-    public void ExitCaughtMode()
-    {
-        if (cam == null) return;
-        caughtMode = false;
-        cam.transform.SetParent(camOriginalParent, false);
-        cam.transform.SetLocalPositionAndRotation(camOriginalLocalPos, camOriginalLocalRot);
+        if (cam != null) cam.DOKill();
     }
 
     private void LateUpdate()
     {
-        if (!view.IsMine) return;
+        bool paused = PauseMenuManager.IsPaused;
 
-        bool paused = PauseMenuManager.Instance != null && PauseMenuManager.Instance.Paused;
-
-        // Re-lock cursor every frame when not paused.
-        if (!paused && Cursor.lockState != CursorLockMode.Locked)
+        // Re-lock every frame when not paused (avoids same-frame races with the EventSystem)
+        if (!paused && (Cursor.lockState != CursorLockMode.Locked || Cursor.visible))
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible   = false;
         }
 
-        if (paused) return;
-
-        // Spectator camera while caught — orbits above the player for 3 s until respawn
-        if (caughtMode && cam != null && player != null)
+        if (caughtMode)
         {
-            float    t          = Time.deltaTime * 5f;
-            Vector3  targetPos  = player.transform.position + Vector3.up * 4f;
-            Vector3  newPos     = Vector3.Lerp(cam.transform.position, targetPos, t);
-            Quaternion newRot   = Quaternion.Lerp(cam.transform.rotation, Quaternion.Euler(75f, player.transform.eulerAngles.y, 0f), t);
-            cam.transform.SetPositionAndRotation(newPos, newRot);
+            UpdateCaughtCamera();
             return;
         }
 
-        // Normalize sensitivity: 100 = 1:1 mouse delta
-        float mouseX = Input.GetAxisRaw("Mouse X") * (sensitivity / 100f);
-        float mouseY = Input.GetAxisRaw("Mouse Y") * (sensitivity / 100f);
+        if (!paused) ReadMouse();
 
-        yRotation += mouseX;
-        xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
-
-        // Stance height (standing / crouch / prone)
+        float size = player.Size;
         transform.localPosition = Vector3.SmoothDamp(
-            transform.localPosition,
-            currentCameraOffset,
-            ref cameraVelocity,
-            positionSmoothTime);
+            transform.localPosition, currentCameraOffset * size, ref cameraVelocity, positionSmoothTime);
 
-        // Camera effects
-        UpdateHeadBob();
+        UpdateHeadBob(size);
         UpdateWallTilt();
         bumpOffset = Mathf.Lerp(bumpOffset, 0f, Time.deltaTime * bumpRecoverSpeed);
 
         if (cam != null)
-            cam.transform.localPosition = bobOffset + Vector3.up * bumpOffset;
+            cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size);
 
-        // Rotation with wall tilt on Z
         Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, currentTilt);
-        transform.rotation = Quaternion.Lerp(
-            transform.rotation,
-            targetRotation,
+        transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation,
             1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
 
-        playerTransform.rotation = Quaternion.Euler(0, yRotation, 0);
+        playerTransform.rotation = Quaternion.Euler(0f, yRotation, 0f);
     }
 
-    private void UpdateHeadBob()
+    // ─── Look ─────────────────────────────────────────────────────────────────
+
+    private void ReadMouse()
     {
-        var state = player.currentState;
+        // Sensitivity 100 = raw 1:1 mouse delta
+        float scale = sensitivity / 100f;
+        yRotation += Input.GetAxisRaw("Mouse X") * scale;
+        xRotation  = Mathf.Clamp(xRotation - Input.GetAxisRaw("Mouse Y") * scale, -90f, 90f);
+    }
 
-        // Use input rather than velocity — velocity stays non-zero for several frames after
-        // releasing keys (friction braking), which would trigger the bob while "standing still".
-        bool hasInput = player.Input != null && player.Input.MoveInput.magnitude > 0.1f;
+    private void UpdateHeadBob(float size)
+    {
+        var state = player.State;
 
-        bool shouldBob = hasInput
+        // Input, not velocity: velocity lingers for a few frames after releasing the keys.
+        // No bob while sliding — the body is gliding, not stepping.
+        bool shouldBob = player.Input.MoveInput.magnitude > 0.1f
                       && player.IsGrounded
+                      && !pm.IsSliding
                       && state != Player.MovementState.WallRun
                       && state != Player.MovementState.Climb
                       && state != Player.MovementState.Hang;
@@ -248,30 +184,31 @@ public class PlayerCam : MonoBehaviour
             return;
         }
 
-        bool crouched = state == Player.MovementState.Crouch || state == Player.MovementState.Prone;
-        float freq  = crouched ? crouchBobFreq  : walkBobFreq;
-        float amplY = crouched ? crouchBobAmplY : walkBobAmplY;
-        float amplX = crouched ? crouchBobAmplX : walkBobAmplX;
+        bool  low   = state == Player.MovementState.Crouch || state == Player.MovementState.Prone;
+        float freq  = low ? crouchBobFreq  : walkBobFreq;
+        float amplY = (low ? crouchBobAmplY : walkBobAmplY) * size;
+        float amplX = (low ? crouchBobAmplX : walkBobAmplX) * size;
 
         bobTimer += Time.deltaTime * freq;
-        bobOffset = new Vector3(
-            Mathf.Sin(bobTimer)        * amplX,
-            Mathf.Abs(Mathf.Sin(bobTimer * 2f)) * amplY,
-            0f);
+        bobOffset = new Vector3(Mathf.Sin(bobTimer) * amplX, Mathf.Abs(Mathf.Sin(bobTimer * 2f)) * amplY, 0f);
     }
 
     private void UpdateWallTilt()
     {
-        float target = player.currentState == Player.MovementState.WallRun
-            ? (pm.wallRight ? wallTiltAngle : -wallTiltAngle)
+        float target = player.State == Player.MovementState.WallRun
+            ? (pm.WallRight ? wallTiltAngle : -wallTiltAngle)
             : 0f;
         currentTilt = Mathf.Lerp(currentTilt, target, Time.deltaTime * wallTiltSpeed);
     }
 
-    // Event handler for player state changes
+    // ─── Event Handlers ───────────────────────────────────────────────────────
+
+    private void HandleJump() => bumpOffset = jumpBumpAmount;
+    private void HandleLand() => bumpOffset = landBumpAmount;
+    private void HandleSensitivityChanged(float value) => sensitivity = value;
+
     private void HandlePlayerStateChanged(Player.MovementState newState)
     {
-        if (!view.IsMine) return;
         currentCameraOffset = newState switch
         {
             Player.MovementState.Prone  => proneCameraOffset,
@@ -280,27 +217,56 @@ public class PlayerCam : MonoBehaviour
         };
     }
 
-    public void ChangeFov(float endValue)
+    // ─── Caught Spectator View ────────────────────────────────────────────────
+
+    private void EnterCaughtMode()
     {
-        if (cam != null)
-            cam.DOFieldOfView(endValue, 0.25f);
+        if (cam == null) return;
+        caughtMode          = true;
+        camOriginalParent   = cam.transform.parent;
+        camOriginalLocalPos = cam.transform.localPosition;
+        camOriginalLocalRot = cam.transform.localRotation;
+        cam.transform.SetParent(null, true);
     }
 
-    private void UpdateSensitivityFromManager(float newSens)
+    private void ExitCaughtMode()
     {
-        sensitivity = newSens;
+        if (cam == null || !caughtMode) return;
+        caughtMode = false;
+        cam.transform.SetParent(camOriginalParent, false);
+        cam.transform.SetLocalPositionAndRotation(camOriginalLocalPos, camOriginalLocalRot);
+        yRotation = playerTransform.eulerAngles.y;
     }
 
-    public void SetSensitivity(float newSensitivity)
+    // Floats above the ragdoll (or the player) looking down until respawn
+    private void UpdateCaughtCamera()
     {
-        // Update the SettingsManager which will trigger the OnSensitivityChanged event
-        if (SettingsManager.Instance != null)
-        {
-            SettingsManager.Instance.Sensitivity = newSensitivity;
-        }
-        else
-        {
-            sensitivity = newSensitivity;
-        }
+        if (cam == null) return;
+        Transform  focus     = player.Corpse != null ? player.Corpse : playerTransform;
+        float      t         = Time.deltaTime * 5f;
+        Vector3    targetPos = focus.position + Vector3.up * caughtCameraHeight;
+        Quaternion targetRot = Quaternion.Euler(75f, playerTransform.eulerAngles.y, 0f);
+        cam.transform.SetPositionAndRotation(
+            Vector3.Lerp(cam.transform.position, targetPos, t),
+            Quaternion.Lerp(cam.transform.rotation, targetRot, t));
     }
+
+    /// <summary>Points the view along <paramref name="yaw"/> (used after teleports).</summary>
+    public void SnapTo(float yaw)
+    {
+        yRotation = yaw;
+        xRotation = 0f;
+        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+    }
+
+    // ─── FOV ──────────────────────────────────────────────────────────────────
+
+    public void ChangeFov(float endValue, float duration = 0.25f)
+    {
+        if (cam == null) return;
+        cam.DOKill();
+        cam.DOFieldOfView(endValue, duration);
+    }
+
+    public void ResetFov(float duration = 0.25f) => ChangeFov(DefaultFov, duration);
 }

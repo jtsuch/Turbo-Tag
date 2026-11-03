@@ -13,11 +13,10 @@ public class PlayerAudio : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Player player;
-    [SerializeField] private JimmyMove movement;
+    [SerializeField] private PlayerMovement movement;
 
     [Header("Footstep Clips")]
     [SerializeField] private AudioClip[] footsteps;
-    //[SerializeField] private AudioClip[] sprintFootsteps;
 
     [Header("Action Clips")]
     [SerializeField] private AudioClip jumpSound;
@@ -41,9 +40,7 @@ public class PlayerAudio : MonoBehaviour
     private bool isSliding;
     private int lastFootstepIndex = -1; // Prevents same clip twice in a row
 
-    // -------------------------------------------------------------------------
-    // Unity Lifecycle
-    // -------------------------------------------------------------------------
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -52,27 +49,23 @@ public class PlayerAudio : MonoBehaviour
 
         // Auto-assign sibling components if not set in Inspector
         if (player == null) player = GetComponent<Player>();
-        if (movement == null) movement = GetComponent<JimmyMove>();
+        if (movement == null) movement = GetComponent<PlayerMovement>();
 
         // 3D spatial audio so other players hear positional sound
-        audioSource.spatialBlend = 1f;
-        audioSource.rolloffMode = AudioRolloffMode.Linear;
-        audioSource.minDistance = 1f;
-        audioSource.maxDistance = 30f;
+        WorldFx.Configure3D(audioSource, maxDistance: 30f);
         audioSource.loop = false;
-        audioSource.playOnAwake = false;
     }
 
     private void OnEnable()
     {
-        player.OnJump += HandleJump;
-        player.OnLand += HandleLand;
+        player.Jumped += HandleJump;
+        player.Landed += HandleLand;
     }
 
     private void OnDisable()
     {
-        player.OnJump -= HandleJump;
-        player.OnLand -= HandleLand;
+        player.Jumped -= HandleJump;
+        player.Landed -= HandleLand;
     }
 
     private void Update()
@@ -85,24 +78,22 @@ public class PlayerAudio : MonoBehaviour
         HandleSlide();
     }
 
-    // -------------------------------------------------------------------------
-    // Footsteps
-    // -------------------------------------------------------------------------
+    // ─── Footsteps ────────────────────────────────────────────────────────────
 
     private void HandleFootsteps()
     {
         // No footsteps if airborne, hanging, climbing, or sliding
-        if (!movement.onGround) return;
-        if (player.currentState == Player.MovementState.Hang) return;
-        if (player.currentState == Player.MovementState.Climb) return;
+        if (!movement.OnGround) return;
+        if (player.State == Player.MovementState.Hang) return;
+        if (player.State == Player.MovementState.Climb) return;
         if (isSliding) return;
 
         // Check if the player is actually moving horizontally
-        Vector3 flatVelocity = new Vector3(player.rb.linearVelocity.x, 0f, player.rb.linearVelocity.z);
+        Vector3 flatVelocity = Vector3.ProjectOnPlane(player.Velocity, Vector3.up);
         if (flatVelocity.magnitude < 2f) return;
 
-        bool isSprinting = player.currentState == Player.MovementState.WallRun
-                        || flatVelocity.magnitude >= player.SprintSpeed * 0.8f;
+        bool isSprinting = player.State == Player.MovementState.WallRun
+                        || flatVelocity.magnitude >= player.Stats.sprintSpeed * 0.8f;
 
         float interval = isSprinting ? sprintStepInterval : walkStepInterval;
 
@@ -114,16 +105,12 @@ public class PlayerAudio : MonoBehaviour
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Sliding
-    // -------------------------------------------------------------------------
+    // ─── Sliding ──────────────────────────────────────────────────────────────
 
     private void HandleSlide()
     {
         // Sliding = prone + grounded + speed above threshold
-        bool shouldSlide = player.currentState == Player.MovementState.Prone
-                        && movement.onGround
-                        && player.rb.linearVelocity.magnitude > player.ProneSpeed + 1f;
+        bool shouldSlide = movement.IsSliding;
 
         if (shouldSlide && !isSliding)
             StartSlide();
@@ -136,13 +123,8 @@ public class PlayerAudio : MonoBehaviour
         isSliding = true;
         if (slideSound == null) return;
 
-        // Use a looping PlayOneShot workaround — assign clip and loop on the source
-        audioSource.clip = slideSound;
-        audioSource.loop = true;
-        audioSource.volume = slideVolume;
-        audioSource.Play();
-
-        photonView.RPC("RPC_PlaySlide", RpcTarget.Others);
+        PlaySlideLoop();
+        photonView.RPC(nameof(RPC_PlaySlide), RpcTarget.Others);
     }
 
     private void StopSlide()
@@ -154,28 +136,29 @@ public class PlayerAudio : MonoBehaviour
             audioSource.Stop();
         }
 
-        photonView.RPC("RPC_StopSlide", RpcTarget.Others);
+        photonView.RPC(nameof(RPC_StopSlide), RpcTarget.Others);
     }
 
-    // -------------------------------------------------------------------------
-    // Event Handlers (fired from Player.cs)
-    // -------------------------------------------------------------------------
+    // ─── Event Handlers (fired from Player) ───────────────────────────────────
+
+    private const byte ClipJump = 0;
+    private const byte ClipLand = 1;
 
     private void HandleJump()
     {
+        if (!photonView.IsMine) return;
         PlayOneShot(jumpSound, jumpVolume);
-        photonView.RPC("RPC_PlayOneShot", RpcTarget.Others, "jump");
+        photonView.RPC(nameof(RPC_PlayOneShot), RpcTarget.Others, ClipJump);
     }
 
     private void HandleLand()
     {
+        if (!photonView.IsMine) return;
         PlayOneShot(landSound, landVolume);
-        photonView.RPC("RPC_PlayOneShot", RpcTarget.Others, "land");
+        photonView.RPC(nameof(RPC_PlayOneShot), RpcTarget.Others, ClipLand);
     }
 
-    // -------------------------------------------------------------------------
-    // Audio Helpers
-    // -------------------------------------------------------------------------
+    // ─── Audio Helpers ────────────────────────────────────────────────────────
 
     private void PlayOneShot(AudioClip clip, float volume)
     {
@@ -197,30 +180,23 @@ public class PlayerAudio : MonoBehaviour
         audioSource.PlayOneShot(pool[index], volume);
     }
 
-    // -------------------------------------------------------------------------
-    // Photon RPCs — called on remote clients to play audio at this object's position
-    // -------------------------------------------------------------------------
+    // ─── RPCs (remote clients play audio at this object's position) ───────────
 
     [PunRPC]
-    private void RPC_PlayOneShot(string clipKey)
+    private void RPC_PlayOneShot(byte clip)
     {
-        switch (clipKey)
-        {
-            case "jump":
-                PlayOneShot(jumpSound, jumpVolume);
-                break;
-            case "land":
-                PlayOneShot(landSound, landVolume);
-                break;
-        }
+        if      (clip == ClipJump) PlayOneShot(jumpSound, jumpVolume);
+        else if (clip == ClipLand) PlayOneShot(landSound, landVolume);
     }
 
     [PunRPC]
-    private void RPC_PlaySlide()
+    private void RPC_PlaySlide() => PlaySlideLoop();
+
+    private void PlaySlideLoop()
     {
         if (slideSound == null) return;
-        audioSource.clip = slideSound;
-        audioSource.loop = true;
+        audioSource.clip   = slideSound;
+        audioSource.loop   = true;
         audioSource.volume = slideVolume;
         audioSource.Play();
     }

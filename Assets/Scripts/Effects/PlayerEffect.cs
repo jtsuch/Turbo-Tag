@@ -22,11 +22,9 @@ public abstract class PlayerEffect : MonoBehaviour
     private bool      isEnded = false;
 
     /// <summary>True only if this effect is on the local player's client.</summary>
-    protected bool IsLocalEffect => player != null && player.IsLocalPlayer;
+    protected bool IsLocalEffect => player != null && player.IsLocal;
 
-    // -------------------------------------------------------------------------
-    // Lifecycle API
-    // -------------------------------------------------------------------------
+    // ─── Lifecycle API ───────────────────────────────────────────────────────
 
     /// <summary>
     /// Called by EffectBlock after AddComponent to start the effect.
@@ -63,9 +61,7 @@ public abstract class PlayerEffect : MonoBehaviour
     // Ensures cleanup runs even if the component is removed externally (e.g. scene change)
     private void OnDestroy() => CancelEffect();
 
-    // -------------------------------------------------------------------------
-    // Abstract hooks
-    // -------------------------------------------------------------------------
+    // ─── Abstract hooks ──────────────────────────────────────────────────────
 
     /// <summary>Called once when the effect is first applied.  Store originals here.</summary>
     protected abstract void OnEffectStart();
@@ -73,9 +69,7 @@ public abstract class PlayerEffect : MonoBehaviour
     /// <summary>Called once when the effect expires or is cancelled.  Restore originals here.</summary>
     protected abstract void OnEffectEnd();
 
-    // -------------------------------------------------------------------------
-    // Internal
-    // -------------------------------------------------------------------------
+    // ─── Internal ────────────────────────────────────────────────────────────
 
     private IEnumerator DurationRoutine()
     {

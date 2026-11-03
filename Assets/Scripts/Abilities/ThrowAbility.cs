@@ -1,343 +1,194 @@
-using UnityEngine;
 using Photon.Pun;
+using UnityEngine;
 
 /// <summary>
-/// Base for projectile-throw abilities with an aim → charge → release flow.
-/// State machine: Idle → Aiming (ability key down) → Charging (LMB down) → release on LMB up.
-/// Pressing the ability key again while aiming or charging cancels the throw.
-/// Child classes set cooldownTime/minThrowForce/maxThrowForce/chargeTime in their Awake,
-/// and can override OnEnterAiming, OnEnterCharging, and OnThrow for custom behaviour.
-/// Attach to: ThePlayer prefab — requires a LineRenderer and a throwOrigin Transform assigned
-/// in the Inspector for trajectory preview.
+/// Base for throwables with an aim → charge → release flow:
+///   ability key: pull out the object (Aiming) · hold Action: charge · release Action: throw.
+///   Pressing the ability key again while aiming or charging puts it away.
+///
+/// The thrown object is spawned from Resources/Object/{Id} with its launch impulse and power in
+/// the instantiation data, so it flies identically on every client. While aiming, a local-only
+/// visual copy is held in hand (mirrored on remote players via AbilityHandler).
+/// Most throwables need no code beyond an empty subclass — tuning lives in these fields.
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public abstract class ThrowAbility : Ability
 {
-    // ─── Configuration (set by child in Awake) ────────────────────────────────
-    protected float cooldownTime;
-    protected float minThrowForce;
-    protected float maxThrowForce;
-    protected float chargeTime;
+    [Header("Throw")]
+    [SerializeField] protected float cooldown = 3f;
+    [TunableParam("Min Force", 1f, 100f)]
+    [SerializeField] protected float minForce = 10f;
+    [TunableParam("Max Force", 1f, 200f)]
+    [SerializeField] protected float maxForce = 60f;
+    [TunableParam("Charge Time", 0.1f, 5f, HardMin = 0.01f)]
+    [SerializeField] protected float chargeSeconds = 1f;
+    [Tooltip("Multiplier passed to the thrown object (explosion force, pull strength…).")]
+    [TunableParam("Power", 0.1f, 10f)]
+    [SerializeField] protected float power = 1f;
 
-    [Header("Trajectory Settings")]
-    [SerializeField] private int trajectorySteps = 60;       // How many points on the arc
+    [Header("Trajectory")]
+    [SerializeField] private int   trajectorySteps    = 60;
     [SerializeField] private float trajectoryTimeStep = 0.05f;
 
     [Header("References")]
-    [SerializeField] private Transform throwOrigin;          // Assign to camera or hand transform
-    [SerializeField] private LineRenderer trajectoryLine;    // Add LineRenderer component to player
-
-    protected GameObject heldObject;                         // The visual object held before throwing
-
-    private PhotonView playerView;
-    private float lastUseTime = -999f;
-    private float chargeStartTime;
-    private float CurrentCharge => Mathf.Clamp01((Time.time - chargeStartTime) / chargeTime);
-    public override bool IsAwaitingAction => 
-        state == ThrowState.Aiming || state == ThrowState.Charging;
+    [Tooltip("Where throws originate (the first-person ThrowPoint).")]
+    [SerializeField] private Transform    throwOrigin;
+    [SerializeField] private LineRenderer trajectoryLine;
+    [Tooltip("Where remote players see the object held. Defaults to in front of the chest.")]
+    [SerializeField] private Transform    remoteHoldPoint;
 
     private enum ThrowState { Idle, Aiming, Charging }
     private ThrowState state = ThrowState.Idle;
+    private float      chargeStartTime;
+    private GameObject heldVisual;
+    private Vector3[]  trajectoryBuffer;
 
-    protected override void Awake()
+    public override AbilitySlot Slot             => AbilitySlot.Throw;
+    public override float       BaseCooldown     => cooldown;
+    public override bool        UsesActionKey    => true;
+    public override bool        IsAwaitingAction => state != ThrowState.Idle;
+
+    private float Charge01 => state == ThrowState.Charging
+        ? Mathf.Clamp01((Time.time - chargeStartTime) / Mathf.Max(0.01f, chargeSeconds))
+        : 0f;
+
+    private float CurrentForce => Mathf.Lerp(minForce, maxForce, Charge01);
+
+    // ─── Input ────────────────────────────────────────────────────────────────
+
+    public override void HandleInput(AbilityInputEvent inputEvent)
     {
-        base.Awake();
-        abilityType = AbilityType.Throw;
-        playerView  = GetComponent<PhotonView>();
-        // Ensure exactly one ThrowDispatcher exists — shared by all ThrowAbility components on this player.
-        if (GetComponent<ThrowDispatcher>() == null)
-            gameObject.AddComponent<ThrowDispatcher>();
-    }
+        if (inputEvent != AbilityInputEvent.Down) return;
 
-    // -------------------------------------------------------------------------
-    // Ability Base Implementation
-    // -------------------------------------------------------------------------
-
-    public override void TryActivate(AbilityInputEvent inputEvent)
-    {
-        if (PauseMenuManager.Instance.Paused) return;
-
-        switch (state)
+        if (state == ThrowState.Idle)
         {
-            case ThrowState.Idle:
-                if (inputEvent == AbilityInputEvent.Down && CanActivate())
-                    EnterAiming();
-                break;
-
-            case ThrowState.Aiming:
-            case ThrowState.Charging:
-                // Q pressed again while active = cancel
-                if (inputEvent == AbilityInputEvent.Down)
-                    CancelThrow();
-                break;
+            if (IsReady) EnterAiming();
+        }
+        else
+        {
+            Cancel();
         }
     }
 
-    // Another ability cancelled this one (e.g. trap pressed while throw is active)
-    public override void OnActionCancel() => CancelThrow();
-
-    // LMB down = start charging
-    public override void OnActionConfirm()
-    {
-        if (state == ThrowState.Aiming)
-            EnterCharging();
-    }
-
-    // LMB up = release throw
-    public override void OnActionConfirmUp()
-    {
-        if (state == ThrowState.Charging)
-            ReleaseThrow();
-    }
-
-    // Called by InputHandler when Mouse1 is held during aiming
-    // Separated from TryActivate because it's a different key
-    public void TryCharge(bool down)
+    public override void OnActionDown()
     {
         if (state != ThrowState.Aiming) return;
-        if (down) EnterCharging();
+        state           = ThrowState.Charging;
+        chargeStartTime = Time.time;
     }
 
-    // -------------------------------------------------------------------------
-    // Unity Lifecycle
-    // -------------------------------------------------------------------------
-
-    private void Update()
+    public override void OnActionUp()
     {
-        if (state == ThrowState.Aiming || state == ThrowState.Charging)
-        {
-            UpdateTrajectory();
-            //Debug.Log($"{abilityName} charge: {CurrentCharge * 100f:F1}%");
-        }
+        if (state == ThrowState.Charging) Release();
     }
 
-    // -------------------------------------------------------------------------
-    // State Methods
-    // -------------------------------------------------------------------------
+    public override void Cancel()
+    {
+        if (state == ThrowState.Idle) return;
+        state = ThrowState.Idle;
+        PutAway();
+    }
+
+    // ─── Flow ─────────────────────────────────────────────────────────────────
 
     private void EnterAiming()
     {
-        state = ThrowState.Aiming;
-        SpawnHeldObject();
-
-        if (trajectoryLine != null)
-        {
-            //trajectoryLine.gameObject.SetActive(true);
-            trajectoryLine.enabled = true;
-        }
-
-        OnEnterAiming();
-    }
-
-    private void EnterCharging()
-    {
-        state = ThrowState.Charging;
-        chargeStartTime = Time.time;
-        OnEnterCharging();
-    }
-
-    private void ReleaseThrow()
-    {
         if (throwOrigin == null)
         {
-            Debug.LogWarning($"{abilityName}: throwOrigin is not assigned.");
+            Debug.LogWarning($"[{Id}] throwOrigin is not assigned.");
             return;
         }
 
-        float throwForce = Mathf.Lerp(minThrowForce, maxThrowForce, CurrentCharge);
-        Vector3 throwDirection = throwOrigin.forward;
-
-        // Destroy held visual
-        if (heldObject != null)
-        {
-            PhotonNetwork.Destroy(heldObject);
-            heldObject = null;
-        }
-
-        // Hide trajectory
-        if (trajectoryLine != null)
-            trajectoryLine.enabled = false;
-
-        // Spawn the actual thrown object and apply force
-        GameObject thrown = PhotonNetwork.Instantiate(
-            "Object/" + abilityName,
-            throwOrigin.position,
-            throwOrigin.rotation
-        );
-
-        if (thrown.TryGetComponent<Rigidbody>(out var thrownRb))
-            thrownRb.AddForce(throwDirection * throwForce, ForceMode.Impulse);
-
-        // Replicate throw impulse to remote clients so the projectile flies on every screen.
-        // Both owner and remotes start with identical initial velocity; physics diverges slightly
-        // but that is acceptable for a fast-moving projectile that explodes on first contact.
-        if (thrown.TryGetComponent<PhotonView>(out var thrownPv))
-            playerView.RPC("RPC_ApplyThrowForce", RpcTarget.Others, thrownPv.ViewID, throwDirection, throwForce);
-
-        OnThrow(thrown, throwDirection, throwForce);
-
-        lastUseTime = Time.time;
-        state = ThrowState.Idle;
+        state = ThrowState.Aiming;
+        SetHeldVisual(true);
+        Handler.BroadcastHeldVisual(Id, true);
+        if (trajectoryLine != null) trajectoryLine.enabled = true;
     }
 
-    private void CancelThrow()
+    private void Release()
     {
-        if (heldObject != null)
-        {
-            PhotonNetwork.Destroy(heldObject);
-            heldObject = null;
-        }
-
-        if (trajectoryLine != null)
-            trajectoryLine.enabled = false;
-
+        Vector3 impulse = throwOrigin.forward * CurrentForce;
         state = ThrowState.Idle;
-        OnCancelThrow();
+        PutAway();
+
+        PhotonNetwork.Instantiate(ResourcePath, throwOrigin.position, throwOrigin.rotation, 0,
+            SpawnData.Create(impulse, power * PowerMultiplier, Owner.photonView.ViewID, ObjectTunableOverrides()));
+
+        StartCooldown();
     }
 
-    // Virtual hook in case a child needs to react to cancellation
-    protected virtual void OnCancelThrow() { }
+    private void PutAway()
+    {
+        SetHeldVisual(false);
+        if (IsLocal) Handler.BroadcastHeldVisual(Id, false);
+        if (trajectoryLine != null) trajectoryLine.enabled = false;
+    }
 
-    // -------------------------------------------------------------------------
-    // Trajectory Arc
-    // -------------------------------------------------------------------------
+    private void Update()
+    {
+        if (state != ThrowState.Idle) UpdateTrajectory();
+    }
+
+    // ─── Held visual ──────────────────────────────────────────────────────────
+
+    /// <summary>Shows or hides a local-only copy of the throwable in this player's hand.</summary>
+    public void SetHeldVisual(bool visible)
+    {
+        if (!visible)
+        {
+            if (heldVisual != null) Destroy(heldVisual);
+            heldVisual = null;
+            return;
+        }
+        if (heldVisual != null) return;
+
+        var prefab = Resources.Load<GameObject>(ResourcePath);
+        if (prefab == null) return;
+
+        Transform parent = IsLocal ? throwOrigin : remoteHoldPoint != null ? remoteHoldPoint : transform;
+        heldVisual = VisualProxy.Create(prefab, parent);
+
+        Vector3 offset = IsLocal || remoteHoldPoint != null
+            ? Vector3.forward * 0.5f
+            : new Vector3(0.4f, Owner.Height * 0.75f, 0.6f);
+        // Held the way it will leave the hand (a frisbee lies flat)
+        var projectile = prefab.GetComponent<NetworkedProjectile>();
+        heldVisual.transform.SetLocalPositionAndRotation(offset, projectile != null ? projectile.LaunchRotation : Quaternion.identity);
+    }
+
+    // ─── Trajectory preview ───────────────────────────────────────────────────
 
     private void UpdateTrajectory()
     {
-        if (trajectoryLine == null) return;
+        if (trajectoryLine == null || throwOrigin == null) return;
 
-        // Re-enable every frame while active — guards against anything setting it to false externally
-        trajectoryLine.enabled = true;
+        trajectoryBuffer ??= new Vector3[trajectorySteps];
+        if (projectilePrefab == null) projectilePrefab = Resources.Load<GameObject>(ResourcePath)?.GetComponent<NetworkedProjectile>();
+        Vector3 launch = throwOrigin.forward * CurrentForce;
+        if (projectilePrefab != null) launch = projectilePrefab.LaunchVelocity(launch);
+        int count = SimulateArc(throwOrigin.position, launch);
 
-        if (throwOrigin == null)
-        {
-            Debug.LogWarning($"{abilityName}: throwOrigin is not assigned — trajectory cannot be drawn.");
-            return;
-        }
-
-        // During Aiming the player hasn't started charging yet, so show the minimum-force arc.
-        // During Charging the arc grows in real time as CurrentCharge increases.
-        float charge = state == ThrowState.Charging ? CurrentCharge : 0f;
-        Vector3[] points = CalculateTrajectory(
-            throwOrigin.position,
-            throwOrigin.forward * Mathf.Lerp(minThrowForce, maxThrowForce, charge)
-        );
-        
-        trajectoryLine.positionCount = points.Length;
-        trajectoryLine.SetPositions(points);
+        trajectoryLine.positionCount = count;
+        trajectoryLine.SetPositions(trajectoryBuffer);
     }
 
-    private Vector3[] CalculateTrajectory(Vector3 origin, Vector3 initialVelocity)
-    {
-        Vector3[] points = new Vector3[trajectorySteps];
-        Vector3 pos = origin;
-        Vector3 vel = initialVelocity;
+    // The prefab's projectile script: how it launches and whether it falls (for the preview)
+    private NetworkedProjectile projectilePrefab;
 
+    // The launch value is a velocity (VelocityChange), matching how throws are launched
+    private int SimulateArc(Vector3 position, Vector3 velocity)
+    {
+        Vector3 gravity = Physics.gravity * (projectilePrefab != null ? projectilePrefab.GravityScale : 1f);
         for (int i = 0; i < trajectorySteps; i++)
         {
-            points[i] = pos;
+            trajectoryBuffer[i] = position;
 
-            // Simulate physics step
-            vel += Physics.gravity * trajectoryTimeStep;
-            pos += vel * trajectoryTimeStep;
-
-            // Stop drawing if arc hits something
-            if (Physics.Raycast(pos, vel.normalized, out _, vel.magnitude * trajectoryTimeStep))
-            {
-                // Trim array to hit point
-                Vector3[] trimmed = new Vector3[i + 1];
-                System.Array.Copy(points, trimmed, i + 1);
-                return trimmed;
-            }
+            velocity += gravity * trajectoryTimeStep;
+            Vector3 step = velocity * trajectoryTimeStep;
+            if (Physics.Raycast(position, step.normalized, step.magnitude, ~0, QueryTriggerInteraction.Ignore))
+                return i + 1;
+            position += step;
         }
-
-        return points;
+        return trajectorySteps;
     }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    public bool CanActivate() => Time.time >= lastUseTime + cooldownTime;
-    public float CooldownRemaining() => Mathf.Max(0, lastUseTime + cooldownTime - Time.time);
-
-    // Spawns a visual-only held object, attaches it locally, then tells remote clients
-    // to do the same via an RPC on the held object's own PhotonView.
-    // Sending the RPC on the held object (not the player) avoids PUN2's "method found Nx"
-    // error that occurs when the player has multiple ThrowAbility components.
-    private void SpawnHeldObject()
-    {
-        if (throwOrigin == null || playerView == null || !playerView.IsMine) return;
-
-        heldObject = PhotonNetwork.Instantiate(
-            "Object/" + abilityName,
-            throwOrigin.position,
-            throwOrigin.rotation
-        );
-
-        if (heldObject == null)
-        {
-            Debug.LogError($"[{abilityName}] SpawnHeldObject: Instantiate returned null — verify Resources/Object/{abilityName} exists.");
-            return;
-        }
-
-        // Attach locally without going through the network
-        AttachHeldObject(heldObject);
-
-        // Tell remote clients to attach their copy via the player's own PhotonView → ThrowDispatcher.
-        // Using the player's PhotonView (single ThrowDispatcher) avoids the "found Nx" ambiguity.
-        if (!heldObject.TryGetComponent<PhotonView>(out var heldPv))
-        {
-            Debug.LogError($"[{abilityName}] SpawnHeldObject: prefab is missing a PhotonView component.");
-            return;
-        }
-
-        playerView.RPC("RPC_AttachHeld", RpcTarget.Others, heldPv.ViewID, abilityName);
-    }
-
-    // Parents the held object to this player's throw origin and freezes its physics.
-    // Called locally in SpawnHeldObject; also called on remote clients by HeldObjectSetup.RPC_SetupHeld.
-    public void AttachHeldObject(GameObject obj)
-    {
-        if (throwOrigin == null) return;
-
-        heldObject = obj;
-
-        if (heldObject.TryGetComponent<Rigidbody>(out var heldRb))
-        {
-            heldRb.isKinematic = true;
-            heldRb.useGravity  = false;
-        }
-
-        foreach (var col in heldObject.GetComponentsInChildren<Collider>())
-            col.enabled = false;
-
-        heldObject.transform.SetParent(throwOrigin);
-        heldObject.transform.SetLocalPositionAndRotation(Vector3.forward * 0.5f, Quaternion.identity);
-    }
-
-    private void OnDisable()
-    {
-        // Only the owner manages networked lifetime; remote clients let Photon handle cleanup
-        if (playerView != null && !playerView.IsMine) return;
-
-        if (heldObject != null)
-        {
-            PhotonNetwork.Destroy(heldObject);
-            heldObject = null;
-        }
-
-        if (trajectoryLine != null)
-            trajectoryLine.enabled = false;
-
-        state = ThrowState.Idle;
-    }
-
-    // -------------------------------------------------------------------------
-    // Virtual hooks for child classes
-    // -------------------------------------------------------------------------
-
-    protected virtual void OnEnterAiming() { }     // Called when player pulls out the object
-    protected virtual void OnEnterCharging() { }   // Called when player starts holding mouse1
-    protected virtual void OnThrow(GameObject thrown, Vector3 direction, float force) { } // Called after throw
 }

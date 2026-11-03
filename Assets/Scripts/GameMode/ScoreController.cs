@@ -1,112 +1,83 @@
-using UnityEngine;
-using System;
 using System.Collections.Generic;
+using Photon.Pun;
+using UnityEngine;
+using PhotonPlayer = Photon.Realtime.Player;
 
 /// <summary>
-/// Tracks cumulative hide time per player across all rounds. Master-client authoritative —
-/// only ticks and fires events on the master client; other clients receive score data via
-/// GameModeManager RPCs when needed.
+/// Cumulative per-player score (seconds survived as a hider in Tag).
 ///
-/// API:
-///   BeginRound(hiderActorNumbers) — register hiders and start accumulation
-///   FreezePlayerTimer(actorNumber) — lock a player's time (called when tagged)
-///   EndRound()                     — pause all accumulation until the next round
-///   GetWinner()                    — actor number with the highest accumulated hide time
-///
+/// Banked totals live in each player's "Score" property, written only by the master client
+/// at discrete moments (tagged, round end). The live score adds the current phase's elapsed
+/// time while the game mode says the player is scoring — a pure function of synced state, so
+/// every client shows the same ticking number without per-frame network traffic.
 /// Attach to: the same GameObject as GameModeManager.
 /// </summary>
 public class ScoreController : MonoBehaviour
 {
-    public event Action OnScoreLimitReached;
+    private GameModeManager manager;
 
-    [Header("Settings (overridden by room settings)")]
-    [SerializeField] private float maxTotalTime = 0f;  // Per-player cap. 0 = no limit.
+    private void Awake() => manager = GetComponent<GameModeManager>();
 
-    public float MaxTotalTime { get => maxTotalTime; set => maxTotalTime = value; }
+    // ─── Queries ──────────────────────────────────────────────────────────────
 
-    // actorNumber → accumulated hide time
-    private readonly Dictionary<int, float> hideTimes   = new();
-    private readonly HashSet<int>           frozen       = new();
-    private readonly HashSet<int>           activeHiders = new();
-    private bool isRunning       = false;
-    private bool scoreLimitFired = false; // Guard: fire OnScoreLimitReached at most once per round
+    public float GetBanked(PhotonPlayer player) => NetProps.Of(player, PlayerKeys.Score, 0f);
 
-    // -------------------------------------------------------------------------
-    // Public control API
-    // -------------------------------------------------------------------------
+    public bool IsScoring(PhotonPlayer player) =>
+        manager.Mode != null
+        && manager.Mode.IsScoring(PlayerRoles.Get(player), manager.Phase);
 
-    /// <summary>Register hiders and start accumulation for this round.</summary>
-    public void BeginRound(IEnumerable<int> hiderActorNumbers)
+    public float GetLive(PhotonPlayer player)
     {
-        frozen.Clear();
-        activeHiders.Clear();
-        scoreLimitFired = false;
-        foreach (int actor in hiderActorNumbers)
+        float score = GetBanked(player);
+        if (IsScoring(player))
         {
-            activeHiders.Add(actor);
-            if (!hideTimes.ContainsKey(actor))
-                hideTimes[actor] = 0f;
+            var clock = manager.Clock;
+            score += clock.HasLimit ? Mathf.Min(clock.Elapsed, clock.Duration) : clock.Elapsed;
         }
-        isRunning = true;
+        return score;
     }
 
-    /// <summary>Stop all accumulation until the next BeginRound.</summary>
-    public void EndRound()
+    public PhotonPlayer GetLeader()
     {
-        isRunning = false;
-    }
-
-    /// <summary>Stop accumulating time for a player (called when they are tagged).</summary>
-    public void FreezePlayerTimer(int actorNumber)
-    {
-        frozen.Add(actorNumber);
-    }
-
-    /// <summary>Returns accumulated hide time for the given actor, or 0 if unknown.</summary>
-    public float GetHideTime(int actorNumber) =>
-        hideTimes.TryGetValue(actorNumber, out float t) ? t : 0f;
-
-    public IReadOnlyDictionary<int, float> GetAllHideTimes() => hideTimes;
-
-    /// <summary>Returns the actor number of the player with the most hide time, or -1 if no data.</summary>
-    public int GetWinner()
-    {
-        int   winner = -1;
-        float best   = -1f;
-        foreach (var kvp in hideTimes)
+        PhotonPlayer leader = null;
+        float best = float.MinValue;
+        foreach (var player in PhotonNetwork.PlayerList)
         {
-            if (kvp.Value > best) { best = kvp.Value; winner = kvp.Key; }
+            float score = GetLive(player);
+            if (score > best) { best = score; leader = player; }
         }
-        return winner;
+        return leader;
     }
 
-    // -------------------------------------------------------------------------
-    // Unity Lifecycle
-    // -------------------------------------------------------------------------
-
-    private void Update()
+    public float GetLeaderScore()
     {
-        if (!isRunning) return;
-        if (!Photon.Pun.PhotonNetwork.IsMasterClient) return;
+        var leader = GetLeader();
+        return leader != null ? GetLive(leader) : 0f;
+    }
 
-        // Iterate over a snapshot to allow modifications inside the loop
-        var keys = new List<int>(activeHiders);
-        foreach (int actor in keys)
-        {
-            if (frozen.Contains(actor)) continue;
+    /// <summary>All players sorted by live score, highest first.</summary>
+    public List<(PhotonPlayer player, float score)> GetStandings()
+    {
+        var standings = new List<(PhotonPlayer, float)>();
+        foreach (var player in PhotonNetwork.PlayerList)
+            standings.Add((player, GetLive(player)));
+        standings.Sort((a, b) => b.Item2.CompareTo(a.Item2));
+        return standings;
+    }
 
-            hideTimes[actor] += Time.deltaTime;
+    // ─── Master-client API ────────────────────────────────────────────────────
 
-            if (maxTotalTime > 0f && hideTimes[actor] >= maxTotalTime)
-            {
-                hideTimes[actor] = maxTotalTime;
-                frozen.Add(actor);
-                if (!scoreLimitFired)
-                {
-                    scoreLimitFired = true;
-                    OnScoreLimitReached?.Invoke();
-                }
-            }
-        }
+    /// <summary>Master: locks in the player's live score (call before their role changes).</summary>
+    public void Bank(PhotonPlayer player) =>
+        NetProps.SetPlayer(player, PlayerKeys.Score, GetLive(player));
+
+    /// <summary>Master: adds a flat bonus (may be negative) to the player's banked score.</summary>
+    public void Add(PhotonPlayer player, float amount) =>
+        NetProps.SetPlayer(player, PlayerKeys.Score, Mathf.Max(0f, GetBanked(player) + amount));
+
+    public void ResetAll()
+    {
+        foreach (var player in PhotonNetwork.PlayerList)
+            NetProps.SetPlayer(player, PlayerKeys.Score, 0f);
     }
 }

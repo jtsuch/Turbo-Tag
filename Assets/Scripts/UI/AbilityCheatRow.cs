@@ -1,110 +1,101 @@
-using UnityEngine;
-using TMPro;
-using UnityEngine.UI;
 using System;
-using System.Reflection;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
-/// A single row in a CheatsUI ability tab list. Supports two modes:
-///   Equipped   — the ability currently in the player's slot; shows an Expand button for
-///                modifying ability-specific variables via sliders.
-///   Available  — an ability not currently equipped; shows a Bind Key button so the player
-///                can hot-add it to a key without replacing their equipped ability.
-/// Attach to: AbilityCheatRow prefab inside CheatsUI ability tab scroll content.
+/// One ability in a Cheats ability tab. Every row can expand to show sliders for the ability's
+/// [TunableParam] fields, then those of the object it spawns (fuse, blast radius, pull…). The equipped ability shows its slot key and can be rebound or unbound;
+/// other abilities can be bound to an extra key so they become usable alongside the equipped loadout.
+/// Every row has a Remove button that clears its key.
+/// Attach to: AbilityCheatRow prefab.
 /// </summary>
 public class AbilityCheatRow : MonoBehaviour
 {
     [Header("UI References")]
-    public TMP_Text   abilityNameLabel;
-    public Button     expandButton;
-    public TMP_Text   expandButtonLabel;
-    public Button     bindButton;
-    public TMP_Text   bindButtonLabel;
-    public Button     clearButton;
-    public GameObject expandedPanel;
+    [SerializeField] private TMP_Text   abilityNameLabel;
+    [SerializeField] private Button     expandButton;
+    [SerializeField] private TMP_Text   expandButtonLabel;
+    [SerializeField] private Button     bindButton;
+    [SerializeField] private TMP_Text   bindButtonLabel;
+    [SerializeField] private Button     clearButton;
+    [SerializeField] private GameObject expandedPanel;
 
-    public string  AbilityName { get; private set; }
-    public bool    IsEquipped  { get; private set; }
-    public KeyCode BoundKey    { get; private set; } = KeyCode.None;
+    public Ability Ability    { get; private set; }
+    public bool    IsEquipped { get; private set; }
+    public KeyCode BoundKey   { get; private set; }
 
-    public event Action<AbilityCheatRow> OnBindRequested;
-    public event Action<AbilityCheatRow> OnClearRequested;
-    public event Action<AbilityCheatRow> OnExpandToggled;
+    public event Action<AbilityCheatRow> BindRequested;
+    public event Action<AbilityCheatRow> ClearRequested;
 
-    private bool expanded = false;
+    private readonly List<SliderRow> sliders = new();
+    private bool expanded;
 
-    public void Initialize(string abilityName, bool isEquipped, KeyCode existingBind = KeyCode.None)
+    public void Initialize(Ability ability, bool isEquipped, KeyCode key, GameObject sliderRowPrefab)
     {
-        AbilityName = abilityName;
-        IsEquipped  = isEquipped;
-        BoundKey    = existingBind;
+        Ability    = ability;
+        IsEquipped = isEquipped;
 
-        abilityNameLabel.text = abilityName;
+        string name = AbilityCatalog.DisplayName(ability.Id);
+        abilityNameLabel.text = isEquipped ? $"{name} (Equipped)" : name;
         expandedPanel.SetActive(false);
-
-        RefreshBindLabel(false);
+        expandButtonLabel.text = "▼ Expand";
 
         expandButton.onClick.AddListener(ToggleExpand);
-        bindButton.onClick.AddListener(() => OnBindRequested?.Invoke(this));
-        if (clearButton != null)
-            clearButton.onClick.AddListener(() => OnClearRequested?.Invoke(this));
+        bindButton.onClick.AddListener(() => BindRequested?.Invoke(this));
+        if (clearButton != null) clearButton.onClick.AddListener(() => ClearRequested?.Invoke(this));
+
+        bindButton.interactable = true;
+        if (clearButton != null) clearButton.gameObject.SetActive(true);
+
+        SetBoundKey(key);
+        BuildSliders(sliderRowPrefab);
     }
 
     public void SetBoundKey(KeyCode key)
     {
         BoundKey = key;
-        RefreshBindLabel(false);
+        SetListening(false);
     }
 
-    public void ClearBoundKey()
+    public void SetListening(bool listening) =>
+        bindButtonLabel.text = listening ? "..." : BoundKey == KeyCode.None ? "Bind Key" : Keybinds.Label(BoundKey);
+
+    /// <summary>Re-reads every slider from the ability (after cheats reset tunables).</summary>
+    public void RefreshSliders()
     {
-        BoundKey = KeyCode.None;
-        RefreshBindLabel(false);
+        foreach (var slider in sliders) slider.Refresh();
     }
-
-    public void SetListening(bool listening) => RefreshBindLabel(listening);
 
     private void ToggleExpand()
     {
         expanded = !expanded;
         expandedPanel.SetActive(expanded);
         expandButtonLabel.text = expanded ? "▲ Collapse" : "▼ Expand";
-        OnExpandToggled?.Invoke(this);
+        CheatsUI.RebuildLayout(transform);
     }
 
-    /// <summary>
-    /// Scans <paramref name="abilityComp"/> for fields tagged with [TunableParam] and spawns
-    /// a SliderRow inside expandedPanel for each one. Call after Initialize() for equipped rows.
-    /// </summary>
-    public void Populate(MonoBehaviour abilityComp, GameObject sliderRowPrefab)
+    private void BuildSliders(GameObject sliderRowPrefab)
     {
-        if (abilityComp == null || sliderRowPrefab == null) return;
+        if (sliderRowPrefab == null) return;
 
-        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
-                                 | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+        foreach (var (field, attr) in TunableParamAttribute.FieldsOf(Ability.GetType()))
+            AddSlider(sliderRowPrefab).Initialize(attr, Ability, field);
 
-        // Walk the inheritance chain so base-class fields (e.g. cooldownTime) are included
-        var type = abilityComp.GetType();
-        while (type != null && type != typeof(MonoBehaviour))
+        foreach (var entry in Ability.ObjectTunableEntries)
         {
-            foreach (var field in type.GetFields(flags))
-            {
-                var attr = field.GetCustomAttribute<TunableParamAttribute>();
-                if (attr == null || field.FieldType != typeof(float)) continue;
-
-                float current = (float)field.GetValue(abilityComp);
-                var row = Instantiate(sliderRowPrefab, expandedPanel.transform)
-                              .GetComponent<SliderRow>();
-                row.Initialize(attr.DisplayName, attr.Min, attr.Max, current, abilityComp, field);
-            }
-            type = type.BaseType;
+            var e = entry;
+            AddSlider(sliderRowPrefab).Initialize(e.Attribute, () => Ability.GetObjectTunable(e), v => Ability.SetObjectTunable(e, v));
         }
+
+        expandButton.gameObject.SetActive(sliders.Count > 0);
     }
 
-    private void RefreshBindLabel(bool listening)
+    private SliderRow AddSlider(GameObject sliderRowPrefab)
     {
-        bindButtonLabel.text = listening            ? "..."
-                             : BoundKey == KeyCode.None ? "Bind Key"
-                             : BoundKey.ToString();
+        var row = Instantiate(sliderRowPrefab, expandedPanel.transform).GetComponent<SliderRow>();
+        sliders.Add(row);
+        return row;
     }
 }

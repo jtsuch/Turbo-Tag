@@ -3,7 +3,9 @@ using Photon.Pun;
 
 /// <summary>
 /// Applies a coloured emission glow to remote player meshes to communicate team membership.
+/// Roles are read from player properties, so this works in any mode that uses roles.
 /// Only active on remote player instances — the local player's own mesh is never tinted.
+/// Also adds a faint icy glow while the player stands on ice (the blue body tint is PlayerAppearance's).
 ///
 /// Glow rules from the local player's perspective:
 ///   Hider  sees Hunter  → Red   (threat)
@@ -31,14 +33,22 @@ public class PlayerHighlight : MonoBehaviour
     [SerializeField] private Color allyColor   = new Color(0.1f, 0.35f, 1.0f);
     [SerializeField] [Range(0f, 4f)] private float intensity = 1.5f;
 
+    [Header("Ice")]
+    [Tooltip("Faint glow added while on ice, so the tint reads in dark areas.")]
+    [SerializeField] private Color iceGlow      = new Color(0.1f, 0.3f, 0.5f);
+    [SerializeField] private float iceFadeSpeed = 4f;
+
     private PhotonView view;
-    private static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
+    private Player     player;
+    private static readonly int EmissionId  = Shader.PropertyToID("_EmissionColor");
     private MaterialPropertyBlock block;
+    private float   iceAmount;
 
     private void Awake()
     {
-        view  = GetComponent<PhotonView>();
-        block = new MaterialPropertyBlock();
+        view   = GetComponent<PhotonView>();
+        player = GetComponent<Player>();
+        block  = new MaterialPropertyBlock();
 
         if (highlightRenderers == null || highlightRenderers.Length == 0)
         {
@@ -62,19 +72,21 @@ public class PlayerHighlight : MonoBehaviour
 
     private void Update()
     {
-        if (Player.Instance == null) return;
-        if (GameModeManager.Instance == null) return;
-        if (view.Owner == null) return;
+        var local   = Player.Local;
+        var manager = GameModeManager.Instance;
+        if (local == null || player == null) return;
 
-        bool localIsHunter  = Player.Instance.isHunter;
-        bool remoteIsHunter = GameModeManager.Instance.IsHunter(view.Owner.ActorNumber);
+        bool  usesRoles = manager != null && manager.Mode != null && manager.Mode.UsesRoles;
+        Color target    = usesRoles ? ResolveColor(local.IsHunter, player.IsHunter) : Color.black;
 
-        Color target = ResolveColor(localIsHunter, remoteIsHunter);
+        iceAmount = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * Time.deltaTime);
+        Color glow = target * intensity + iceGlow * iceAmount;
 
-        foreach (var r in highlightRenderers)
+        for (int i = 0; i < highlightRenderers.Length; i++)
         {
+            var r = highlightRenderers[i];
             r.GetPropertyBlock(block);
-            block.SetColor(EmissionId, target * intensity);
+            block.SetColor(EmissionId, glow);
             r.SetPropertyBlock(block);
         }
     }
@@ -90,8 +102,9 @@ public class PlayerHighlight : MonoBehaviour
     private void OnDisable()
     {
         if (block == null) return;
-        foreach (var r in highlightRenderers)
+        for (int i = 0; i < highlightRenderers.Length; i++)
         {
+            var r = highlightRenderers[i];
             r.GetPropertyBlock(block);
             block.SetColor(EmissionId, Color.black);
             r.SetPropertyBlock(block);

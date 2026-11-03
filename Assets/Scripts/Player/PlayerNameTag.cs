@@ -41,7 +41,7 @@ public class PlayerNameTag : MonoBehaviour
     private void Start()
     {
         if (view.IsMine) return;
-        cam = Camera.main;
+        cam = PlayerCam.Local != null ? PlayerCam.Local.Camera : Camera.main;
     }
 
     private void CreateTag()
@@ -71,7 +71,15 @@ public class PlayerNameTag : MonoBehaviour
 
     private void Update()
     {
-        if (view.IsMine || label == null || cam == null) return;
+        if (view.IsMine || label == null || tagRoot == null) return;
+
+        // The local camera may spawn after this remote player, and is replaced when the local player
+        // respawns (a destroyed camera reads as null here)
+        if (cam == null || !cam.isActiveAndEnabled)
+        {
+            cam = PlayerCam.Local != null ? PlayerCam.Local.Camera : Camera.main;
+            if (cam == null) return;
+        }
 
         // Billboard — always face the local camera
         Vector3 dir = tagRoot.position - cam.transform.position;
@@ -85,8 +93,13 @@ public class PlayerNameTag : MonoBehaviour
             losVisible = CheckLOS();
         }
 
-        label.enabled = losVisible;
+        // Cloak and camouflage (PlayerAppearance) also hide the name, or they'd give the player away
+        appearance ??= GetComponent<PlayerAppearance>();
+        bool disguised = appearance != null && (appearance.CloakAmount > 0.5f || appearance.Camouflage.HasValue);
+        label.enabled = losVisible && !disguised;
     }
+
+    private PlayerAppearance appearance;
 
     private bool CheckLOS()
     {

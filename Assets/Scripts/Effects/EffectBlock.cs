@@ -18,9 +18,7 @@ using System.Collections.Generic;
 [RequireComponent(typeof(Collider))]
 public class EffectBlock : MonoBehaviourPun
 {
-    // -------------------------------------------------------------------------
-    // Effect registry
-    // -------------------------------------------------------------------------
+    // ─── Effect registry ─────────────────────────────────────────────────────
 
     /// <summary>Add new effect types here and in CreateEffect() below.</summary>
     public enum EffectType
@@ -43,9 +41,7 @@ public class EffectBlock : MonoBehaviourPun
         public float      weight   = 1f;
     }
 
-    // -------------------------------------------------------------------------
-    // Inspector
-    // -------------------------------------------------------------------------
+    // ─── Inspector ───────────────────────────────────────────────────────────
 
     [Header("Effect Pool")]
     [SerializeField] private List<EffectEntry> effectPool = new()
@@ -59,21 +55,17 @@ public class EffectBlock : MonoBehaviourPun
     [SerializeField] private GameObject consumeVFX;
     [SerializeField] private AudioClip  consumeSFX;
 
-    // -------------------------------------------------------------------------
-    // State
-    // -------------------------------------------------------------------------
+    // ─── State ───────────────────────────────────────────────────────────────
 
     private bool consumed = false;
 
-    // -------------------------------------------------------------------------
-    // Trigger
-    // -------------------------------------------------------------------------
+    // ─── Trigger ─────────────────────────────────────────────────────────────
 
     private void OnTriggerEnter(Collider other)
     {
         if (consumed) return;
-        if (!other.TryGetComponent(out Player player)) return;
-        if (!player.IsLocalPlayer) return;
+        var player = other.GetComponentInParent<Player>();
+        if (player == null || !player.IsLocal) return;
 
         consumed = true;
 
@@ -84,9 +76,7 @@ public class EffectBlock : MonoBehaviourPun
         photonView.RPC(nameof(RPC_Consume), RpcTarget.All);
     }
 
-    // -------------------------------------------------------------------------
-    // Effect application
-    // -------------------------------------------------------------------------
+    // ─── Effect application ──────────────────────────────────────────────────
 
     private void ApplyEffect(EffectEntry entry, Player player)
     {
@@ -117,9 +107,7 @@ public class EffectBlock : MonoBehaviourPun
         _                          => null,
     };
 
-    // -------------------------------------------------------------------------
-    // RPC
-    // -------------------------------------------------------------------------
+    // ─── RPC ─────────────────────────────────────────────────────────────────
 
     [PunRPC]
     private void RPC_Consume()
@@ -139,9 +127,7 @@ public class EffectBlock : MonoBehaviourPun
             gameObject.SetActive(false);   // Fallback: hide until the destroy message arrives
     }
 
-    // -------------------------------------------------------------------------
-    // Weighted random selection
-    // -------------------------------------------------------------------------
+    // ─── Weighted random selection ───────────────────────────────────────────
 
     private EffectEntry PickWeightedRandom()
     {

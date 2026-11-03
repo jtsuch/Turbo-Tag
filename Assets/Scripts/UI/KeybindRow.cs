@@ -1,62 +1,45 @@
-using UnityEngine;
-using TMPro;
-using UnityEngine.UI;
 using System;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
-/// A single row in the keybind settings list. Displays the action name and its current key.
-/// Notifies the parent (GeneralUI or CheatsUI) via events when the player wants to rebind or clear.
-/// Attach to: KeybindRow prefab — expected layout: [Label | KeyButton | RemoveButton] in a horizontal group.
+/// One row in the keybind list: action label, key button (click to rebind) and remove button.
+/// Raises events; the owning settings page decides what a rebind means.
+/// Attach to: KeybindRow prefab — [Label | KeyButton | RemoveButton].
 /// </summary>
 public class KeybindRow : MonoBehaviour
 {
     [Header("UI References")]
-    public TMP_Text actionLabel;
-    public Button   bindButton;
-    public TMP_Text bindButtonLabel;
-    public Button   removeButton;
+    [SerializeField] private TMP_Text actionLabel;
+    [SerializeField] private Button   bindButton;
+    [SerializeField] private TMP_Text bindButtonLabel;
+    [SerializeField] private Button   removeButton;
 
-    public string  ActionName     { get; private set; }  // Internal key used in InputHandler (e.g. "Jump")
-    public string  PlayerPrefsKey { get; private set; }  // e.g. "Keybind_Jump"
-    public KeyCode CurrentKey     { get; private set; }
+    public InputAction Action     { get; private set; }
+    public KeyCode     CurrentKey { get; private set; }
 
-    /// <summary>Fired when the player clicks the key button to begin listening.</summary>
-    public event Action<KeybindRow> OnListenRequested;
-    /// <summary>Fired when the player clicks the remove button.</summary>
-    public event Action<KeybindRow> OnRemoveRequested;
+    public event Action<KeybindRow> ListenRequested;
+    public event Action<KeybindRow> RemoveRequested;
 
-    public void Initialize(string displayName, string actionName, string playerPrefsKey, KeyCode initialKey)
+    public void Initialize(string displayName, InputAction action, KeyCode key, bool removable = true)
     {
-        ActionName     = actionName;
-        PlayerPrefsKey = playerPrefsKey;
-        CurrentKey     = initialKey;
-
+        Action           = action;
         actionLabel.text = displayName;
-        RefreshLabel(false);
+        SetKey(key);
 
-        bindButton.onClick.AddListener(() => OnListenRequested?.Invoke(this));
-        removeButton.onClick.AddListener(() => OnRemoveRequested?.Invoke(this));
+        bindButton.onClick.AddListener(() => ListenRequested?.Invoke(this));
+        removeButton.onClick.AddListener(() => RemoveRequested?.Invoke(this));
+        removeButton.gameObject.SetActive(removable);
     }
 
     public void SetKey(KeyCode key)
     {
         CurrentKey = key;
-        RefreshLabel(false);
+        SetListening(false);
     }
 
-    public void ClearKey()
-    {
-        CurrentKey = KeyCode.None;
-        RefreshLabel(false);
-    }
-
-    /// <summary>Switches the button label between "..." (listening) and the bound key name.</summary>
-    public void SetListening(bool listening) => RefreshLabel(listening);
-
-    private void RefreshLabel(bool listening)
-    {
-        bindButtonLabel.text = listening            ? "..."
-                             : CurrentKey == KeyCode.None ? "—"
-                             : CurrentKey.ToString();
-    }
+    /// <summary>Shows "..." while waiting for a key press.</summary>
+    public void SetListening(bool listening) =>
+        bindButtonLabel.text = listening ? "..." : Keybinds.Label(CurrentKey);
 }

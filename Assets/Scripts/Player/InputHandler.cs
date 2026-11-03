@@ -1,304 +1,117 @@
-using System;
-using System.Collections.Generic;
 using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
-/// Reads raw Unity input and routes it to movement flags and AbilityHandler each frame.
-/// Persists keybindings in PlayerPrefs and supports runtime rebinding. Ability keys are
-/// stored by ability name so they survive hot-reloads and Photon property updates.
-/// Attach to: ThePlayer prefab — disabled automatically on remote player instances.
+/// Polls keyboard/mouse input for the local player once per frame using the bindings in
+/// <see cref="Keybinds"/>. Exposes movement intent for PlayerMovement and routes ability keys
+/// to the AbilityHandler. Input is suppressed while paused, frozen by the game mode, or caught.
+/// Attach to: ThePlayer prefab root — inert on remote player instances.
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
-public class InputHandler : MonoBehaviourPunCallbacks
+public class InputHandler : MonoBehaviourPun
 {
-    // ─── Input State ──────────────────────────────────────────────────────────
-    public Vector2 MoveInput { get; private set; }
-    public Vector2 LookInput { get; private set; }
+    // ─── Movement intent (read by PlayerMovement, camera, animation) ──────────
+    public Vector2 MoveInput     { get; private set; }
+    public bool    JumpPressed   { get; private set; }
+    public bool    SprintHeld    { get; private set; }
+    public bool    CrouchPressed { get; private set; }
+    /// <summary>Crouch key held — used by grapples to reel out.</summary>
+    public bool    CrouchHeld    { get; private set; }
+    public bool    PronePressed  { get; private set; }
+    public bool    GrabPressed   { get; private set; }
 
-    public bool Jump { get; private set; }
-    public bool Sprint { get; private set; }
-    public bool Crouch { get; private set; }
-    public bool Down { get; private set; }
-    public bool Prone { get; private set; }
-    public bool Grab { get; private set; }
-    public bool Pause { get; private set; }
-    public bool AbilityZeroDown { get; private set; }
-    public bool AbilityZeroUp { get; private set; }
+    private Player         player;
+    private AbilityHandler abilities;
+    private bool           abilitiesBlocked;
 
-    // ─── References ───────────────────────────────────────────────────────────
-    [Header("References")]
-    public AbilityHandler AbilityHandler;
-    public Player player;
+    private static readonly AbilitySlot[] Slots =
+        { AbilitySlot.Basic, AbilitySlot.Quick, AbilitySlot.Throw, AbilitySlot.Trap };
 
-    private PhotonView view;
-
-    // Key name → KeyCode; core actions and ability names share this dictionary
-    private Dictionary<string, KeyCode> keybindings;
-
-    // Cached key codes for ability slots, set at Start and reapplied when Photon properties arrive
-    private KeyCode abilitySlotKey0;
-    private KeyCode abilitySlotKey1;
-    private KeyCode abilitySlotKey2;
-    private KeyCode abilitySlotKey3;
-
-    void Start()
+    private void Awake()
     {
-        view = GetComponent<PhotonView>();
-        if (!view.IsMine)
+        player    = GetComponent<Player>();
+        abilities = GetComponent<AbilityHandler>();
+    }
+
+    private void Update()
+    {
+        if (!photonView.IsMine) return;
+
+        ClearFrameInput();
+
+        if (Input.GetKeyDown(Keybinds.Get(InputAction.Pause)) && PauseMenuManager.Instance != null)
+            PauseMenuManager.Instance.Toggle();
+
+        bool paused = PauseMenuManager.IsPaused;
+
+        if (!paused && player.CanMove)
+            ReadMovement();
+
+        UpdateAbilities(!paused && player.CanUseAbilities);
+    }
+
+    private void ClearFrameInput()
+    {
+        MoveInput     = Vector2.zero;
+        JumpPressed   = SprintHeld = CrouchPressed = CrouchHeld = PronePressed = GrabPressed = false;
+    }
+
+    private void ReadMovement()
+    {
+        // GetAxis (smoothed) keeps the acceleration curve the movement was tuned with
+        MoveInput = Vector2.ClampMagnitude(
+            new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical")), 1f)
+            * player.Modifiers.Get(Stat.ControlDirection);
+
+        JumpPressed   = Pressed(InputAction.Jump);
+        SprintHeld    = Held(InputAction.Sprint);
+        CrouchPressed = Pressed(InputAction.Crouch);
+        CrouchHeld    = Held(InputAction.Crouch);
+        PronePressed  = Pressed(InputAction.Prone);
+        GrabPressed   = Pressed(InputAction.Grab);
+    }
+
+    // ─── Abilities ────────────────────────────────────────────────────────────
+
+    private void UpdateAbilities(bool allowed)
+    {
+        if (!allowed)
         {
-            enabled = false; // Skip Update on remote players — they don't drive local input
+            // Release anything held when input is taken away (pause menu, frozen, caught)
+            if (!abilitiesBlocked) abilities.CancelAll();
+            abilitiesBlocked = true;
             return;
         }
+        abilitiesBlocked = false;
 
-        // Load saved keybindings from PlayerPrefs; defaults are used on first run
-        string actionKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ACTION,   KeyCode.Mouse0.ToString());
-        string jumpKey    = PlayerPrefs.GetString(NetworkKeys.KEYBIND_JUMP,     KeyCode.Space.ToString());
-        string sprintKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_SPRINT,   KeyCode.LeftShift.ToString());
-        string crouchKey  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_CROUCH,   KeyCode.LeftControl.ToString());
-        string proneKey   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_PRONE,    KeyCode.C.ToString());
-        string pauseKey   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_PAUSE,    KeyCode.Escape.ToString());
-        string grabKey    = PlayerPrefs.GetString(NetworkKeys.KEYBIND_GRAB,     KeyCode.F.ToString());
-        string abilityZero  = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_0, KeyCode.Mouse1.ToString());
-        string abilityOne   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_1, KeyCode.E.ToString());
-        string abilityTwo   = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_2, KeyCode.Q.ToString());
-        string abilityThree = PlayerPrefs.GetString(NetworkKeys.KEYBIND_ABILITY_3, KeyCode.X.ToString());
+        KeyCode action = Keybinds.Get(InputAction.Action);
+        if (Input.GetKeyDown(action)) abilities.ConfirmDown();
+        if (Input.GetKeyUp(action))   abilities.ConfirmUp();
 
-        // Cache parsed keycodes for ability slots so we can assign them later when ability names arrive
-        abilitySlotKey0 = ParseKey(abilityZero,  KeyCode.Mouse1);
-        abilitySlotKey1 = ParseKey(abilityOne,   KeyCode.E);
-        abilitySlotKey2 = ParseKey(abilityTwo,   KeyCode.Q);
-        abilitySlotKey3 = ParseKey(abilityThree, KeyCode.X);
-
-        string abilityOneName   = GetAbilityName(NetworkKeys.ABILITY_BASIC);
-        string abilityTwoName   = GetAbilityName(NetworkKeys.ABILITY_QUICK);
-        string abilityThreeName = GetAbilityName(NetworkKeys.ABILITY_THROW);
-        string abilityFourName  = GetAbilityName(NetworkKeys.ABILITY_TRAP);
-
-        // Build the master keybinding dictionary from the loaded/default values
-        keybindings = new()
+        foreach (var slot in Slots)
         {
-            {"Action", ParseKey(actionKey,  KeyCode.Mouse0)},
-            {"Jump",   ParseKey(jumpKey,    KeyCode.Space)},
-            {"Sprint", ParseKey(sprintKey,  KeyCode.LeftShift)},
-            {"Crouch", ParseKey(crouchKey,  KeyCode.LeftControl)},
-            {"Prone",  ParseKey(proneKey,   KeyCode.C)},
-            {"Pause",  ParseKey(pauseKey,   KeyCode.Escape)},
-            {"Grab",   ParseKey(grabKey,    KeyCode.F)},
-        };
+            var ability = abilities.GetEquipped(slot);
+            if (ability != null) Route(ability, Keybinds.ForSlot(slot));
+        }
 
-        Debug.Log("Ability names at start: " + abilityOneName + ", " + abilityTwoName + ", " + abilityThreeName + ", " + abilityFourName);
-
-        // Add ability bindings only if the ability names are already present
-        if (!string.IsNullOrEmpty(abilityOneName) && !keybindings.ContainsKey(abilityOneName)) keybindings.Add(abilityOneName, abilitySlotKey0);
-        if (!string.IsNullOrEmpty(abilityTwoName) && !keybindings.ContainsKey(abilityTwoName)) keybindings.Add(abilityTwoName, abilitySlotKey1);
-        if (!string.IsNullOrEmpty(abilityThreeName) && !keybindings.ContainsKey(abilityThreeName)) keybindings.Add(abilityThreeName, abilitySlotKey2);
-        if (!string.IsNullOrEmpty(abilityFourName) && !keybindings.ContainsKey(abilityFourName)) keybindings.Add(abilityFourName, abilitySlotKey3);
-
+        foreach (var binding in abilities.CustomBindings)
+        {
+            var ability = abilities.Find(binding.Key);
+            if (ability != null) Route(ability, binding.Value);
+        }
     }
 
-    // ─── Photon Callbacks ─────────────────────────────────────────────────────
-
-    // Fires on all clients when any player's custom properties change.
-    // Used to late-bind ability keys when ability names arrive after Start (common on reconnect).
-    public override void OnPlayerPropertiesUpdate(Photon.Realtime.Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+    private void Route(Ability ability, KeyCode key)
     {
-        base.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
-        if (!targetPlayer.IsLocal) return;
+        if (key == KeyCode.None) return;
 
-        // For each ability slot, if the property arrived, add/update keybinding
-        TryApplyAbilityProperty(NetworkKeys.ABILITY_BASIC, abilitySlotKey0);
-        TryApplyAbilityProperty(NetworkKeys.ABILITY_QUICK, abilitySlotKey1);
-        TryApplyAbilityProperty(NetworkKeys.ABILITY_THROW, abilitySlotKey2);
-        TryApplyAbilityProperty(NetworkKeys.ABILITY_TRAP,  abilitySlotKey3);
+        if      (Input.GetKeyDown(key)) abilities.Use(ability, AbilityInputEvent.Down);
+        else if (Input.GetKeyUp(key))   abilities.Use(ability, AbilityInputEvent.Up);
+        else if (Input.GetKey(key))     abilities.Use(ability, AbilityInputEvent.Held);
     }
 
-    private void TryApplyAbilityProperty(string propName, KeyCode slotKey)
-    {
-        var local = PhotonNetwork.LocalPlayer;
-        if (local == null) return;
-        var props = local.CustomProperties;
-        if (props != null && props.TryGetValue(propName, out object raw))
-        {
-            if (raw is string abilityName && !string.IsNullOrEmpty(abilityName))
-            {
-                // Add or overwrite — ability name is the key, slot key code is the value
-                if (keybindings.ContainsKey(abilityName))
-                    keybindings[abilityName] = slotKey;
-                else
-                    keybindings.Add(abilityName, slotKey);
-            }
-        }
-    }
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    // Reads an ability name from Photon custom properties by property key (e.g. "BasicAbility")
-    private string GetAbilityName(string abilityNumber)
-    {
-        var localPlayer = PhotonNetwork.LocalPlayer;
-        if (localPlayer == null)
-        {
-            Debug.LogError("LocalPlayer is null. Rage quitting.");
-            return "";
-        }
-        var props = localPlayer.CustomProperties;
-
-        if (props != null && props.TryGetValue(abilityNumber, out object rawAbility))
-        {
-            if (rawAbility is string stringAbility)
-                return stringAbility;
-            else
-                Debug.LogWarning("Can't find ability name in props");
-        }
-        else
-        {
-            Debug.LogWarning("Props is null");
-        }
-        return "";
-    }
-
-    // ─── Update ───────────────────────────────────────────────────────────────
-    void Update()
-    {
-        if (!view.IsMine) return;
-
-        // Pause key is always processed first; skip everything else while paused
-        var menuManager = PauseMenuManager.Instance;
-        if (menuManager != null)
-        {
-            if (Input.GetKeyDown(Key("Pause")))
-                menuManager.TogglePauseMenu();
-
-            if (menuManager.Paused) return;
-        }
-
-        MoveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-        LookInput = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
-
-        KeyCode jumpKey   = Key("Jump");
-        KeyCode sprintKey = Key("Sprint");
-        KeyCode crouchKey = Key("Crouch");
-
-        Jump   = jumpKey   != KeyCode.None && Input.GetKeyDown(jumpKey);
-        Sprint = sprintKey != KeyCode.None && Input.GetKey(sprintKey);
-        Prone  = Key("Prone") != KeyCode.None && Input.GetKeyDown(Key("Prone"));
-        Crouch = crouchKey != KeyCode.None && Input.GetKeyDown(crouchKey);
-        Grab   = Key("Grab")  != KeyCode.None && Input.GetKeyDown(Key("Grab"));
-
-        // Held crouch key used by grapple logic (distinct from the tap-to-toggle Crouch bool)
-        Down = crouchKey != KeyCode.None && Input.GetKey(crouchKey);
-
-        // Re-evaluate Idle speed when sprint key changes (walk ↔ sprint transition)
-        if (player.currentState == Player.MovementState.Idle)
-        {
-            if (sprintKey != KeyCode.None && (Input.GetKeyDown(sprintKey) || Input.GetKeyUp(sprintKey)))
-                player.SetState(Player.MovementState.Idle);
-        }
-
-        if (AbilityHandler == null)
-        {
-            Debug.LogWarning("Cannot find AbilityHandler class");
-            return;
-        }
-
-        // Action key (LMB by default) confirms/releases the currently active ability
-        KeyCode actionKey = Key("Action");
-        if (actionKey != KeyCode.None && Input.GetKeyDown(actionKey))
-            AbilityHandler.TryConfirmAction();
-        if (actionKey != KeyCode.None && Input.GetKeyUp(actionKey))
-            AbilityHandler.TryConfirmActionUp();
-
-        // Route all non-core keybinding presses to AbilityHandler by ability name
-        foreach (var entry in keybindings)
-        {
-            var actionName = entry.Key;
-            var key = entry.Value;
-
-            if (IsCoreBinding(actionName)) continue;
-            if (string.IsNullOrEmpty(actionName)) continue;
-
-            if (Input.GetKeyDown(key))
-                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Down);
-            else if (Input.GetKeyUp(key))
-                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Up);
-            else if (Input.GetKey(key))
-                AbilityHandler.TryUseAbility(actionName, AbilityInputEvent.Held);
-        }
-    }
-
-    // ─── Helpers / Public API ─────────────────────────────────────────────────
-
-    // Safe lookup — returns KeyCode.None if the action has no binding
-    private KeyCode Key(string action) =>
-        keybindings.TryGetValue(action, out KeyCode kc) ? kc : KeyCode.None;
-
-    // Safe KeyCode parse — returns fallback instead of throwing on corrupted PlayerPrefs values
-    private static KeyCode ParseKey(string str, KeyCode fallback = KeyCode.None) =>
-        Enum.TryParse(str, out KeyCode result) ? result : fallback;
-
-    // Core bindings are handled in Update directly; all other keys belong to abilities
-    private bool IsCoreBinding(string name)
-    {
-        return name == "Action" || name == "Jump" || name == "Sprint" || name == "Crouch" || name == "Prone" || name == "Pause" || name == "Grab";
-    }
-
-    public void RebindKey(string action, KeyCode newKey)
-    {
-        if (!view.IsMine) return;
-        if (keybindings.ContainsKey(action))
-        {
-            keybindings[action] = newKey;
-            Debug.Log($"Rebound {action} to {newKey}");
-        }
-        else
-        {
-            keybindings.Add(action, newKey);
-            Debug.Log($"Added new binding: {action} to {newKey}");
-        }
-    }
-
-    // --- Public API: Remove Binding ---
-    public void RemoveKeyBinding(string action)
-    {
-        if (!view.IsMine) return;
-        if (keybindings.ContainsKey(action))
-        {
-            keybindings.Remove(action);
-            Debug.Log($"Removed binding for {action}");
-        }
-        else
-        {
-            Debug.LogWarning($"No binding found for {action} to remove.");
-        }
-    }
-
-    // --- Public API: Reset to Default Bindings ---
-    public void Resetkeybindings()
-    {
-        if (!view.IsMine) return;
-        keybindings["Jump"] = KeyCode.Space;
-        keybindings["Sprint"] = KeyCode.LeftShift;
-        keybindings["Crouch"] = KeyCode.LeftControl;
-        keybindings["Prone"] = KeyCode.C;
-        keybindings["Pause"] = KeyCode.Escape;
-
-        // Remove all other custom bindings
-        // To figure out later
-
-        Debug.Log("Key bindings reset to default.");
-    }
-
-    // --- Helper: Check if a Key is Already in Use ---
-    public bool IsKeyInUse(KeyCode key)
-    {
-        return keybindings.ContainsValue(key);
-    }
-
-    // --- Helper: Get Current Key for an Action ---
-    public KeyCode GetKeyForAction(string action)
-    {
-        if (keybindings.TryGetValue(action, out KeyCode key))
-            return key;
-        return KeyCode.None;
-    }
-
+    private static bool Pressed(InputAction action) => Input.GetKeyDown(Keybinds.Get(action));
+    private static bool Held(InputAction action)    => Input.GetKey(Keybinds.Get(action));
 }

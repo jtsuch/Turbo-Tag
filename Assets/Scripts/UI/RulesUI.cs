@@ -1,50 +1,21 @@
-using ExitGames.Client.Photon;
 using Photon.Pun;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 /// <summary>
-/// Drives the Rules settings page. Only the host can edit; non-hosts see a dimmed overlay.
+/// Rules tab of the pause menu. The host edits match rules live; everyone else sees them
+/// read-only under a dimmed overlay. Values are written to room properties and read back
+/// through <see cref="MatchRules"/>, so the displayed values always match what the game uses.
 ///
-/// Time fields (Hide Time, Seek Time) split into separate minute and second integer inputs
-/// and are stored as total seconds in room properties.
-///
-/// Seek Time Limit and Score Limit are opt-in: their toggle enables or disables the rule
-/// and unmasks the input fields. When disabled the room property is set to 0 (no limit).
-///
-/// Percent fields (Hunter Cooldown, Global Cooldown, Gravity) store the integer percentage;
-/// GameModeApplicator divides by 100 when applying (e.g. 50 % → × 0.5 of base value).
-///
-/// Attach to: RulesPage panel inside the PauseMenu canvas.
+/// Times are entered as minutes + seconds and stored as total seconds. Percent fields store
+/// the integer percentage. Opt-in limits (seek time, score) have a toggle that greys out
+/// their inputs.
+/// Attach to: the RulesPage panel inside the PauseMenu.
 /// </summary>
 public class RulesUI : MonoBehaviourPunCallbacks
 {
-    // ─── Room property keys ───────────────────────────────────────────────────
-    public const string KEY_CHEATS              = "Rule_CheatsEnabled";
-    public const string KEY_TIMER_PAUSED        = "Rule_TimerPaused";
-    public const string KEY_GAME_MODE           = "GameMode";
-    public const string KEY_HIDE_TIME           = "Rule_HideTime";
-    public const string KEY_SEEK_TIME           = "Rule_SeekTime";
-    public const string KEY_SEEK_TIME_ENABLED   = "Rule_SeekTimeEnabled";
-    public const string KEY_MAX_SEEK_TIME       = "Rule_MaxSeekTime";
-    public const string KEY_SEEKER_DELAY        = "Rule_SeekerDelay";
-    public const string KEY_HUNTER_COUNT        = "Rule_HunterCount";
-    public const string KEY_HUNTER_COOLDOWN     = "Rule_HunterCooldown";
-    public const string KEY_TAG_COOLDOWN        = "Rule_TagCooldown";
-    public const string KEY_GRAVITY             = "Rule_Gravity";
-    public const string KEY_EFFECTS_RESPAWN     = "Rule_EffectsRespawn";
-    public const string KEY_GLOBAL_COOLDOWN     = "Rule_GlobalCooldown";
-    public const string KEY_HUNTED_BONUS        = "Rule_HuntedBonus";
-    public const string KEY_SCORE_LIMIT         = "Rule_ScoreLimit";
-    public const string KEY_SCORE_LIMIT_ENABLED = "Rule_ScoreLimitEnabled";
-    public const string KEY_TEAMS               = "Rule_Teams";
-    public const string KEY_ROUND_COUNT         = "Rule_RoundCount";
-    public const string KEY_ALLOW_KILLS         = "Rule_AllowKills";
-    public const string KEY_PLAYER_HEALTH       = "Rule_PlayerHealth";
-    public const string KEY_FALL_DAMAGE         = "Rule_FallDamage";
-
-    // ─── Inspector references ─────────────────────────────────────────────────
     [Header("Action Buttons")]
     [SerializeField] private Button   pauseTimerButton;
     [SerializeField] private TMP_Text pauseTimerLabel;
@@ -59,277 +30,174 @@ public class RulesUI : MonoBehaviourPunCallbacks
     [SerializeField] private Toggle         seekTimeToggle;
     [SerializeField] private TMP_InputField seekTimeMinInput;
     [SerializeField] private TMP_InputField seekTimeSecInput;
-    [Tooltip("CanvasGroup wrapping only the seek-time input fields — dimmed when toggle is off.")]
     [SerializeField] private CanvasGroup    seekTimeFieldsMask;
 
-    [Header("Round Count")]
+    [Header("Simple Values")]
     [SerializeField] private TMP_InputField roundCountInput;
-
-    [Header("Starting Hunters")]
     [SerializeField] private TMP_InputField hunterCountInput;
-
-    [Header("Hunter Cooldown (%)")]
     [SerializeField] private TMP_InputField hunterCooldownInput;
-
-    [Header("Global Cooldown (%)")]
     [SerializeField] private TMP_InputField globalCooldownInput;
-
-    [Header("Gravity (%)")]
     [SerializeField] private TMP_InputField gravityInput;
-
-    [Header("Effects Respawn Rate (sec)")]
     [SerializeField] private TMP_InputField effectsRespawnInput;
-
-    [Header("Tag Bonus (sec, can be negative)")]
     [SerializeField] private TMP_InputField taggingBonusInput;
 
     [Header("Score Limit (toggle + value)")]
     [SerializeField] private Toggle         scoreLimitToggle;
     [SerializeField] private TMP_InputField scoreLimitInput;
-    [Tooltip("CanvasGroup wrapping only the score-limit input field — dimmed when toggle is off.")]
     [SerializeField] private CanvasGroup    scoreLimitFieldsMask;
 
     [Header("Host Lock Overlay")]
-    [Tooltip("CanvasGroup covering the whole panel. Add a LayoutElement (Ignore Layout) so it sits outside the layout group.")]
+    [Tooltip("CanvasGroup covering the panel; blocks input for non-hosts.")]
     [SerializeField] private CanvasGroup hostLockOverlay;
 
-    // ─── Defaults ─────────────────────────────────────────────────────────────
-    private const int DEF_HIDE_TIME_SEC    = 120;   // 2 min
-    private const int DEF_SEEK_TIME_SEC    = 900;   // 15 min
-    private const int DEF_ROUND_COUNT      =   3;
-    private const int DEF_HUNTER_COUNT     =   1;
-    private const int DEF_HUNTER_COOLDOWN  =   0;   // %
-    private const int DEF_GLOBAL_COOLDOWN  = 100;   // %
-    private const int DEF_GRAVITY          = 100;   // %
-    private const int DEF_EFFECTS_RESPAWN  =  30;   // sec
-    private const int DEF_TAG_BONUS        =   0;   // sec (can be negative)
-    private const int DEF_SCORE_LIMIT      =   0;
+    private bool refreshing;
 
-    private bool updatingUI;
-
-    // ─── Unity lifecycle ──────────────────────────────────────────────────────
+    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Start()
     {
-        // Action buttons
-        if (pauseTimerButton   != null) pauseTimerButton  .onClick.AddListener(TogglePauseTimer);
-        if (enableCheatsButton != null) enableCheatsButton.onClick.AddListener(ToggleCheats);
+        if (pauseTimerButton   != null) pauseTimerButton.onClick.AddListener(() => ToggleRule(RuleKeys.TimerPaused));
+        if (enableCheatsButton != null) enableCheatsButton.onClick.AddListener(() => ToggleRule(RuleKeys.CheatsEnabled));
 
-        // Hide Time
-        if (hideTimeMinInput != null) hideTimeMinInput.onEndEdit.AddListener(_ => CommitHideTime());
-        if (hideTimeSecInput != null) hideTimeSecInput.onEndEdit.AddListener(_ => CommitHideTime());
+        OnEndEdit(hideTimeMinInput, CommitHideTime);
+        OnEndEdit(hideTimeSecInput, CommitHideTime);
+        OnEndEdit(seekTimeMinInput, CommitSeekTime);
+        OnEndEdit(seekTimeSecInput, CommitSeekTime);
 
-        // Seek Time (toggle + fields)
-        if (seekTimeToggle   != null) seekTimeToggle  .onValueChanged.AddListener(OnSeekTimeToggle);
-        if (seekTimeMinInput != null) seekTimeMinInput.onEndEdit.AddListener(_ => CommitSeekTime());
-        if (seekTimeSecInput != null) seekTimeSecInput.onEndEdit.AddListener(_ => CommitSeekTime());
+        OnEndEdit(roundCountInput,     () => CommitNumber(roundCountInput,     RuleKeys.RoundCount,     1));
+        OnEndEdit(hunterCountInput,    () => CommitNumber(hunterCountInput,    RuleKeys.HunterCount,    1));
+        OnEndEdit(hunterCooldownInput, () => CommitNumber(hunterCooldownInput, RuleKeys.HunterCooldown, 0, 100));
+        OnEndEdit(globalCooldownInput, () => CommitNumber(globalCooldownInput, RuleKeys.GlobalCooldown, 0));
+        OnEndEdit(gravityInput,        () => CommitNumber(gravityInput,        RuleKeys.Gravity,        1));
+        OnEndEdit(effectsRespawnInput, () => CommitNumber(effectsRespawnInput, RuleKeys.EffectsRespawn, 0));
+        OnEndEdit(taggingBonusInput,   () => CommitNumber(taggingBonusInput,   RuleKeys.TagBonus,       int.MinValue));
+        OnEndEdit(scoreLimitInput,     () => CommitNumber(scoreLimitInput,     RuleKeys.ScoreLimit,     1));
 
-        // Simple integer inputs
-        if (roundCountInput     != null) roundCountInput    .onEndEdit.AddListener(_ => CommitInt(roundCountInput,     KEY_ROUND_COUNT));
-        if (hunterCountInput    != null) hunterCountInput   .onEndEdit.AddListener(_ => CommitInt(hunterCountInput,    KEY_HUNTER_COUNT));
-        if (hunterCooldownInput != null) hunterCooldownInput.onEndEdit.AddListener(_ => CommitInt(hunterCooldownInput, KEY_HUNTER_COOLDOWN));
-        if (globalCooldownInput != null) globalCooldownInput.onEndEdit.AddListener(_ => CommitInt(globalCooldownInput, KEY_GLOBAL_COOLDOWN));
-        if (gravityInput        != null) gravityInput       .onEndEdit.AddListener(_ => CommitInt(gravityInput,        KEY_GRAVITY));
-        if (effectsRespawnInput != null) effectsRespawnInput.onEndEdit.AddListener(_ => CommitInt(effectsRespawnInput, KEY_EFFECTS_RESPAWN));
-        if (taggingBonusInput   != null) taggingBonusInput  .onEndEdit.AddListener(_ => CommitInt(taggingBonusInput,   KEY_HUNTED_BONUS));
+        if (seekTimeToggle   != null) seekTimeToggle.onValueChanged.AddListener(on => CommitToggle(RuleKeys.SeekTimeEnabled, on));
+        if (scoreLimitToggle != null) scoreLimitToggle.onValueChanged.AddListener(on => CommitToggle(RuleKeys.ScoreLimitEnabled, on));
 
-        // Score Limit (toggle + field)
-        if (scoreLimitToggle != null) scoreLimitToggle.onValueChanged.AddListener(OnScoreLimitToggle);
-        if (scoreLimitInput  != null) scoreLimitInput .onEndEdit.AddListener(_ => CommitInt(scoreLimitInput, KEY_SCORE_LIMIT));
-
-        RefreshAll();
+        Refresh();
     }
 
     public override void OnEnable()
     {
         base.OnEnable();
-        if (PhotonNetwork.CurrentRoom != null)
-            RefreshAll();
+        if (PhotonNetwork.InRoom) Refresh();
     }
 
-    // ─── Photon callbacks ─────────────────────────────────────────────────────
+    public override void OnRoomPropertiesUpdate(Hashtable changed) => Refresh();
+    public override void OnMasterClientSwitched(Photon.Realtime.Player newMaster) => Refresh();
 
-    public override void OnRoomPropertiesUpdate(Hashtable changedProps)
-    {
-        RefreshAll();
-    }
+    // ─── Display ──────────────────────────────────────────────────────────────
 
-    public override void OnMasterClientSwitched(Photon.Realtime.Player newMasterClient)
+    private void Refresh()
     {
         ApplyHostLock();
-    }
+        if (!PhotonNetwork.InRoom) return;
 
-    // ─── Host lock ────────────────────────────────────────────────────────────
+        refreshing = true;
+
+        if (pauseTimerLabel   != null) pauseTimerLabel.text   = MatchRules.TimerPaused   ? "Resume Timer"   : "Pause Timer";
+        if (enableCheatsLabel != null) enableCheatsLabel.text = MatchRules.CheatsEnabled ? "Disable Cheats" : "Enable Cheats";
+
+        SetTime(hideTimeMinInput, hideTimeSecInput, MatchRules.HideTime);
+
+        bool seekEnabled = MatchRules.SeekTimeEnabled;
+        if (seekTimeToggle != null) seekTimeToggle.SetIsOnWithoutNotify(seekEnabled);
+        SetMask(seekTimeFieldsMask, seekEnabled);
+        SetTime(seekTimeMinInput, seekTimeSecInput, NetProps.Room(RuleKeys.SeekTime, MatchRules.DefaultSeekTime));
+
+        SetNumber(roundCountInput,     MatchRules.RoundCount);
+        SetNumber(hunterCountInput,    MatchRules.HunterCount);
+        SetNumber(hunterCooldownInput, NetProps.Room(RuleKeys.HunterCooldown, MatchRules.DefaultHunterCooldown));
+        SetNumber(globalCooldownInput, NetProps.Room(RuleKeys.GlobalCooldown, MatchRules.DefaultGlobalCooldown));
+        SetNumber(gravityInput,        NetProps.Room(RuleKeys.Gravity,        MatchRules.DefaultGravity));
+        SetNumber(effectsRespawnInput, MatchRules.EffectsRespawn);
+        SetNumber(taggingBonusInput,   MatchRules.TagBonus);
+
+        bool scoreEnabled = MatchRules.ScoreLimitEnabled;
+        if (scoreLimitToggle != null) scoreLimitToggle.SetIsOnWithoutNotify(scoreEnabled);
+        SetMask(scoreLimitFieldsMask, scoreEnabled);
+        SetNumber(scoreLimitInput, NetProps.Room(RuleKeys.ScoreLimit, MatchRules.DefaultScoreLimit));
+
+        refreshing = false;
+    }
 
     private void ApplyHostLock()
     {
         if (hostLockOverlay == null) return;
         bool isHost = PhotonNetwork.IsMasterClient;
-        hostLockOverlay.interactable   = isHost;
         hostLockOverlay.alpha          = isHost ? 0f : 0.5f;
+        hostLockOverlay.interactable   = isHost;
         hostLockOverlay.blocksRaycasts = !isHost;
     }
 
-    // ─── Full refresh ─────────────────────────────────────────────────────────
+    // ─── Commits (host only) ──────────────────────────────────────────────────
 
-    private void RefreshAll()
+    private bool CanEdit => !refreshing && PhotonNetwork.IsMasterClient;
+
+    private void ToggleRule(string key)
     {
-        ApplyHostLock();
-        if (PhotonNetwork.CurrentRoom == null) return;
-
-        updatingUI = true;
-        var p = PhotonNetwork.CurrentRoom.CustomProperties;
-
-        // Action button labels
-        bool timerPaused = BoolProp(p, KEY_TIMER_PAUSED);
-        if (pauseTimerLabel   != null) pauseTimerLabel  .text = timerPaused ? "Resume Timer" : "Pause Timer";
-        bool cheatsOn = BoolProp(p, KEY_CHEATS);
-        if (enableCheatsLabel != null) enableCheatsLabel.text = cheatsOn ? "Disable Cheats" : "Enable Cheats";
-
-        // Hide Time (stored as total seconds)
-        SplitSeconds((int)FloatProp(p, KEY_HIDE_TIME, DEF_HIDE_TIME_SEC),
-                     out int hideMin, out int hideSec);
-        SetIntInput(hideTimeMinInput, hideMin);
-        SetIntInput(hideTimeSecInput, hideSec);
-
-        // Seek Time Limit
-        bool seekEnabled = BoolProp(p, KEY_SEEK_TIME_ENABLED);
-        if (seekTimeToggle != null) seekTimeToggle.isOn = seekEnabled;
-        ApplyFieldMask(seekTimeFieldsMask, seekEnabled);
-        SplitSeconds((int)FloatProp(p, KEY_SEEK_TIME, DEF_SEEK_TIME_SEC),
-                     out int seekMin, out int seekSec);
-        SetIntInput(seekTimeMinInput, seekMin);
-        SetIntInput(seekTimeSecInput, seekSec);
-
-        // Integers
-        SetIntInput(roundCountInput,     (int)FloatProp(p, KEY_ROUND_COUNT,     DEF_ROUND_COUNT));
-        SetIntInput(hunterCountInput,    (int)FloatProp(p, KEY_HUNTER_COUNT,    DEF_HUNTER_COUNT));
-        SetIntInput(hunterCooldownInput, (int)FloatProp(p, KEY_HUNTER_COOLDOWN, DEF_HUNTER_COOLDOWN));
-        SetIntInput(globalCooldownInput, (int)FloatProp(p, KEY_GLOBAL_COOLDOWN, DEF_GLOBAL_COOLDOWN));
-        SetIntInput(gravityInput,        (int)FloatProp(p, KEY_GRAVITY,         DEF_GRAVITY));
-        SetIntInput(effectsRespawnInput, (int)FloatProp(p, KEY_EFFECTS_RESPAWN, DEF_EFFECTS_RESPAWN));
-        SetIntInput(taggingBonusInput,   (int)FloatProp(p, KEY_HUNTED_BONUS,    DEF_TAG_BONUS));
-
-        // Score Limit
-        bool scoreEnabled = BoolProp(p, KEY_SCORE_LIMIT_ENABLED);
-        if (scoreLimitToggle != null) scoreLimitToggle.isOn = scoreEnabled;
-        ApplyFieldMask(scoreLimitFieldsMask, scoreEnabled);
-        SetIntInput(scoreLimitInput, (int)FloatProp(p, KEY_SCORE_LIMIT, DEF_SCORE_LIMIT));
-
-        updatingUI = false;
+        if (CanEdit) NetProps.SetRoom(key, !NetProps.Room(key, false));
     }
 
-    // ─── Action button callbacks ──────────────────────────────────────────────
-
-    private void TogglePauseTimer()
+    private void CommitToggle(string key, bool value)
     {
-        if (!PhotonNetwork.IsMasterClient) return;
-        bool current = BoolPropFromRoom(KEY_TIMER_PAUSED);
-        WriteRoomProp(KEY_TIMER_PAUSED, !current);
-        // MatchTimerController should subscribe to OnRoomPropertiesUpdate and read KEY_TIMER_PAUSED
+        if (CanEdit) NetProps.SetRoom(key, value);
     }
-
-    private void ToggleCheats()
-    {
-        if (!PhotonNetwork.IsMasterClient) return;
-        bool current = BoolPropFromRoom(KEY_CHEATS);
-        WriteRoomProp(KEY_CHEATS, !current);
-    }
-
-    // ─── Toggle callbacks ─────────────────────────────────────────────────────
-
-    private void OnSeekTimeToggle(bool enabled)
-    {
-        if (updatingUI) return;
-        ApplyFieldMask(seekTimeFieldsMask, enabled);
-        WriteRoomProp(KEY_SEEK_TIME_ENABLED, enabled);
-        // Also write 0 when disabling so other systems read "no limit"
-        if (!enabled) WriteRoomProp(KEY_SEEK_TIME, 0f);
-    }
-
-    private void OnScoreLimitToggle(bool enabled)
-    {
-        if (updatingUI) return;
-        ApplyFieldMask(scoreLimitFieldsMask, enabled);
-        WriteRoomProp(KEY_SCORE_LIMIT_ENABLED, enabled);
-        if (!enabled) WriteRoomProp(KEY_SCORE_LIMIT, 0f);
-    }
-
-    // ─── Time field commits ───────────────────────────────────────────────────
 
     private void CommitHideTime()
     {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        int min = ParseInt(hideTimeMinInput, 0);
-        int sec = Mathf.Clamp(ParseInt(hideTimeSecInput, 0), 0, 59);
-        SetIntInput(hideTimeSecInput, sec);          // clamp-correct the display
-        WriteRoomProp(KEY_HIDE_TIME, (float)(min * 60 + sec));
+        if (CanEdit) NetProps.SetRoom(RuleKeys.HideTime, ReadTime(hideTimeMinInput, hideTimeSecInput));
     }
 
     private void CommitSeekTime()
     {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        if (seekTimeToggle != null && !seekTimeToggle.isOn) return;
-        int min = ParseInt(seekTimeMinInput, 0);
-        int sec = Mathf.Clamp(ParseInt(seekTimeSecInput, 0), 0, 59);
-        SetIntInput(seekTimeSecInput, sec);
-        WriteRoomProp(KEY_SEEK_TIME, (float)(min * 60 + sec));
+        if (CanEdit) NetProps.SetRoom(RuleKeys.SeekTime, Mathf.Max(1f, ReadTime(seekTimeMinInput, seekTimeSecInput)));
     }
 
-    // ─── Generic integer commit ───────────────────────────────────────────────
-
-    private void CommitInt(TMP_InputField field, string key)
+    private void CommitNumber(TMP_InputField field, string key, int min, int max = int.MaxValue)
     {
-        if (updatingUI || !PhotonNetwork.IsMasterClient) return;
-        if (!int.TryParse(field.text, out int v)) return;
-        WriteRoomProp(key, (float)v);
+        if (!CanEdit) return;
+        if (!int.TryParse(field.text, out int value))
+        {
+            Refresh(); // Restore the current value
+            return;
+        }
+        NetProps.SetRoom(key, (float)Mathf.Clamp(value, min, max));
     }
 
-    // ─── Utilities ────────────────────────────────────────────────────────────
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private static void ApplyFieldMask(CanvasGroup group, bool active)
+    private static void OnEndEdit(TMP_InputField field, System.Action commit)
+    {
+        if (field != null) field.onEndEdit.AddListener(_ => commit());
+    }
+
+    private static float ReadTime(TMP_InputField minutes, TMP_InputField seconds)
+    {
+        int min = minutes != null && int.TryParse(minutes.text, out int m) ? Mathf.Max(0, m) : 0;
+        int sec = seconds != null && int.TryParse(seconds.text, out int s) ? Mathf.Clamp(s, 0, 59) : 0;
+        return min * 60 + sec;
+    }
+
+    private static void SetTime(TMP_InputField minutes, TMP_InputField seconds, float totalSeconds)
+    {
+        int total = Mathf.Max(0, Mathf.RoundToInt(totalSeconds));
+        SetNumber(minutes, total / 60);
+        SetNumber(seconds, total % 60);
+    }
+
+    private static void SetNumber(TMP_InputField field, float value)
+    {
+        if (field != null) field.SetTextWithoutNotify(Mathf.RoundToInt(value).ToString());
+    }
+
+    private static void SetMask(CanvasGroup group, bool active)
     {
         if (group == null) return;
         group.alpha          = active ? 1f : 0.3f;
         group.interactable   = active;
         group.blocksRaycasts = active;
-    }
-
-    private static void SplitSeconds(int totalSeconds, out int minutes, out int seconds)
-    {
-        totalSeconds = Mathf.Max(0, totalSeconds);
-        minutes = totalSeconds / 60;
-        seconds = totalSeconds % 60;
-    }
-
-    private static void SetIntInput(TMP_InputField field, int value)
-    {
-        if (field != null) field.text = value.ToString();
-    }
-
-    private static int ParseInt(TMP_InputField field, int fallback) =>
-        field != null && int.TryParse(field.text, out int v) ? v : fallback;
-
-    private static float FloatProp(Hashtable p, string key, float def) =>
-        p.TryGetValue(key, out object v) && v is float f ? f : def;
-
-    private static bool BoolProp(Hashtable p, string key) =>
-        p.TryGetValue(key, out object v) && v is bool b && b;
-
-    private static bool BoolPropFromRoom(string key)
-    {
-        if (PhotonNetwork.CurrentRoom == null) return false;
-        return BoolProp(PhotonNetwork.CurrentRoom.CustomProperties, key);
-    }
-
-    private static void WriteRoomProp(string key, object value)
-    {
-        if (PhotonNetwork.CurrentRoom == null || !PhotonNetwork.IsMasterClient)
-        {
-            Debug.LogWarning($"[RulesUI] WriteRoomProp skipped: CurrentRoom={PhotonNetwork.CurrentRoom != null}, IsMaster={PhotonNetwork.IsMasterClient}");
-            return;
-        }
-        Debug.Log($"[RulesUI] Writing {key} = {value}");
-        PhotonNetwork.CurrentRoom.SetCustomProperties(new Hashtable { [key] = value });
     }
 }

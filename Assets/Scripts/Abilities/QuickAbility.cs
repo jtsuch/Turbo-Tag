@@ -1,30 +1,28 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
-/// Base for instant-fire abilities with a simple cooldown (e.g. a dash or a stun).
-/// Only reacts to key-down; never enters an awaiting state, so it never blocks other abilities.
-/// Subclass this and override OnKeyDown for concrete behaviour.
-/// Attach to: ThePlayer prefab — alongside AbilityHandler.
+/// Base for instant abilities with a cooldown (dash, launch, shrink). Fires on key-down only
+/// and never waits for the Action key, so it can be used while aiming a throw.
+/// Subclasses implement <see cref="Activate"/>.
 /// </summary>
 public abstract class QuickAbility : Ability
 {
-    // ─── Cooldown ─────────────────────────────────────────────────────────────
-    public float cooldownTime;
-    private float lastUseTime;
+    [Header("Cooldown")]
+    [FormerlySerializedAs("dashCooldown")]
+    [FormerlySerializedAs("launchCooldown")]
+    [FormerlySerializedAs("shrinkCooldown")]
+    [SerializeField] protected float cooldown = 3f;
 
-    public override void TryActivate(AbilityInputEvent inputEvent)
+    public override AbilitySlot Slot         => AbilitySlot.Quick;
+    public override float       BaseCooldown => cooldown;
+
+    public override void HandleInput(AbilityInputEvent inputEvent)
     {
-        if (inputEvent != AbilityInputEvent.Down) return;
-        if (!CanActivate()) return;
-        OnKeyDown();
-        lastUseTime = Time.time;
+        if (inputEvent != AbilityInputEvent.Down || !IsReady) return;
+        Activate();
+        StartCooldown();
     }
 
-    public bool CanActivate() => Time.time >= lastUseTime + cooldownTime;
-
-    /// <summary>Seconds until this ability can be used again; 0 if ready.</summary>
-    public float CooldownRemaining() => Mathf.Max(0, (lastUseTime + cooldownTime) - Time.time);
-
-    // ─── Hook for subclasses ──────────────────────────────────────────────────
-    protected virtual void OnKeyDown() { }
+    protected abstract void Activate();
 }

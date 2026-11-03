@@ -1,306 +1,159 @@
 using Photon.Pun;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
-/// Base for placement-style abilities: player aims with a hologram preview, then confirms
-/// to place the real object or cancels to dismiss it.
-/// State machine: Idle → PlacementMode (ability key down) → place on LMB / cancel on key again.
-/// Hologram colour updates each frame to indicate valid (blue) or invalid (red) placement.
-/// Child classes override EnterPlacementMode or add post-placement logic via AttemptPlacement.
-/// Attach to: ThePlayer prefab — requires a cameraHolder reference and a hologramMaterial in
-/// the Inspector, plus a matching prefab at Resources/Object/[abilityName].
+/// Base for placeable objects: the ability key shows a local hologram that snaps to surfaces
+/// (blue = valid, red = blocked), Action places the real networked object, and the ability key
+/// again cancels. Cooldown starts only after a successful placement.
+/// The object spawned is Resources/Object/{Id}; most traps need only an empty subclass.
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public abstract class TrapAbility : Ability
 {
-    protected PhotonView view;
-
-    protected override void Awake()
-    {
-        base.Awake();
-        abilityType = AbilityType.Trap;
-        view = GetComponent<PhotonView>();
-    }
-
-    // ─── Inspector ────────────────────────────────────────────────────────────
-    [Header("Object Settings")]
-    protected GameObject objectPrefab;
+    [Header("Placement")]
+    [FormerlySerializedAs("cooldownTime")]
+    [SerializeField] protected float cooldown;
+    [TunableParam("Placing Distance", 2f, 50f)]
     [SerializeField] protected float placingDistance = 15f;
+    [Tooltip("Multiplier passed to the placed object (strength, radius…).")]
+    [TunableParam("Power", 0.1f, 10f)]
+    [SerializeField] protected float power = 1f;
     [SerializeField] protected LayerMask placementLayers;
 
-    [Header("Hologram Settings")]
+    [Header("Hologram")]
     [SerializeField] protected Material hologramMaterial;
-    [SerializeField] private Color validColor = new Color(0, 0.5f, 1f, 0.5f);
-    [SerializeField] private Color invalidColor = new Color(1f, 0, 0, 0.5f);
+    [SerializeField] private Color validColor   = new(0f, 0.5f, 1f, 0.5f);
+    [SerializeField] private Color invalidColor = new(1f, 0f, 0f, 0.5f);
 
     [Header("Camera Reference")]
     [SerializeField] private GameObject cameraHolder;
 
-    [Header("Modifiers")]
-    public float cooldownTime;
+    private GameObject  hologram;
+    private Renderer    hologramRenderer;
+    private BoxCollider hologramBox;
+    private bool        placing;
+    private bool        canPlace;
+    private bool?       shownValid; // Last tint applied, so materials are only touched on change
+    private Vector3     targetPosition;
+    private Quaternion  targetRotation;
 
-    // ─── State ────────────────────────────────────────────────────────────────
-    protected GameObject hologramObject;
-    protected bool isPlacementMode = false;
-    protected bool canPlace = false;
-    private Vector3 targetPosition;
-    private Quaternion targetRotation;
-    private float lastUseTime;
-    public override bool IsAwaitingAction => isPlacementMode;
+    private static readonly Collider[] overlapBuffer = new Collider[8];
 
-    public override void TryActivate(AbilityInputEvent inputEvent)
+    public override AbilitySlot Slot             => AbilitySlot.Trap;
+    public override float       BaseCooldown     => cooldown;
+    public override bool        UsesActionKey    => true;
+    public override bool        IsAwaitingAction => placing;
+
+    // ─── Input ────────────────────────────────────────────────────────────────
+
+    public override void HandleInput(AbilityInputEvent inputEvent)
     {
-        if (view == null || !view.IsMine) return;
         if (inputEvent != AbilityInputEvent.Down) return;
 
-        if (!isPlacementMode)
+        if (placing)    Cancel();
+        else if (IsReady) EnterPlacement();
+    }
+
+    public override void OnActionDown()
+    {
+        if (placing) TryPlace();
+    }
+
+    public override void Cancel()
+    {
+        placing = false;
+        if (hologram != null) Destroy(hologram);
+        hologram = null;
+    }
+
+    // ─── Placement ────────────────────────────────────────────────────────────
+
+    private void EnterPlacement()
+    {
+        var prefab = Resources.Load<GameObject>(ResourcePath);
+        if (prefab == null || cameraHolder == null)
         {
-            if (CanActivate()) EnterPlacementMode();
-            else Debug.Log($"{abilityName} on cooldown ({CooldownRemaining():0.0}s left)");
+            Debug.LogWarning($"[{Id}] Missing prefab at Resources/{ResourcePath} or cameraHolder reference.");
+            return;
         }
-        else
-        {
-            // X pressed again while hologram is out = cancel (no cooldown penalty)
-            CancelPlacement();
-        }
-    }
 
-    public override void OnActionConfirm()
-    {
-        if (isPlacementMode)
-            AttemptPlacement();
-    }
-
-    public override void OnActionCancel()
-    {
-        CancelPlacement();
-    }
-
-    private void CancelPlacement()
-    {
-        if (hologramObject != null)
-        {
-            PhotonNetwork.Destroy(hologramObject);
-            hologramObject = null;
-        }
-        isPlacementMode = false;
-    }
-
-    // --- Logic Gate ---
-    public bool CanActivate()
-    {
-        return Time.time >= lastUseTime + cooldownTime;
-    }
-
-    // --- Cooldown Helper ---
-    public float CooldownRemaining()
-    {
-        return Mathf.Max(0, (lastUseTime + cooldownTime) - Time.time);
+        hologram = VisualProxy.Create(prefab, null, keepDisabledColliders: true);
+        VisualProxy.ApplyMaterial(hologram, hologramMaterial);
+        hologramRenderer = hologram.GetComponentInChildren<Renderer>();
+        hologramBox      = hologram.GetComponentInChildren<BoxCollider>(true);
+        shownValid       = null;
+        placing          = true;
+        UpdateHologram();
     }
 
     private void Update()
     {
-        if (view != null && view.IsMine && isPlacementMode)
-        {
-            UpdateHologramPosition();
-        }
+        if (placing) UpdateHologram();
     }
 
-    protected virtual void EnterPlacementMode()
+    private void UpdateHologram()
     {
-        isPlacementMode = true;
-        
-        // Create hologram object
-        hologramObject = PhotonNetwork.Instantiate("Object/"+abilityName, new(0, 0, 0), Quaternion.identity);
-        
-        // Apply hologram material to all renderers
-        Renderer[] renderers = hologramObject.GetComponentsInChildren<Renderer>();
-        foreach (Renderer renderer in renderers)
-        {
-            Material[] mats = new Material[renderer.materials.Length];
-            for (int i = 0; i < mats.Length; i++)
-            {
-                mats[i] = hologramMaterial;
-            }
-            renderer.materials = mats;
-        }
-        
-        // Disable colliders on hologram
-        Collider[] colliders = hologramObject.GetComponentsInChildren<Collider>();
-        foreach (Collider col in colliders)
-        {
-            col.enabled = false;
-        }
-        
-        // Disable any rigidbodies
-        Rigidbody rb = hologramObject.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.isKinematic = true;
-        }
-    }
+        Transform view = cameraHolder.transform;
+        var ray = new Ray(view.position, view.forward);
 
-    private void UpdateHologramPosition()
-    {
-        if (cameraHolder == null)
+        if (!Physics.Raycast(ray, out RaycastHit hit, placingDistance, placementLayers, QueryTriggerInteraction.Ignore))
         {
-            Debug.LogError("Player camera is null in UpdateHologramPosition!");
+            canPlace = false;
+            hologram.transform.position = ray.origin + ray.direction * placingDistance;
+            ShowValidity(false);
             return;
         }
-        
-        // Alternative approach: Use camera's transform forward direction
-        Ray ray = new Ray(cameraHolder.transform.position, cameraHolder.transform.forward);
-        RaycastHit hit;
-        
-        if (Physics.Raycast(ray, out hit, placingDistance, placementLayers))
-        {
-            // Orient the rotations with respect to the camera. Account for incorrect nominal rotation
-            Quaternion normalRotation = Quaternion.FromToRotation(Vector3.forward, hit.normal);
-            Quaternion offsetRotation = Quaternion.Euler(0, 0, cameraHolder.transform.eulerAngles.y - 90f);
-            targetRotation = normalRotation * offsetRotation;
 
-            // Get the object bounds to offset it properly
-            Renderer renderer = hologramObject.GetComponent<Renderer>();
-            if (renderer == null)
-            {
-                renderer = hologramObject.GetComponentInChildren<Renderer>();
-            }
-            
-            if (renderer != null)
-            {
-                // First, temporarily position and rotate the hologram to get accurate bounds
-                hologramObject.transform.rotation = targetRotation;
-                hologramObject.transform.position = hit.point;
-                
-                // Get the object's local size 
-                Bounds localBounds = renderer.bounds;
-                
-                // The transform's nominal is on the side of the object
-                // This offset center's the object's nominal
-                Vector3 pivotOffset = hit.point - localBounds.center;
-                Debug.DrawRay(pivotOffset, Vector3.up, Color.blue, 1f);
-                
-                // Calculate the offset distance along the surface normal so the object is not inside the object
-                Vector3 objectSize = localBounds.size; // (will be (2, 2, 2) for this object)
-                float offset = Mathf.Abs(objectSize.x * Vector3.Dot(Vector3.right, hit.normal)) / 2f +
-                               Mathf.Abs(objectSize.y * Vector3.Dot(Vector3.up, hit.normal)) / 2f +
-                               Mathf.Abs(objectSize.z * Vector3.Dot(Vector3.forward, hit.normal)) / 2f + 0.2f;
-                
-                // Position the object on the surface, offset along the normal and compensate for pivot
-                targetPosition = hit.point + hit.normal * offset + pivotOffset;
-            }
-            else
-            {
-                targetPosition = hit.point;
-            }
-            
-            // Check if placement is valid (no overlapping objects)
-            canPlace = IsValidPlacement(targetPosition);
-            
-            // Update hologram position and color
-            hologramObject.transform.position = targetPosition;
-            hologramObject.transform.rotation = targetRotation;
-            UpdateHologramColor(canPlace);
-        }
-        else
+        // Face away from the surface, rotated to match where the player is looking
+        targetRotation = Quaternion.FromToRotation(Vector3.forward, hit.normal)
+                       * Quaternion.Euler(0f, 0f, view.eulerAngles.y - 90f);
+        targetPosition = hit.point;
+
+        if (hologramRenderer != null)
         {
-            // No valid surface in range
-            canPlace = false;
-            
-            // Position hologram at max distance
-            targetPosition = ray.origin + ray.direction * placingDistance;
-            hologramObject.transform.position = targetPosition;
-            UpdateHologramColor(false);
+            // Measure at the hit point, then push out along the normal so it sits on the surface
+            hologram.transform.SetPositionAndRotation(hit.point, targetRotation);
+            Bounds bounds = hologramRenderer.bounds;
+            Vector3 pivotOffset = hit.point - bounds.center;
+            float   offset = Mathf.Abs(bounds.size.x * hit.normal.x) / 2f
+                           + Mathf.Abs(bounds.size.y * hit.normal.y) / 2f
+                           + Mathf.Abs(bounds.size.z * hit.normal.z) / 2f + 0.2f;
+            targetPosition = hit.point + hit.normal * offset + pivotOffset;
         }
+
+        hologram.transform.SetPositionAndRotation(targetPosition, targetRotation);
+        canPlace = IsSpaceFree();
+        ShowValidity(canPlace);
     }
 
-    private bool IsValidPlacement(Vector3 position)
+    private void ShowValidity(bool valid)
     {
-        // Get the bounds of the object
-        Renderer renderer = hologramObject.GetComponent<Renderer>();
-        if (renderer == null)
-        {
-            renderer = hologramObject.GetComponentInChildren<Renderer>();
-        }
-        
-        if (renderer != null)
-        {
-            //Bounds bounds = renderer.bounds;
-            BoxCollider boxCol = hologramObject.GetComponent<BoxCollider>();
-            if (boxCol == null)
-            {
-                boxCol = hologramObject.GetComponentInChildren<BoxCollider>();
-            }
-            
-            Vector3 halfExtents;
-            Vector3 center;
-            
-            if (boxCol != null)
-            {
-                // Use the collider's actual size (in local space)
-                halfExtents = boxCol.size / 2f * 0.9f; // Slight reduction for better detection
-                center = hologramObject.transform.TransformPoint(boxCol.center);
-            }
-            else
-            {
-                // Fallback: Use your hardcoded values
-                halfExtents = new Vector3(0.9f, 5.9f, 0.1f);
-                center = position;
-            }
-            
-            // Check for overlapping colliders
-            Collider[] overlaps = Physics.OverlapBox(center, halfExtents, targetRotation);
-            
-            // Filter out the hologram itself
-            foreach (Collider col in overlaps)
-            {
-                if (col.gameObject != hologramObject && !col.gameObject.transform.IsChildOf(hologramObject.transform))
-                {
-                    return false;
-                }
-            }
-        }
-        
-        return true;
+        if (shownValid == valid) return;
+        shownValid = valid;
+        VisualProxy.SetColor(hologram, valid ? validColor : invalidColor);
     }
 
-    private void UpdateHologramColor(bool valid)
+    private bool IsSpaceFree()
     {
-        Color targetColor = valid ? validColor : invalidColor;
-        
-        Renderer[] renderers = hologramObject.GetComponentsInChildren<Renderer>();
-        foreach (Renderer renderer in renderers)
-        {
-            foreach (Material mat in renderer.materials)
-            {
-                mat.color = targetColor;
-            }
-        }
+        if (hologramBox == null) return true;
+
+        Transform box = hologramBox.transform;
+        Vector3 center      = box.TransformPoint(hologramBox.center);
+        Vector3 halfExtents = Vector3.Scale(hologramBox.size, box.lossyScale) * 0.45f; // 90% of half size
+        int hits = Physics.OverlapBoxNonAlloc(center, halfExtents, overlapBuffer, box.rotation,
+                                              Physics.AllLayers, QueryTriggerInteraction.Ignore);
+        return hits == 0;
     }
 
-    protected void AttemptPlacement()
+    private void TryPlace()
     {
         if (!canPlace) return;
 
-        PhotonNetwork.Instantiate("Object/" + abilityName, targetPosition, targetRotation);
+        PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
+            SpawnData.Create(Vector3.zero, power * PowerMultiplier, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
-        PhotonNetwork.Destroy(hologramObject);
-        hologramObject  = null;
-        isPlacementMode = false;
-        lastUseTime     = Time.time; // Cooldown starts only after a successful placement
+        Cancel();
+        StartCooldown();
     }
-
-    private void OnDisable()
-    {
-        if (hologramObject != null)
-        {
-            PhotonNetwork.Destroy(hologramObject);
-            hologramObject  = null;
-            isPlacementMode = false;
-        }
-    }
-
-    // --- To be defined by children ---
-    protected virtual void OnKeyDown() { }   
-    //protected virtual void OnKeyUp() { }
 }
