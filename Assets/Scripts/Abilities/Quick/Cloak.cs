@@ -33,7 +33,7 @@ public class Cloak : QuickAbility
         if (!cloaked || !IsLocal) return;
 
         float elapsed = Time.time - startTime;
-        if (elapsed > cloakDuration * Owner.Modifiers.Get(Stat.AbilityDuration)) { EndCloak(); return; }
+        if (elapsed > cloakDuration) { EndCloak(); return; }
         if (elapsed < settleTime) return;
 
         var input = Owner.Input;

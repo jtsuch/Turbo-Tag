@@ -58,7 +58,7 @@ public class HUDManager : MonoBehaviour
     private Coroutine bannerRoutine;
     private bool      showDebug;
 
-    private struct HotbarSlot { public GameObject root; public RawImage icon; public TMP_Text key; public TMP_Text name; }
+    private struct HotbarSlot { public GameObject root; public RawImage icon; public TMP_Text key; public TMP_Text name; public TMP_Text uses; }
     private readonly List<HotbarSlot> slots = new();
     private List<(Ability ability, KeyCode key)> shown = new();
     private Vector2 timerHome; // The scene timer's position; extra timers stack above it
@@ -156,13 +156,43 @@ public class HUDManager : MonoBehaviour
     private static HotbarSlot ReadSlot(GameObject root)
     {
         Transform t = root.transform;
-        return new HotbarSlot
+        var slot = new HotbarSlot
         {
             root = root,
             icon = t.childCount > 0 ? t.GetChild(0).GetComponent<RawImage>() : null,
             key  = t.childCount > 1 ? t.GetChild(1).GetComponent<TMP_Text>() : null,
             name = t.childCount > 2 ? t.GetChild(2).GetComponent<TMP_Text>() : null,
         };
+        slot.uses = UsesCounter(slot);
+        return slot;
+    }
+
+    // A small number at the icon's bottom-right corner: uses left, for abilities with more than one.
+    // Found again in copied entries (it's a child of the icon), made the first time otherwise.
+    private static TMP_Text UsesCounter(HotbarSlot slot)
+    {
+        if (slot.icon == null) return null;
+        var existing = slot.icon.transform.Find("Uses");
+        if (existing != null) return existing.GetComponent<TMP_Text>();
+
+        var go = new GameObject("Uses", typeof(RectTransform));
+        go.transform.SetParent(slot.icon.transform, false);
+        var text = go.AddComponent<TextMeshProUGUI>();
+        if (slot.key != null) { text.font = slot.key.font; text.fontSharedMaterial = slot.key.fontSharedMaterial; }
+        text.fontSize      = 34f;
+        text.fontStyle     = FontStyles.Bold;
+        text.alignment     = TextAlignmentOptions.BottomRight;
+        text.color         = Color.white;
+        text.outlineWidth  = 0.25f;
+        text.outlineColor  = Color.black;
+        text.raycastTarget = false;
+        var rect = text.rectTransform;
+        rect.anchorMin = new Vector2(1f, 0f);
+        rect.anchorMax = new Vector2(1f, 0f);
+        rect.pivot     = new Vector2(1f, 0f);
+        rect.anchoredPosition = new Vector2(10f, -6f);
+        rect.sizeDelta = new Vector2(60f, 44f);
+        return text;
     }
 
     private void RefreshHotbar()
@@ -200,13 +230,26 @@ public class HUDManager : MonoBehaviour
         for (int i = 0; i < shown.Count && i < slots.Count; i++)
         {
             var ability = shown[i].ability;
-            if (ability == null || ability is BasicAbility) continue;
+            if (ability == null || ability is BasicAbility)
+            {
+                if (slots[i].uses != null && slots[i].uses.enabled) slots[i].uses.enabled = false; // Meters use the ring
+                continue;
+            }
 
-            float remaining = ability.CooldownRemaining;
+            // The name shows the time until the next use comes back while one is recharging; the icon dims
+            // only when none are left; abilities with several uses show how many are left on the icon
+            int   charges = ability.Charges;
+            float refill  = ability.NextChargeIn;
             if (slots[i].icon != null)
-                slots[i].icon.color = remaining > 0f ? new Color(1f, 1f, 1f, 0.35f) : Color.white;
+                slots[i].icon.color = charges == 0 ? new Color(1f, 1f, 1f, 0.35f) : Color.white;
             if (slots[i].name != null)
-                slots[i].name.text = remaining > 0f ? $"{remaining:0.0}s" : PrettyName(ability.Id);
+                slots[i].name.text = refill > 0f ? $"{refill:0.0}s" : PrettyName(ability.Id);
+            if (slots[i].uses != null)
+            {
+                bool multiple = ability.MaxCharges > 1;
+                if (slots[i].uses.enabled != multiple) slots[i].uses.enabled = multiple;
+                if (multiple) slots[i].uses.text = charges.ToString();
+            }
         }
     }
 

@@ -11,6 +11,5 @@ public class Adrenaline : QuickAbility
     [SerializeField] private float duration = 5f;
 
     protected override void Activate() =>
-        Owner.ApplyTimedModifier(Stat.Speed, nameof(Adrenaline), speedMultiplier,
-                                 duration * Owner.Modifiers.Get(Stat.AbilityDuration));
+        Owner.ApplyTimedModifier(Stat.Speed, nameof(Adrenaline), speedMultiplier, duration);
 }

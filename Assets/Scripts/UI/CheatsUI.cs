@@ -13,8 +13,8 @@ using Hashtable = ExitGames.Client.Photon.Hashtable;
 /// and a zero size — are rejected).
 ///
 /// Sub-tabs:
-///   Self                     — speed, acceleration, jump, size, cooldown, air control, gravity,
-///                              ability power and ability duration as % of normal. The last four
+///   Self                     — speed, acceleration, jump, size, cooldown, air control and gravity
+///                              as % of normal (each ability's power and durations are its own sliders). The last two
 ///                              rows are cloned from the Cooldown row at runtime (see ExtraSelfStats).
 ///   Basic / Quick / Throw / Trap — every available ability in that slot. Rows expand to show
 ///                              sliders for the ability's [TunableParam] fields (dash strength…)
@@ -69,8 +69,6 @@ public class CheatsUI : MonoBehaviourPunCallbacks
     {
         (Stat.AirControl,      "Air Control"),
         (Stat.Gravity,         "Gravity"),
-        (Stat.AbilityPower,    "Ability Power"),
-        (Stat.AbilityDuration, "Ability Duration"),
     };
 
     private readonly Dictionary<Stat, (Slider slider, TMP_InputField input)> selfControls = new();

@@ -45,7 +45,7 @@ public class Shrink : QuickAbility
     {
         Owner.Modifiers.Set(Stat.Size,  this, shrinkScale);
         Owner.Modifiers.Set(Stat.Speed, this, speedMultiplier);
-        yield return new WaitForSeconds(shrinkDuration * Owner.Modifiers.Get(Stat.AbilityDuration));
+        yield return new WaitForSeconds(shrinkDuration);
         Revert();
     }
 

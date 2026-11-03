@@ -138,7 +138,18 @@ public class PregameManager : MonoBehaviourPunCallbacks
         foreach (var text in row.GetComponentsInChildren<TMP_Text>(true))
         {
             if (text.name == "AbilityNameText") text.text = AbilityCatalog.DisplayName(id);
-            else if (text.name == "DescText")   text.text = AbilityCatalog.Description(id);
+            else if (text.name == "DescText")
+            {
+                // What it does, then its numbers (cooldown, uses, duration) straight from the player prefab.
+                // Shrinks to fit: some descriptions already take two lines
+                text.enableAutoSizing = true;
+                if (text.fontSizeMax < text.fontSize) text.fontSizeMax = text.fontSize;
+                text.fontSizeMin = Mathf.Min(16f, text.fontSizeMax);
+                string stats = AbilityCatalog.Stats(id);
+                text.text = string.IsNullOrEmpty(stats)
+                    ? AbilityCatalog.Description(id)
+                    : $"{AbilityCatalog.Description(id)}\n<size=80%><color=#B9C6D8>{stats}</color></size>";
+            }
         }
 
         var toggle = marker.GetComponent<Toggle>();

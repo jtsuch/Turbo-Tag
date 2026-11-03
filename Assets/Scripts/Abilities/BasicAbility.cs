@@ -20,8 +20,11 @@ public abstract class BasicAbility : Ability
 
     public override float Readiness => MaxDuration <= 0f ? 1f : Mathf.Clamp01(CurrentDuration / MaxDuration);
 
-    /// <summary>Full duration after the Self "Ability Duration" cheat.</summary>
-    protected float MaxDuration => maxDuration * (Owner != null ? Owner.Modifiers.Get(Stat.AbilityDuration) : 1f);
+    /// <summary>The full meter in seconds as set on the prefab, for descriptions.</summary>
+    public float BaseDuration => maxDuration;
+
+    /// <summary>The full meter in seconds (tunable per ability in Cheats).</summary>
+    protected float MaxDuration => maxDuration;
 
     protected override void Awake()
     {

@@ -9,6 +9,8 @@ using UnityEngine.Serialization;
 /// The object spawned is Resources/Object/{Id}; most traps need only an empty subclass.
 /// Hooks for special traps: <see cref="IsValidSurface"/> (e.g. walls only), <see cref="PlacementRotation"/>
 /// and <see cref="OnPlaced"/> (keep a reference to what was placed).
+/// Limits: at most <see cref="maxPlaced"/> of this player's objects exist at once (placing another removes
+/// the oldest), and they are all cleared when a new round starts (the Countdown phase).
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public abstract class TrapAbility : Ability
@@ -22,6 +24,9 @@ public abstract class TrapAbility : Ability
     [TunableParam("Power", 0.1f, 10f)]
     [SerializeField] protected float power = 1f;
     [SerializeField] protected LayerMask placementLayers;
+
+    [Tooltip("Most of this player's objects that can exist at once; placing another removes the oldest. 0 = no limit.")]
+    [SerializeField, Min(0)] protected int maxPlaced = 0;
 
     [Header("Hologram")]
     [SerializeField] protected Material hologramMaterial;
@@ -41,6 +46,44 @@ public abstract class TrapAbility : Ability
     private Quaternion  targetRotation;
 
     private static readonly Collider[] overlapBuffer = new Collider[8];
+
+    // ─── Placed objects (owner) ───────────────────────────────────────────────
+    private readonly System.Collections.Generic.List<GameObject> placedObjects = new();
+    private GameModeManager watchedManager;
+
+    /// <summary>The most that can be out at once (0 = no limit), for descriptions.</summary>
+    public int MaxPlaced => maxPlaced;
+
+    private void Start()
+    {
+        watchedManager = GameModeManager.Instance;
+        if (watchedManager != null) watchedManager.PhaseChanged += OnPhaseChanged;
+    }
+
+    private void OnDestroy()
+    {
+        if (watchedManager != null) watchedManager.PhaseChanged -= OnPhaseChanged;
+    }
+
+    // A new round starts clean: this player's traps from the last round go
+    private void OnPhaseChanged(MatchPhase phase)
+    {
+        if (phase != MatchPhase.Countdown || !IsLocal) return;
+        foreach (var placed in placedObjects)
+            if (placed != null) PhotonNetwork.Destroy(placed);
+        placedObjects.Clear();
+    }
+
+    private void Track(GameObject placed)
+    {
+        placedObjects.RemoveAll(o => o == null); // Used up or removed already (mouse trap, ice trap…)
+        placedObjects.Add(placed);
+        while (maxPlaced > 0 && placedObjects.Count > maxPlaced)
+        {
+            if (placedObjects[0] != null) PhotonNetwork.Destroy(placedObjects[0]);
+            placedObjects.RemoveAt(0);
+        }
+    }
 
     public override AbilitySlot Slot             => AbilitySlot.Trap;
     public override float       BaseCooldown     => cooldown;
@@ -165,10 +208,11 @@ public abstract class TrapAbility : Ability
         if (!canPlace) return;
 
         var placed = PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
-            SpawnData.Create(Vector3.zero, power * PowerMultiplier, Owner.photonView.ViewID, ObjectTunableOverrides()));
+            SpawnData.Create(Vector3.zero, power, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
         Cancel();
         StartCooldown();
+        if (placed != null) Track(placed);
         OnPlaced(placed);
     }
 }

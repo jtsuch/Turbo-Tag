@@ -31,7 +31,6 @@ public abstract class Ability : MonoBehaviour
     protected bool           IsLocal   => Owner != null && Owner.IsLocal;
 
     // ─── Cooldown ─────────────────────────────────────────────────────────────
-    private float lastUseTime = float.NegativeInfinity;
 
     /// <summary>Unscaled cooldown in seconds. Slot bases expose this as a tunable field.</summary>
     public virtual float BaseCooldown => 0f;
@@ -39,17 +38,60 @@ public abstract class Ability : MonoBehaviour
     /// <summary>Cooldown after cheats, game mode and rule multipliers.</summary>
     public float CooldownDuration => BaseCooldown * (Owner != null ? Owner.CooldownMultiplier : 1f);
 
-    public float CooldownRemaining => Mathf.Max(0f, lastUseTime + CooldownDuration - Time.time);
-    public bool  IsReady           => CooldownRemaining <= 0f;
+    // ─── Charges ──────────────────────────────────────────────────────────────
+    // Quick, throw and trap abilities store up to MaxCharges uses; each use spends one and they come back
+    // one at a time, a cooldown apart. One charge is the classic "use, then wait out the cooldown".
 
-    /// <summary>0 = just used, 1 = ready. Drives the HUD.</summary>
+    [Tooltip("Uses stored at once (quick, throw and trap abilities). They recharge one per cooldown.")]
+    [SerializeField, Min(1)] private int maxCharges = 1;
+
+    public int MaxCharges => Mathf.Max(1, maxCharges);
+
+    private int   charges = -1;   // -1 until first read (then full)
+    private float rechargeStart;  // When the charge currently refilling started
+
+    /// <summary>Uses available right now.</summary>
+    public int Charges
+    {
+        get
+        {
+            Recharge();
+            return charges;
+        }
+    }
+
+    private void Recharge()
+    {
+        if (charges < 0) { charges = MaxCharges; rechargeStart = Time.time; }
+        charges = Mathf.Min(charges, MaxCharges);
+
+        float duration = CooldownDuration;
+        if (duration <= 0f) { charges = MaxCharges; return; }
+        while (charges < MaxCharges && Time.time - rechargeStart >= duration)
+        {
+            charges++;
+            rechargeStart += duration;
+        }
+        if (charges >= MaxCharges) rechargeStart = Time.time; // Nothing refilling: the next use starts the clock
+    }
+
+    /// <summary>Seconds until a use is available (0 while any charge is left).</summary>
+    public float CooldownRemaining => Charges > 0 ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
+
+    /// <summary>Seconds until the next charge comes back (0 when full).</summary>
+    public float NextChargeIn => Charges >= MaxCharges ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
+
+    public bool IsReady => Charges > 0;
+
+    /// <summary>0 = just used up, 1 = ready. Drives the HUD.</summary>
     public virtual float Readiness =>
-        CooldownDuration <= 0f ? 1f : 1f - CooldownRemaining / CooldownDuration;
+        CooldownDuration <= 0f || Charges > 0 ? 1f : 1f - CooldownRemaining / CooldownDuration;
 
-    /// <summary>Starts the cooldown, and counts a use for the scoreboard (quick, throw and trap abilities).</summary>
+    /// <summary>Spends a charge (its cooldown starts), and counts a use for the scoreboard (quick, throw and trap abilities).</summary>
     protected void StartCooldown()
     {
-        lastUseTime = Time.time;
+        Recharge();
+        if (charges > 0) charges--;
         CountUse();
     }
 
@@ -144,6 +186,4 @@ public abstract class Ability : MonoBehaviour
         return table;
     }
 
-    /// <summary>The Self "Ability Power" cheat (1 = normal).</summary>
-    protected float PowerMultiplier => Owner != null ? Owner.Modifiers.Get(Stat.AbilityPower) : 1f;
 }

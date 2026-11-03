@@ -48,6 +48,25 @@ public static class AbilityCatalog
         return sb.ToString();
     }
 
+    /// <summary>
+    /// The ability's numbers as set on the player prefab, for Pregame: "Lasts 5s", or "Cooldown 8s · 2 uses ·
+    /// up to 3 out". Read from the prefab, so they always match the game ("" if the ability isn't there).
+    /// </summary>
+    public static string Stats(string id)
+    {
+        if (!Exists(id)) return "";
+        var prefab = Resources.Load<GameObject>(PlayerPrefabPath);
+        var ability = prefab != null ? prefab.GetComponent(Types[id]) as Ability : null;
+        if (ability == null) return "";
+
+        if (ability is BasicAbility basic) return $"Hold up to {basic.BaseDuration:0.#}s, refills when let go";
+
+        var parts = new List<string> { ability.BaseCooldown > 0f ? $"Cooldown {ability.BaseCooldown:0.#}s" : "No cooldown" };
+        if (ability.MaxCharges > 1) parts.Add($"{ability.MaxCharges} uses");
+        if (ability is TrapAbility trap && trap.MaxPlaced > 0) parts.Add($"up to {trap.MaxPlaced} out");
+        return string.Join("  ·  ", parts);
+    }
+
     /// <summary>Player-facing description from [AbilityInfo] ("" when none).</summary>
     public static string Description(string id) => Info(id)?.Description ?? "";
 

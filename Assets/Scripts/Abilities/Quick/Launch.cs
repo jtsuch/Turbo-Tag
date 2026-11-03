@@ -17,6 +17,6 @@ public class Launch : QuickAbility
         if (velocity.y < 0f) velocity.y = 0f;
         Body.linearVelocity = velocity;
 
-        Body.AddForce(Vector3.up * (launchForce * PowerMultiplier), ForceMode.Impulse);
+        Body.AddForce(Vector3.up * launchForce, ForceMode.Impulse);
     }
 }

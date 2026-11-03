@@ -5,8 +5,9 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// One ability in a Cheats ability tab. Every row can expand to show sliders for the ability's
-/// [TunableParam] fields, then those of the object it spawns (fuse, blast radius, pull…). The equipped ability shows its slot key and can be rebound or unbound;
+/// One ability in a Cheats ability tab. Every row can expand to show what the ability does (its
+/// [AbilityInfo] description and numbers, as in Pregame), then sliders for the ability's [TunableParam]
+/// fields and those of the object it spawns (fuse, blast radius, pull…). The equipped ability shows its slot key and can be rebound or unbound;
 /// other abilities can be bound to an extra key so they become usable alongside the equipped loadout.
 /// Every row has a Remove button that clears its key.
 /// Attach to: AbilityCheatRow prefab.
@@ -50,8 +51,33 @@ public class AbilityCheatRow : MonoBehaviour
         if (clearButton != null) clearButton.gameObject.SetActive(true);
 
         SetBoundKey(key);
+        AddDescription();
         BuildSliders(sliderRowPrefab);
     }
+
+    // What the ability does and its numbers, at the top of the expanded panel
+    private void AddDescription()
+    {
+        string description = AbilityCatalog.Description(Ability.Id);
+        string stats       = AbilityCatalog.Stats(Ability.Id);
+        if (string.IsNullOrEmpty(description) && string.IsNullOrEmpty(stats)) return;
+
+        var go = new GameObject("Description", typeof(RectTransform));
+        go.transform.SetParent(expandedPanel.transform, false);
+        var text = go.AddComponent<TextMeshProUGUI>();
+        text.font      = abilityNameLabel.font;
+        text.fontSize  = Mathf.Max(18f, abilityNameLabel.fontSize * 0.8f);
+        text.color     = abilityNameLabel.color;
+        text.alignment = TextAlignmentOptions.MidlineLeft;
+        text.raycastTarget = false;
+        text.margin    = new Vector4(100f, 0f, 20f, 0f); // In line with the slider labels
+        text.text      = string.IsNullOrEmpty(stats) ? description
+                       : $"{description}\n<size=80%><color=#B9C6D8>{stats}</color></size>";
+        go.AddComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 80f;
+        hasDescription = true;
+    }
+
+    private bool hasDescription;
 
     public void SetBoundKey(KeyCode key)
     {
@@ -89,7 +115,7 @@ public class AbilityCheatRow : MonoBehaviour
             AddSlider(sliderRowPrefab).Initialize(e.Attribute, () => Ability.GetObjectTunable(e), v => Ability.SetObjectTunable(e, v));
         }
 
-        expandButton.gameObject.SetActive(sliders.Count > 0);
+        expandButton.gameObject.SetActive(sliders.Count > 0 || hasDescription);
     }
 
     private SliderRow AddSlider(GameObject sliderRowPrefab)

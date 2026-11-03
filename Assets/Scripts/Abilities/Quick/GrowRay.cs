@@ -57,8 +57,7 @@ public class GrowRay : QuickAbility
         }
 
         if (target != null && !target.IsCaught)
-            target.RequestTimedModifier(Stat.Size, nameof(GrowRay), growMultiplier * PowerMultiplier,
-                                        growDuration * Owner.Modifiers.Get(Stat.AbilityDuration));
+            target.RequestTimedModifier(Stat.Size, nameof(GrowRay), growMultiplier, growDuration);
 
         ShowShot(end);
         Handler.BroadcastBeam(end);

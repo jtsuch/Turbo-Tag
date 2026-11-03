@@ -46,10 +46,7 @@ public enum Stat
     ControlDirection,
     /// <summary>Scales gravity on the player (applied by PlayerMovement).</summary>
     Gravity,
-    /// <summary>Scales the strength of thrown and placed ability objects, dashes, launches and teleports.</summary>
-    AbilityPower,
-    /// <summary>Scales how long held (Basic) abilities and timed abilities like Shrink last.</summary>
-    AbilityDuration,
+
 }
 
 /// <summary>

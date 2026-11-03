@@ -38,7 +38,7 @@ public class Teleport : QuickAbility
         var   capsule = GetComponent<CapsuleCollider>();
         float radius  = capsule != null ? capsule.radius * transform.lossyScale.x : 0.4f;
         float height  = Owner.Height;
-        float range   = distance * PowerMultiplier;
+        float range   = distance;
         Vector3 origin = cam.position, dir = cam.forward;
 
         // Where the crosshair lands: the nearest surface that isn't a player, or the end of the range
