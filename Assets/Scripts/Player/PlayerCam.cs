@@ -32,6 +32,8 @@ public class PlayerCam : MonoBehaviour
     [SerializeField] private float   caughtCameraHeight = 8f;
     [Tooltip("Exponential smoothing rate for rotation (higher = snappier).")]
     [SerializeField] private float   rotationSmoothTime = 80f;
+    [Tooltip("How fast the body swings back upright after a Free Spin (higher = snappier).")]
+    [SerializeField] private float   spinRecoverSpeed = 12f;
 
     // ─── Head Bob ─────────────────────────────────────────────────────────────
     [Header("Head Bob")]
@@ -147,11 +149,89 @@ public class PlayerCam : MonoBehaviour
         if (cam != null)
             cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size);
 
+        // Free Spin (hold R): the mouse turns the whole body on every axis (backflips, barrel turns)
+        bool spinHeld = !paused && player.CanMove && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
+        if (spinHeld)
+        {
+            if (!spinning) BeginSpin();
+            UpdateSpin();
+            return;
+        }
+        if (spinning) EndSpin();
+
         Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, currentTilt);
         transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation,
             1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
 
-        playerTransform.rotation = Quaternion.Euler(0f, yRotation, 0f);
+        Quaternion upright = Quaternion.Euler(0f, yRotation, 0f);
+        if (recoveringFromSpin)
+        {
+            // Swing back upright around the body's middle, quickly but not in one frame
+            Quaternion next = Quaternion.Slerp(player.Body.rotation, upright, 1f - Mathf.Exp(-spinRecoverSpeed * Time.deltaTime));
+            if (Quaternion.Angle(next, upright) < 1f) { next = upright; recoveringFromSpin = false; player.IsFreeSpinning = false; }
+            RotateBodyAroundCenter(next);
+        }
+        else
+        {
+            playerTransform.rotation = upright;
+        }
+    }
+
+    // ─── Free Spin ────────────────────────────────────────────────────────────
+
+    private bool  spinning;
+    private bool  recoveringFromSpin;
+    private float spinCameraPitch; // The camera's pitch relative to the body, kept while spinning
+
+    /// <summary>True while the player is free-spinning or swinging back upright afterwards.</summary>
+    public bool IsFreeSpinning => spinning || recoveringFromSpin;
+
+    private void BeginSpin()
+    {
+        player.IsFreeSpinning = true;
+        spinning           = true;
+        recoveringFromSpin = false;
+        spinCameraPitch    = xRotation;
+    }
+
+    private void UpdateSpin()
+    {
+        float scale = sensitivity / 100f;
+        float yaw   = Input.GetAxisRaw("Mouse X") * scale;
+        float pitch = Input.GetAxisRaw("Mouse Y") * scale;
+
+        // Local axes: looking up pitches the body backward, so keep looking up and it flips over
+        RotateBodyAroundCenter(player.Body.rotation * Quaternion.Euler(-pitch, yaw, 0f));
+        transform.rotation = playerTransform.rotation * Quaternion.Euler(spinCameraPitch, 0f, 0f);
+    }
+
+    // Let go: keep looking where the camera points, and swing the body back upright
+    private void EndSpin()
+    {
+        spinning           = false;
+        recoveringFromSpin = true;
+
+        Vector3 look = transform.forward;
+        Vector3 flat = Vector3.ProjectOnPlane(look, Vector3.up);
+        if (flat.sqrMagnitude < 0.0001f) flat = Vector3.ProjectOnPlane(transform.up, Vector3.up) * -Mathf.Sign(look.y);
+        if (flat.sqrMagnitude < 0.0001f) flat = Vector3.forward;
+        yRotation = Quaternion.LookRotation(flat).eulerAngles.y;
+        xRotation = Mathf.Clamp(-Mathf.Asin(Mathf.Clamp(look.y, -1f, 1f)) * Mathf.Rad2Deg, -90f, 90f);
+    }
+
+    // Turning around the feet (the root) would swing the body through the floor; turn around the middle.
+    // Works from the Rigidbody's own pose and only nudges it by the pivot shift: the local body is
+    // interpolated, so its transform trails the physics position, and copying the transform back each
+    // frame dragged the player backwards (a slowed fall).
+    private void RotateBodyAroundCenter(Quaternion rotation)
+    {
+        var        body         = player.Body;
+        Vector3    centerOffset = Vector3.up * (player.Height * 0.5f);
+        Vector3    pivotShift   = body.rotation * centerOffset - rotation * centerOffset;
+
+        body.position += pivotShift;
+        body.rotation  = rotation;
+        playerTransform.rotation = rotation; // Show it this frame (interpolation catches up on position)
     }
 
     // ─── Look ─────────────────────────────────────────────────────────────────

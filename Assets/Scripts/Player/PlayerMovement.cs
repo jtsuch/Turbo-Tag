@@ -171,6 +171,17 @@ public class PlayerMovement : MonoBehaviourPun
         if (State == Player.MovementState.Hang)
             return;
 
+        // Free Spin: the body is tumbling, so its "forward" and "sideways" can point at the floor (which read
+        // as a wall: wall-runs with gravity off froze the player mid-air). No walls or climbing while spinning.
+        if (player.IsFreeSpinning)
+        {
+            wallForward = WallLeft = WallRight = false;
+            currentWallNormal = Vector3.zero;
+            if (State == Player.MovementState.WallRun) StopWallRun();
+            else if (State == Player.MovementState.Climb) player.SetState(Player.MovementState.Idle);
+            return;
+        }
+
         Vector3 chest = transform.position + Vector3.up * (player.Height * 0.5f);
         // Infinite Climb looks further, so drifting off the wall or glancing sideways doesn't end the climb
         float reach = player.SteadyClimbSpeed > 0f ? SteadyClimbReach : 1f;
@@ -260,7 +271,7 @@ public class PlayerMovement : MonoBehaviourPun
             WallRun();
 
         Vector2 move        = input.MoveInput;
-        Vector3 intendedDir = (transform.forward * move.y + transform.right * move.x) * player.TargetSpeed;
+        Vector3 intendedDir = (Heading * move.y + HeadingRight * move.x) * player.TargetSpeed;
         Vector3 flatVel     = new(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         bool    hasInput    = intendedDir.sqrMagnitude > 0f;
 
@@ -371,6 +382,22 @@ public class PlayerMovement : MonoBehaviourPun
         if (State == Player.MovementState.Prone && !OnGround)
             rb.AddForce(transform.forward * proneDiveImpulse, ForceMode.Impulse);
     }
+
+    // Flat movement directions. Normally the body's own (it is kept upright); during a Free Spin, where the
+    // camera faces, flattened, so a tilted body never pushes the player up or down
+    private Vector3 Heading
+    {
+        get
+        {
+            if (!player.IsFreeSpinning) return transform.forward;
+            Vector3 look = cam != null ? cam.transform.forward : transform.forward;
+            Vector3 flat = Vector3.ProjectOnPlane(look, Vector3.up);
+            if (flat.sqrMagnitude < 0.0001f) flat = Vector3.ProjectOnPlane(cam != null ? cam.transform.up : transform.up, Vector3.up);
+            return flat.sqrMagnitude < 0.0001f ? transform.forward : flat.normalized;
+        }
+    }
+
+    private Vector3 HeadingRight => player.IsFreeSpinning ? Vector3.Cross(Vector3.up, Heading) : transform.right;
 
     // ─── Climbing ─────────────────────────────────────────────────────────────
 

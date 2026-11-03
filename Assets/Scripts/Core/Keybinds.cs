@@ -7,13 +7,15 @@ public enum InputAction
 {
     Action, Jump, Sprint, Crouch, Prone, Grab, Pause,
     AbilityBasic, AbilityQuick, AbilityThrow, AbilityTrap,
+    FreeSpin,
 }
 
 /// <summary>
 /// PlayerPrefs-backed keybind store shared by InputHandler, the settings UI and the HUD.
-/// Also holds cheat-mode "extra" bindings that map a key directly to an ability id. Those last for
-/// this run of the game only (kept across maps, gone on restart), so every launch starts with just
-/// the four starting-ability keys.
+/// Cheats-tab key changes last for the current match only (<see cref="ResetMatchBindings"/>), so every
+/// match starts with the four starting-ability keys from Settings:
+///   match overrides — a starting slot rebound or removed in Cheats (Settings keys stay saved)
+///   extras          — cheat-mode bindings that map a key directly to an ability id
 /// </summary>
 public static class Keybinds
 {
@@ -36,6 +38,7 @@ public static class Keybinds
         [InputAction.Crouch]       = KeyCode.LeftControl,
         [InputAction.Prone]        = KeyCode.C,
         [InputAction.Grab]         = KeyCode.F,
+        [InputAction.FreeSpin]     = KeyCode.R,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,
@@ -50,16 +53,21 @@ public static class Keybinds
 
     // ─── Core bindings ────────────────────────────────────────────────────────
 
+    // Starting-slot keys changed in Cheats this match (not saved)
+    private static readonly Dictionary<InputAction, KeyCode> matchOverrides = new();
+
     public static KeyCode Get(InputAction action)
     {
-        if (cache.TryGetValue(action, out KeyCode key)) return key;
+        if (matchOverrides.TryGetValue(action, out KeyCode key)) return key;
+        if (cache.TryGetValue(action, out key)) return key;
 
         key = Parse(PlayerPrefs.GetString(PrefsKey(action), Default(action).ToString()), Default(action));
         cache[action] = key;
         return key;
     }
 
-    public static void Set(InputAction action, KeyCode key)
+    /// <param name="forMatch">True for Cheats-tab changes: they last until the next match and aren't saved.</param>
+    public static void Set(InputAction action, KeyCode key, bool forMatch = false)
     {
         if (action == InputAction.Pause) key = KeyCode.Escape; // Pause is never rebindable
 
@@ -70,11 +78,11 @@ public static class Keybinds
             foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
             {
                 var other = SlotAction(slot);
-                if (other != action && Get(other) == key) Store(other, KeyCode.None);
+                if (other != action && Get(other) == key) Store(other, KeyCode.None, forMatch);
             }
         }
 
-        Store(action, key);
+        Store(action, key, forMatch);
         if (abilityKey) AbilityKeyClaimed?.Invoke(key);
         Changed?.Invoke();
     }
@@ -87,7 +95,7 @@ public static class Keybinds
         foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
         {
             if (Get(SlotAction(slot)) != key) continue;
-            Store(SlotAction(slot), KeyCode.None);
+            Store(SlotAction(slot), KeyCode.None, forMatch: true); // A cheat extra took it: this match only
             any = true;
         }
         if (any) Changed?.Invoke();
@@ -97,11 +105,29 @@ public static class Keybinds
         action == InputAction.AbilityBasic || action == InputAction.AbilityQuick
         || action == InputAction.AbilityThrow || action == InputAction.AbilityTrap;
 
-    private static void Store(InputAction action, KeyCode key)
+    private static void Store(InputAction action, KeyCode key, bool forMatch)
     {
+        if (forMatch)
+        {
+            matchOverrides[action] = key;
+            return;
+        }
+        matchOverrides.Remove(action);
         cache[action] = key;
         PlayerPrefs.SetString(PrefsKey(action), key.ToString());
         PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// A new match: forget Cheats-tab key changes (starting-slot overrides and extras), so each starting
+    /// ability is back on its Settings key and nothing else is bound.
+    /// </summary>
+    public static void ResetMatchBindings()
+    {
+        if (matchOverrides.Count == 0 && customs.Count == 0) return;
+        matchOverrides.Clear();
+        customs.Clear();
+        Changed?.Invoke();
     }
 
     public static KeyCode Default(InputAction action) =>
@@ -142,12 +168,20 @@ public static class Keybinds
         Changed?.Invoke();
     }
 
-    // Older builds saved extra bindings to PlayerPrefs, and they piled up across games; forget them
+    // Older builds saved Cheats changes: extra bindings piled up across games, and a starting slot removed
+    // in Cheats stayed unbound for good (a match could start with no usable abilities). Undo both.
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    private static void ForgetSavedCustomBindings()
+    private static void CleanUpSavedBindings()
     {
         customs.Clear();
+        matchOverrides.Clear();
         bool any = false;
+        foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
+        {
+            var action = SlotAction(slot);
+            if (Get(action) != KeyCode.None) continue;
+            Store(action, Default(action), forMatch: false);
+        }
         foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
             foreach (string id in AbilityCatalog.InSlot(slot))
             {

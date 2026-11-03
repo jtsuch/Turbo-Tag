@@ -35,14 +35,17 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     public bool IsEquipped(Ability ability) => Array.IndexOf(equipped, ability) >= 0;
 
     /// <summary>
-    /// Every ability this player can use right now with its key: the four starting abilities (slot keys),
+    /// Every ability this player can use right now with its key: the starting abilities that have a key,
     /// then any extras bound in Cheats, in slot order. The HUD hotbar and timers show exactly this list.
     /// </summary>
     public List<(Ability ability, KeyCode key)> Usable()
     {
         var list = new List<(Ability, KeyCode)>();
         for (int i = 0; i < equipped.Length; i++)
-            if (equipped[i] != null) list.Add((equipped[i], Keybinds.ForSlot((AbilitySlot)i)));
+        {
+            KeyCode key = Keybinds.ForSlot((AbilitySlot)i);
+            if (equipped[i] != null && key != KeyCode.None) list.Add((equipped[i], key)); // Unbound = unusable
+        }
 
         var extras = new List<(Ability, KeyCode)>();
         foreach (var pair in customBindings)
@@ -70,6 +73,7 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
 
     private void Start()
     {
+        if (photonView.IsMine) Keybinds.ResetMatchBindings(); // Cheats key changes last one match
         if (photonView.IsMine && MatchRules.CheatsEnabled) RestoreCustomBindings();
         if (photonView.IsMine) Keybinds.AbilityKeyClaimed += ReleaseCustomBindingsUsing;
         ApplyLoadout();
@@ -179,7 +183,7 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     public void SetSlotBinding(AbilitySlot slot, KeyCode key)
     {
         if (!photonView.IsMine) return;
-        Keybinds.Set(Keybinds.SlotAction(slot), key);
+        Keybinds.Set(Keybinds.SlotAction(slot), key, forMatch: true);
     }
 
     // A starting slot just took this key: cheat extras on it are dropped
@@ -196,8 +200,8 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         if (changed) PublishCheatAbilities();
     }
 
-    // Brings back this session's extra bindings (after a map change or re-enabling cheats). A key drives
-    // one ability: an extra on a starting slot's key, or one an earlier extra already took, is dropped.
+    // Brings back this match's extra bindings (after cheats are switched back on). A key drives one
+    // ability: an extra on a starting slot's key, or one an earlier extra already took, is dropped.
     private void RestoreCustomBindings()
     {
         customBindings.Clear();

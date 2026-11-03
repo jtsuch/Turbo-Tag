@@ -104,6 +104,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     public bool IsDashing  { get; set; }
     public bool IsCaught   { get; private set; }
 
+    /// <summary>Free Spin (PlayerCam): the body is tumbling, so movement ignores its tilt.</summary>
+    public bool IsFreeSpinning { get; set; }
+
     /// <summary>Stuck in place on a surface (Chameleon): no movement and no gravity until cleared.</summary>
     public bool IsAnchored { get; set; }
 

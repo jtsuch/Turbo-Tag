@@ -123,7 +123,30 @@ public readonly struct AbilityLoadout
 
     public string this[AbilitySlot slot] => ids?[(int)slot] ?? Default(slot);
 
-    public static string Default(AbilitySlot slot) => defaults[(int)slot];
+    /// <summary>The slot's default pick, or the top ability in the slot's list if the default can't be used.</summary>
+    public static string Default(AbilitySlot slot)
+    {
+        string preferred = defaults[(int)slot];
+        if (AbilityCatalog.IsAvailable(preferred)) return preferred;
+        foreach (string id in AbilityCatalog.InSlot(slot))
+            if (AbilityCatalog.IsAvailable(id)) return id;
+        return preferred;
+    }
+
+    /// <summary>
+    /// Local player: fills any slot without a usable pick from the last choices (then the default).
+    /// Pregame sets every slot itself, but modes that skip it (Freeplay) rely on this.
+    /// </summary>
+    public static void EnsureLocal()
+    {
+        var props = PhotonNetwork.LocalPlayer?.CustomProperties;
+        foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
+        {
+            string current = props != null && props.TryGetValue(PropertyKey(slot), out object value) ? value as string : null;
+            if (AbilityCatalog.SlotOf(current) == slot && AbilityCatalog.IsAvailable(current)) continue;
+            SetLocal(slot, LastChoice(slot));
+        }
+    }
 
     public static string PropertyKey(AbilitySlot slot) => slot switch
     {
@@ -172,17 +195,4 @@ public readonly struct AbilityLoadout
         "StiffGrapple" => "ZipGrapple",
         _              => id,
     };
-
-    /// <summary>Writes the last-used (or default) loadout for the local player.</summary>
-    public static void EnsureLocal()
-    {
-        var props = new ExitGames.Client.Photon.Hashtable();
-        for (int i = 0; i < 4; i++)
-        {
-            var slot = (AbilitySlot)i;
-            if (!PhotonNetwork.LocalPlayer.CustomProperties.ContainsKey(PropertyKey(slot)))
-                props[PropertyKey(slot)] = LastChoice(slot);
-        }
-        if (props.Count > 0) NetProps.SetLocal(props);
-    }
 }

@@ -51,6 +51,7 @@ public class GeneralUI : MonoBehaviourPunCallbacks
         ("Ability 2", InputAction.AbilityQuick),
         ("Ability 3", InputAction.AbilityThrow),
         ("Ability 4", InputAction.AbilityTrap),
+        ("Free Spin", InputAction.FreeSpin),
     };
 
     private readonly List<KeybindRow> rows     = new();
