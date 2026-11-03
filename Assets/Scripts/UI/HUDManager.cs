@@ -49,6 +49,7 @@ public class HUDManager : MonoBehaviour
     [Header("Colours")]
     [SerializeField] private Color hunterColor = new(1f, 0.25f, 0.2f);
     [SerializeField] private Color hiderColor  = new(0.3f, 0.85f, 1f);
+    [SerializeField] private Color presidentColor = new(1f, 0.78f, 0.15f);
 
     private const string IconFolder = "AbilityIcons/";
     private const KeyCode DebugToggleKey = KeyCode.F3;
@@ -300,12 +301,15 @@ public class HUDManager : MonoBehaviour
             roleText.enabled = showRole;
             if (showRole)
             {
-                bool   hunter    = player.IsHunter;
+                string role      = mode.RoleName(player.Role);
                 string objective = mode.GetObjective(player.Role, manager.Phase);
-                roleText.color = hunter ? hunterColor : hiderColor;
-                roleText.text  = string.IsNullOrEmpty(objective)
-                    ? (hunter ? "HUNTER" : "HIDER")
-                    : $"{(hunter ? "HUNTER" : "HIDER")}\n<size=50%>{objective}</size>";
+                roleText.color = player.Role switch
+                {
+                    PlayerRole.Hunter    => hunterColor,
+                    PlayerRole.President => presidentColor,
+                    _                    => hiderColor,
+                };
+                roleText.text = string.IsNullOrEmpty(objective) ? role : $"{role}\n<size=50%>{objective}</size>";
             }
         }
 

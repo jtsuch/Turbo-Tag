@@ -1,66 +1,70 @@
-using UnityEngine;
 using Photon.Pun;
 using TMPro;
+using UnityEngine;
 
 /// <summary>
-/// Displays the remote player's PlayFab display name (stored in PhotonPlayer.NickName) in
-/// world space above their head. Only visible when the local camera has an unobstructed
-/// line of sight AND the player is within maxRange metres. Hidden on the local player's
-/// own instance. The tag always faces the local camera (billboard).
-///
-/// Attach to: ThePlayer prefab — no prefab wiring needed. The name tag GameObject is
-/// created at runtime so it works automatically on every player that spawns.
-///
-/// Note: if player collider layers block the LOS raycast, exclude them by setting
-/// losBlockers in the Inspector to omit the Player layer.
+/// The player's name in plain white text just above their head, seen by other players within
+/// <see cref="readRange"/> (30 ft). Who can read whose name is the game mode's call
+/// (<see cref="GameMode.ShowsName"/>): teammates always, hiders also see hunters, hunters never see
+/// hiders. Hidden while the player is cloaked, camouflaged, or their identity is hidden (hunters during
+/// Protect the President setup). Never shown on your own player. Always faces the camera.
+/// The tag is its own object (not a child of the player), so nothing that rearranges or strips the
+/// player's children can destroy it; it is removed with the player and rebuilt if it ever goes missing.
+/// Attach to: ThePlayer prefab (the tag is created at runtime).
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public class PlayerNameTag : MonoBehaviour
 {
     [Header("Settings")]
-    [SerializeField] private float maxRange    = 30f;
-    [SerializeField] private float tagHeight   = 2.5f;  // metres above player pivot
-    [SerializeField] private float fontSize    = 3f;
-    [SerializeField] private float losInterval = 0.15f; // seconds between LOS raycasts
-    [SerializeField] private LayerMask losBlockers = Physics.DefaultRaycastLayers;
+    [Tooltip("Farthest a name can be read from (m). 30 ft ≈ 9.1 m.")]
+    [SerializeField] private float readRange    = 9.14f;
+    [Tooltip("Gap between the top of the player and the name (m, scaled by body size).")]
+    [SerializeField] private float headroom    = 0.35f;
+    [SerializeField] private float fontSize    = 2.2f;
 
-    private PhotonView  view;
-    private TextMeshPro label;
-    private Transform   tagRoot;
-    private Camera      cam;
-    private float       nextLos;
-    private bool        losVisible;
+    private PhotonView       view;
+    private Player           player;
+    private PlayerAppearance appearance;
+    private TextMeshPro      label;
+    private Transform        tagRoot;
+    private Camera           cam;
 
     private void Awake()
     {
         view = GetComponent<PhotonView>();
         if (view.IsMine) return;
+        player     = GetComponent<Player>();
+        appearance = GetComponent<PlayerAppearance>();
         CreateTag();
     }
 
-    private void Start()
+    private void OnDestroy()
     {
-        if (view.IsMine) return;
-        cam = PlayerCam.Local != null ? PlayerCam.Local.Camera : Camera.main;
+        if (tagRoot != null) Destroy(tagRoot.gameObject);
+    }
+
+    // The tag isn't a child, so it has to be hidden by hand when the player is switched off
+    private void OnDisable()
+    {
+        if (label != null) label.enabled = false;
     }
 
     private void CreateTag()
     {
-        var go = new GameObject("NameTag");
-        go.transform.SetParent(transform);
-        go.transform.localPosition = Vector3.up * tagHeight;
-        tagRoot = go.transform;
+        var go = new GameObject($"NameTag ({ResolveName()})");
 
-        label               = go.AddComponent<TextMeshPro>();
-        label.alignment     = TextAlignmentOptions.Center;
-        label.fontSize      = fontSize;
-        label.color         = Color.white;
-        label.outlineColor  = Color.black;
-        label.outlineWidth  = 0.25f;
-        label.fontStyle     = FontStyles.Bold;
-        label.sortingOrder  = 10;
-        label.text          = ResolveName();
-        label.enabled       = false;
+        // Read the transform after adding the text: TextMeshPro swaps the Transform for a RectTransform,
+        // destroying the original (holding on to it was the "Transform has been destroyed" error)
+        label              = go.AddComponent<TextMeshPro>();
+        tagRoot            = label.transform;
+        label.alignment    = TextAlignmentOptions.Center;
+        label.fontSize     = fontSize;
+        label.color        = Color.white;
+        label.outlineWidth = 0f;                 // Plain white words, no outline or glow
+        label.fontStyle    = FontStyles.Normal;
+        label.sortingOrder = 10;
+        label.text         = ResolveName();
+        label.enabled      = false;
     }
 
     private string ResolveName()
@@ -69,48 +73,41 @@ public class PlayerNameTag : MonoBehaviour
         return string.IsNullOrEmpty(nick) ? $"Player {view.Owner?.ActorNumber}" : nick;
     }
 
-    private void Update()
+    private void LateUpdate()
     {
-        if (view.IsMine || label == null || tagRoot == null) return;
+        if (view.IsMine) return;
+        if (tagRoot == null || label == null) CreateTag(); // Rebuilt if anything destroyed it
 
-        // The local camera may spawn after this remote player, and is replaced when the local player
-        // respawns (a destroyed camera reads as null here)
+        // The local camera may spawn after this player, and is replaced when the local player respawns
         if (cam == null || !cam.isActiveAndEnabled)
         {
             cam = PlayerCam.Local != null ? PlayerCam.Local.Camera : Camera.main;
             if (cam == null) return;
         }
 
-        // Billboard — always face the local camera
+        // Just above the top of the body, whatever the body size or stance
+        float size = player != null ? player.Size : 1f;
+        float top  = player != null ? player.TopY : transform.position.y + 1.8f;
+        tagRoot.position = new Vector3(transform.position.x, top + headroom * size, transform.position.z);
         Vector3 dir = tagRoot.position - cam.transform.position;
-        if (dir != Vector3.zero)
-            tagRoot.rotation = Quaternion.LookRotation(dir);
+        if (dir != Vector3.zero) tagRoot.rotation = Quaternion.LookRotation(dir);
 
-        // Throttled LOS + range check (raycasts every losInterval seconds)
-        if (Time.time >= nextLos)
-        {
-            nextLos    = Time.time + losInterval;
-            losVisible = CheckLOS();
-        }
-
-        // Cloak and camouflage (PlayerAppearance) also hide the name, or they'd give the player away
-        appearance ??= GetComponent<PlayerAppearance>();
-        bool disguised = appearance != null && (appearance.CloakAmount > 0.5f || appearance.Camouflage.HasValue);
-        label.enabled = losVisible && !disguised;
+        label.enabled = dir.magnitude <= readRange && Readable();
     }
 
-    private PlayerAppearance appearance;
-
-    private bool CheckLOS()
+    private bool Readable()
     {
-        Vector3 origin = cam.transform.position;
-        Vector3 target = tagRoot.position;
-        float   dist   = Vector3.Distance(origin, target);
+        if (player == null) return true;
+        if (player.IsDownAfterTag) return false; // Tagged: the ragdoll has no name over it
 
-        if (dist > maxRange) return false;
+        // Hidden identity (hunters during Protect the President setup) shows no details at all
+        var manager = GameModeManager.Instance;
+        if (manager != null && manager.HidesIdentityFromLocal(player)) return false;
 
-        // Subtract a small margin so the cast doesn't hit the tag's own position
-        Vector3 direction = (target - origin).normalized;
-        return !Physics.Raycast(origin, direction, dist - 0.2f, losBlockers);
+        // Cloak and camouflage would be given away by a name
+        if (appearance != null && (appearance.CloakAmount > 0.5f || appearance.Camouflage.HasValue)) return false;
+
+        if (manager == null || manager.Mode == null || Player.Local == null) return true;
+        return manager.Mode.ShowsName(Player.Local.Role, player.Role);
     }
 }

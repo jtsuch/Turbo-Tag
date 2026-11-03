@@ -31,6 +31,7 @@ public abstract class BasicAbility : Ability
 
     public override void HandleInput(AbilityInputEvent inputEvent)
     {
+        if (inputEvent == AbilityInputEvent.Down && CurrentDuration > 0.01f) CountUse(); // Each press is a use
         if      (inputEvent == AbilityInputEvent.Down) OnPress();
         else if (inputEvent == AbilityInputEvent.Up)   OnRelease();
     }

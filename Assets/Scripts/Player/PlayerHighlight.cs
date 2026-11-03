@@ -2,24 +2,13 @@ using UnityEngine;
 using Photon.Pun;
 
 /// <summary>
-/// Applies a coloured emission glow to remote player meshes to communicate team membership.
-/// Roles are read from player properties, so this works in any mode that uses roles.
-/// Only active on remote player instances — the local player's own mesh is never tinted.
-/// Also adds a faint icy glow while the player stands on ice (the blue body tint is PlayerAppearance's).
+/// Faint icy emission glow on remote players while they slide on ice, so the blue tint
+/// (PlayerAppearance) still reads in dark areas. Teams are no longer tinted: hunters get a red
+/// outline instead (PlayerAppearance), so everyone keeps their own penguin colour.
+/// Only active on remote copies (your own body is hidden from you).
 ///
-/// Glow rules from the local player's perspective:
-///   Hider  sees Hunter  → Red   (threat)
-///   Hider  sees Hider   → Blue  (ally)
-///   Hunter sees Hunter  → Red   (shared team colour)
-///   Hunter sees Hider   → None  (hunters search naturally; no visual advantage)
-///
-/// Unity setup:
-///   1. Assign the Jimmy SkinnedMeshRenderer to highlightRenderers in the Inspector
-///      (or leave it empty — the component auto-detects a child named "Jimmy").
-///   2. Open the Jimmy material and tick the Emission checkbox (any colour to initialise).
-///      The script overrides the emission colour at runtime; the checkbox just activates
-///      the _EMISSION keyword so MaterialPropertyBlock overrides take effect.
-///   3. Add a Bloom override to your URP Volume for the best glow look.
+/// Unity setup: leave highlightRenderers empty to use the 'Jimmy' child. The Jimmy material needs
+/// Emission ticked (any colour) so the _EMISSION keyword is on; this script sets the colour.
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public class PlayerHighlight : MonoBehaviour
@@ -28,11 +17,6 @@ public class PlayerHighlight : MonoBehaviour
     [Tooltip("Jimmy SkinnedMeshRenderer(s). Leave empty to auto-detect 'Jimmy' child.")]
     [SerializeField] private Renderer[] highlightRenderers;
 
-    [Header("Colours")]
-    [SerializeField] private Color threatColor = new Color(1.0f, 0.15f, 0.1f);
-    [SerializeField] private Color allyColor   = new Color(0.1f, 0.35f, 1.0f);
-    [SerializeField] [Range(0f, 4f)] private float intensity = 1.5f;
-
     [Header("Ice")]
     [Tooltip("Faint glow added while on ice, so the tint reads in dark areas.")]
     [SerializeField] private Color iceGlow      = new Color(0.1f, 0.3f, 0.5f);
@@ -40,9 +24,9 @@ public class PlayerHighlight : MonoBehaviour
 
     private PhotonView view;
     private Player     player;
-    private static readonly int EmissionId  = Shader.PropertyToID("_EmissionColor");
+    private static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
     private MaterialPropertyBlock block;
-    private float   iceAmount;
+    private float iceAmount;
 
     private void Awake()
     {
@@ -53,8 +37,9 @@ public class PlayerHighlight : MonoBehaviour
         if (highlightRenderers == null || highlightRenderers.Length == 0)
         {
             var jimmy = transform.Find("Jimmy");
-            if (jimmy != null && jimmy.TryGetComponent<SkinnedMeshRenderer>(out var smr))
-                highlightRenderers = new Renderer[] { smr };
+            highlightRenderers = jimmy != null && jimmy.TryGetComponent<SkinnedMeshRenderer>(out var smr)
+                ? new Renderer[] { smr }
+                : new Renderer[0];
         }
     }
 
@@ -62,8 +47,7 @@ public class PlayerHighlight : MonoBehaviour
     {
         if (view.IsMine) { enabled = false; return; }
 
-        // Enable emission on shared materials so MaterialPropertyBlock overrides take effect.
-        // Using sharedMaterials avoids creating per-instance copies, which can corrupt URP state.
+        // Emission must be on in the shared material for MaterialPropertyBlock overrides to show
         foreach (var r in highlightRenderers)
             foreach (var mat in r.sharedMaterials)
                 if (mat != null && !mat.IsKeywordEnabled("_EMISSION"))
@@ -72,41 +56,23 @@ public class PlayerHighlight : MonoBehaviour
 
     private void Update()
     {
-        var local   = Player.Local;
-        var manager = GameModeManager.Instance;
-        if (local == null || player == null) return;
-
-        bool  usesRoles = manager != null && manager.Mode != null && manager.Mode.UsesRoles;
-        Color target    = usesRoles ? ResolveColor(local.IsHunter, player.IsHunter) : Color.black;
-
+        if (player == null) return;
         iceAmount = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * Time.deltaTime);
-        Color glow = target * intensity + iceGlow * iceAmount;
-
-        for (int i = 0; i < highlightRenderers.Length; i++)
-        {
-            var r = highlightRenderers[i];
-            r.GetPropertyBlock(block);
-            block.SetColor(EmissionId, glow);
-            r.SetPropertyBlock(block);
-        }
-    }
-
-    private Color ResolveColor(bool localIsHunter, bool remoteIsHunter)
-    {
-        if (localIsHunter && !remoteIsHunter) return Color.black; // hunter vs hider   → none
-        if (!localIsHunter && remoteIsHunter) return threatColor; // hider  vs hunter  → red
-        if (!localIsHunter && !remoteIsHunter) return allyColor;  // hider  vs hider   → blue
-        return threatColor;                                        // hunter vs hunter  → red
+        SetGlow(iceGlow * iceAmount);
     }
 
     private void OnDisable()
     {
-        if (block == null) return;
-        for (int i = 0; i < highlightRenderers.Length; i++)
+        if (block != null) SetGlow(Color.black);
+    }
+
+    private void SetGlow(Color glow)
+    {
+        foreach (var r in highlightRenderers)
         {
-            var r = highlightRenderers[i];
+            if (r == null) continue;
             r.GetPropertyBlock(block);
-            block.SetColor(EmissionId, Color.black);
+            block.SetColor(EmissionId, glow);
             r.SetPropertyBlock(block);
         }
     }

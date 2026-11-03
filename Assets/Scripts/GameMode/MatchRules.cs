@@ -11,7 +11,6 @@ public static class MatchRules
     // ─── Defaults ─────────────────────────────────────────────────────────────
     public const float DefaultHideTime       = 120f;  // seconds
     public const float DefaultSeekTime       = 300f;  // seconds (only used when the limit is enabled)
-    public const int   DefaultRoundCount     = 3;
     public const int   DefaultHunterCount    = 1;
     public const float DefaultHunterCooldown = 0f;    // % reduction
     public const float DefaultTagCooldown    = 2f;    // seconds a newly tagged hunter must wait
@@ -20,6 +19,9 @@ public static class MatchRules
     public const float DefaultEffectsRespawn = 30f;   // seconds
     public const float DefaultTagBonus       = 0f;    // seconds
     public const float DefaultScoreLimit     = 600f;   // seconds
+    public const float DefaultCountdownTime  = 3f;     // seconds frozen before each round
+    public const float DefaultRespawnDelay   = 3f;     // seconds a tagged player lies there
+    public const float DefaultHunterSpeed    = 100f;   // %
 
     // ─── Rules ────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,6 @@ public static class MatchRules
     /// <summary>Active-phase limit in seconds; 0 means unlimited.</summary>
     public static float SeekTimeLimit   => SeekTimeEnabled ? NetProps.Room(RuleKeys.SeekTime, DefaultSeekTime) : 0f;
 
-    public static int   RoundCount  => System.Math.Max(1, NetProps.Room(RuleKeys.RoundCount, DefaultRoundCount));
     public static int   HunterCount => System.Math.Max(1, NetProps.Room(RuleKeys.HunterCount, DefaultHunterCount));
 
     /// <summary>Fraction (0–1) by which hunter cooldowns are reduced.</summary>
@@ -57,6 +58,25 @@ public static class MatchRules
     public static bool  ScoreLimitEnabled => NetProps.Room(RuleKeys.ScoreLimitEnabled, false);
     /// <summary>Score (seconds) that ends the match early; 0 means no limit.</summary>
     public static float ScoreLimit => ScoreLimitEnabled ? NetProps.Room(RuleKeys.ScoreLimit, DefaultScoreLimit) : 0f;
+
+    public static float CountdownTime => UnityEngine.Mathf.Max(0f, NetProps.Room(RuleKeys.CountdownTime, DefaultCountdownTime));
+    public static float RespawnDelay  => UnityEngine.Mathf.Max(0f, NetProps.Room(RuleKeys.RespawnDelay, DefaultRespawnDelay));
+
+    /// <summary>Multiplier on hunters' movement speed (1 = normal).</summary>
+    public static float HunterSpeedMultiplier =>
+        UnityEngine.Mathf.Max(0.1f, NetProps.Room(RuleKeys.HunterSpeed, DefaultHunterSpeed) / 100f);
+
+    public static bool HiderAbilities  => NetProps.Room(RuleKeys.HiderAbilities, true);
+
+    // ─── Protect the President ────────────────────────────────────────────────
+    public const float DefaultPresidentTime  = 180f;  // seconds the President must survive
+    public const float DefaultPresidentSpeed = 100f;  // %
+
+    public static float PresidentTime => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.PresidentTime, DefaultPresidentTime));
+    public static float PresidentSpeedMultiplier =>
+        UnityEngine.Mathf.Max(0.1f, NetProps.Room(RuleKeys.PresidentSpeed, DefaultPresidentSpeed) / 100f);
+    public static bool  PresidentAbilities => NetProps.Room(RuleKeys.PresidentAbilities, true);
+    public static bool HunterAbilities => NetProps.Room(RuleKeys.HunterAbilities, true);
 
     // ─── Host helpers ─────────────────────────────────────────────────────────
 

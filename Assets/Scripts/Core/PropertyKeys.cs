@@ -19,6 +19,8 @@ public static class RoomKeys
     public const string PausedAt      = "Match_PausedAt";
     public const string Round         = "Match_Round";
     public const string Winner        = "Match_Winner";
+    /// <summary>Team modes: which side won ("Hunters" / "Defenders"), for the scoreboard.</summary>
+    public const string WinningTeam   = "Match_WinningTeam";
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
 
@@ -39,7 +41,6 @@ public static class RuleKeys
     public const string HideTime          = "Rule_HideTime";
     public const string SeekTime          = "Rule_SeekTime";
     public const string SeekTimeEnabled   = "Rule_SeekTimeEnabled";
-    public const string RoundCount        = "Rule_RoundCount";
     public const string HunterCount       = "Rule_HunterCount";
     public const string HunterCooldown    = "Rule_HunterCooldown";
     public const string TagCooldown       = "Rule_TagCooldown";
@@ -49,6 +50,14 @@ public static class RuleKeys
     public const string TagBonus          = "Rule_HuntedBonus";
     public const string ScoreLimit        = "Rule_ScoreLimit";
     public const string ScoreLimitEnabled = "Rule_ScoreLimitEnabled";
+    public const string CountdownTime     = "Rule_CountdownTime";
+    public const string RespawnDelay      = "Rule_RespawnDelay";
+    public const string HunterSpeed       = "Rule_HunterSpeed";
+    public const string HiderAbilities    = "Rule_HiderAbilities";
+    public const string HunterAbilities   = "Rule_HunterAbilities";
+    public const string PresidentTime      = "Rule_PresidentTime";
+    public const string PresidentSpeed     = "Rule_PresidentSpeed";
+    public const string PresidentAbilities = "Rule_PresidentAbilities";
 }
 
 /// <summary>Player custom-property keys.</summary>
@@ -66,8 +75,18 @@ public static class PlayerKeys
     /// <summary>Current <see cref="PlayerRole"/> (int). Written by the master client.</summary>
     public const string Role = "Role";
 
+    /// <summary>Penguin colour (<see cref="PenguinSkins"/> name). Written by the player themself.</summary>
+    public const string Skin = "Skin";
+
     /// <summary>Banked score in seconds (float). Written by the master client.</summary>
     public const string Score = "Score";
+
+    // Match stats for the scoreboard (floats; see MatchStats). Reset when a level loads.
+    public const string StatTags           = "Stat_Tags";           // Master: players this one tagged
+    public const string StatTimesTagged    = "Stat_TimesTagged";    // Master
+    public const string StatLongestHide    = "Stat_LongestHide";    // Master: best single-round survival (s)
+    public const string StatRoundsSurvived = "Stat_RoundsSurvived"; // Master
+    public const string StatAbilitiesUsed  = "Stat_AbilitiesUsed";  // The player themself
 }
 
 /// <summary>Scene names used for loading. Levels are named by the lobby's map selection.</summary>
@@ -81,6 +100,7 @@ public static class SceneNames
     public const string JoinList = "JoinList";
     public const string Lobby    = "Lobby";
     public const string Pregame  = "Pregame";
+    public const string Scoreboard = "Scoreboard";
 
     public const string DefaultMap = "Quads";
 

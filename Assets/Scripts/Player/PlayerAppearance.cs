@@ -9,6 +9,14 @@ using UnityEngine.Rendering;
 ///                the cloaked player sees a glow around their screen edges (ScreenVignette).
 ///   Camouflage — body painted one flat colour (Chameleon copies the surface it is stuck to).
 ///   Ice        — tinted icy blue while standing on ice (<see cref="Player.IsOnIce"/>).
+///   Silhouette — solid black, no glow, when the game mode hides who this player is from the viewer
+///                (<see cref="GameModeManager.HidesIdentityFromLocal"/>: hunters during Protect the President setup).
+///   Skin       — the player's penguin colour (<see cref="PenguinSkins"/>): their colour map replaces the
+///                body texture on every copy, including their own (seen from a placed Camera).
+///   Outline    — a sharp red rim around hunters (Resources/Cosmetics/HunterOutline, an extra material pass),
+///                so they read as dangerous while keeping their penguin colour. Off while cloaked or hidden.
+///   Crown      — a crown above the head while the mode says so (the President), unless hidden as above.
+///                Placeholder model: Resources/Cosmetics/Crown.
 /// The owner sets <see cref="Cloaked"/> and <see cref="Camouflage"/>; they are synced, and every client
 /// fades its copy toward them. Uses MaterialPropertyBlocks (_BaseColor/_BaseMap), so PlayerHighlight's
 /// emission glow is kept, except while cloaked.
@@ -30,6 +38,13 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
     [Header("Camouflage")]
     [SerializeField] private float camouflageFadeSpeed = 6f;
+
+    [Header("Silhouette")]
+    [SerializeField] private Color silhouetteColor = new(0.02f, 0.02f, 0.02f);
+
+    [Header("Crown")]
+    [Tooltip("How far the crown sinks into the top of the head (m, scaled by body size). Negative lifts it.")]
+    [SerializeField] private float crownSink = 0.12f;
 
     [Header("Ice")]
     [SerializeField] private Color iceTint      = new(0.55f, 0.8f, 1f);
@@ -108,18 +123,26 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         float dt = Time.deltaTime;
         CloakAmount = Mathf.MoveTowards(CloakAmount, Cloaked ? 1f : 0f, cloakFadeSpeed * dt);
 
+        UpdateSkin();
+
         // Your own body is hidden from you (PlayerInitializer); you get a screen-edge glow instead
         if (photonView.IsMine)
         {
             ScreenVignette.Set(CloakAmount, cloakVignette);
             return;
         }
+        var  manager    = GameModeManager.Instance;
+        bool silhouette = manager != null && manager.HidesIdentityFromLocal(player);
+        UpdateCrown(manager != null && manager.ShowsCrown(player));
+
         iceAmount   = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * dt);
         camoAmount  = Mathf.MoveTowards(camoAmount, Camouflage.HasValue ? 1f : 0f, camouflageFadeSpeed * dt);
         if (Camouflage.HasValue) camoColor = Camouflage.Value;
 
-        bool clear = CloakAmount > 0.001f;
-        if (clear != showingClear) SetClearMaterials(clear);
+        bool clear   = CloakAmount > 0.001f;
+        bool outline = !clear && !silhouette && manager != null && manager.Mode != null
+                       && manager.Mode.UsesRoles && player.Role == PlayerRole.Hunter;
+        if (clear != showingClear || outline != showingOutline) SetMaterials(clear, outline);
 
         float alpha = Mathf.Lerp(1f, cloakedAlpha, CloakAmount);
         for (int i = 0; i < bodyRenderers.Length; i++)
@@ -129,29 +152,104 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
             Color color = baseColors[i] * Color.Lerp(Color.white, iceTint, iceAmount);
             color = Color.Lerp(color, camoColor, camoAmount);
+            if (silhouette) color = silhouetteColor;
             color.a = alpha;
 
             r.GetPropertyBlock(block);
             block.SetColor(BaseColorId, color);
-            // Fully camouflaged: drop the body texture so the colour is flat (the texture would show through)
-            if (camoAmount > 0.5f) block.SetTexture(BaseMapId, Texture2D.whiteTexture);
-            else if (baseMaps[i] != null) block.SetTexture(BaseMapId, baseMaps[i]);
-            if (clear) block.SetColor(EmissionId, Color.black);
+            // Flat colour (camouflage, silhouette): drop the body texture, which would show through
+            if (camoAmount > 0.5f || silhouette) block.SetTexture(BaseMapId, Texture2D.whiteTexture);
+            else if (BodyMap(i) != null) block.SetTexture(BaseMapId, BodyMap(i));
+            if (clear || silhouette) block.SetColor(EmissionId, Color.black);
             r.SetPropertyBlock(block);
         }
     }
 
+    // ─── Skin ─────────────────────────────────────────────────────────────────
+
+    private string    skinName;
+    private Texture2D skinMap; // Null: the material's own map ("Black")
+
+    private Texture BodyMap(int i) => skinMap != null ? skinMap : baseMaps[i];
+
+    // Reads the synced pick each frame (a dictionary lookup) and swaps the map when it changes
+    private void UpdateSkin()
+    {
+        string name = PenguinSkins.Of(photonView.Owner);
+        if (name == skinName) return;
+        skinName = name;
+        skinMap  = PenguinSkins.Texture(name);
+
+        // Remote copies set the map every frame below; the owner's own (normally hidden) body gets it once here
+        if (!photonView.IsMine) return;
+        for (int i = 0; i < bodyRenderers.Length; i++)
+        {
+            if (bodyRenderers[i] == null || BodyMap(i) == null) continue;
+            bodyRenderers[i].GetPropertyBlock(block);
+            block.SetTexture(BaseMapId, BodyMap(i));
+            bodyRenderers[i].SetPropertyBlock(block);
+        }
+    }
+
+    // ─── Crown ────────────────────────────────────────────────────────────────
+
+    private static GameObject crownPrefab;
+    private GameObject crown;
+    private Transform  headBone;
+
+    private void UpdateCrown(bool show)
+    {
+        if (!show)
+        {
+            if (crown != null && crown.activeSelf) crown.SetActive(false);
+            return;
+        }
+
+        if (crown == null)
+        {
+            if (crownPrefab == null) crownPrefab = Resources.Load<GameObject>("Cosmetics/Crown");
+            if (crownPrefab == null) return;
+            crown = Instantiate(crownPrefab, transform);
+            foreach (var t in GetComponentsInChildren<Transform>(true))
+                if (t.name == "Head") { headBone = t; break; }
+        }
+        if (!crown.activeSelf) crown.SetActive(true);
+
+        // On top of the head: level with the top of the body (it follows crouching and size), centred on the
+        // head bone sideways, upright, facing forward
+        float   size = player.Size;
+        Vector3 head = headBone != null ? headBone.position : transform.position;
+        Vector3 top  = new(head.x, player.TopY - crownSink * size, head.z);
+        crown.transform.SetPositionAndRotation(top, Quaternion.LookRotation(transform.forward, Vector3.up));
+        crown.transform.localScale = Vector3.one * size;
+    }
+
     // ─── Cloak materials ──────────────────────────────────────────────────────
 
-    private void SetClearMaterials(bool clear)
+    private static Material outlineMaterial;
+    private bool showingOutline;
+
+    // The body's materials: see-through copies while cloaked, plus the outline pass on hunters.
+    // An extra material on a single-mesh renderer draws that mesh again, which is how the outline works.
+    private void SetMaterials(bool clear, bool outline)
     {
-        showingClear = clear;
+        showingClear   = clear;
+        showingOutline = outline;
         if (clear && clearMaterials == null) BuildClearMaterials();
+        if (outline && outlineMaterial == null) outlineMaterial = Resources.Load<Material>("Cosmetics/HunterOutline");
 
         for (int i = 0; i < bodyRenderers.Length; i++)
         {
             if (bodyRenderers[i] == null) continue;
-            bodyRenderers[i].sharedMaterials   = clear ? clearMaterials[i] : opaqueMaterials[i];
+            var set = clear ? clearMaterials[i] : opaqueMaterials[i];
+            if (outline && outlineMaterial != null)
+            {
+                var withOutline = new Material[set.Length + 1];
+                set.CopyTo(withOutline, 0);
+                withOutline[set.Length] = outlineMaterial;
+                set = withOutline;
+            }
+            bodyRenderers[i].sharedMaterials   = set;
             bodyRenderers[i].shadowCastingMode = clear ? ShadowCastingMode.Off : shadowModes[i];
         }
     }

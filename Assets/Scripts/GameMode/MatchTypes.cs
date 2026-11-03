@@ -19,9 +19,10 @@ public enum MatchPhase
 /// <summary>A player's team for the current round.</summary>
 public enum PlayerRole
 {
-    None   = 0,
-    Hider  = 1,
-    Hunter = 2,
+    None      = 0,
+    Hider     = 1,  // Tag: hides. Protect the President: a defender
+    Hunter    = 2,
+    President = 3,  // Protect the President: the only player who can be tagged
 }
 
 /// <summary>

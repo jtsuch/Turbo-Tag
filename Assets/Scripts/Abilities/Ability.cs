@@ -46,7 +46,18 @@ public abstract class Ability : MonoBehaviour
     public virtual float Readiness =>
         CooldownDuration <= 0f ? 1f : 1f - CooldownRemaining / CooldownDuration;
 
-    protected void StartCooldown() => lastUseTime = Time.time;
+    /// <summary>Starts the cooldown, and counts a use for the scoreboard (quick, throw and trap abilities).</summary>
+    protected void StartCooldown()
+    {
+        lastUseTime = Time.time;
+        CountUse();
+    }
+
+    /// <summary>Owner: one more use of an ability, for the scoreboard's "Abilities Used".</summary>
+    protected void CountUse()
+    {
+        if (IsLocal && Handler != null) Handler.CountUse();
+    }
 
     // ─── Input contract ───────────────────────────────────────────────────────
 

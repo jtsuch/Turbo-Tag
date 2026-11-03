@@ -34,6 +34,27 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
 
     public bool IsEquipped(Ability ability) => Array.IndexOf(equipped, ability) >= 0;
 
+    // ─── Scoreboard: abilities used ───────────────────────────────────────────
+    private int   usesThisMatch;
+    private bool  usesDirty;
+    private float nextUsesWrite;
+    private const float UsesWriteInterval = 0.5f;
+
+    /// <summary>Owner: an ability was used. The total goes to this player's stats a few times a second.</summary>
+    public void CountUse()
+    {
+        usesThisMatch++;
+        usesDirty = true;
+    }
+
+    private void Update()
+    {
+        if (!usesDirty || Time.time < nextUsesWrite || !photonView.IsMine) return;
+        usesDirty     = false;
+        nextUsesWrite = Time.time + UsesWriteInterval;
+        NetProps.SetLocal(PlayerKeys.StatAbilitiesUsed, (float)usesThisMatch);
+    }
+
     /// <summary>
     /// Every ability this player can use right now with its key: the starting abilities that have a key,
     /// then any extras bound in Cheats, in slot order. The HUD hotbar and timers show exactly this list.

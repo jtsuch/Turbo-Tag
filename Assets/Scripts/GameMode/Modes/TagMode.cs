@@ -11,14 +11,15 @@ using PhotonPlayer = Photon.Realtime.Player;
 ///   Countdown (everyone frozen) → Hiding (hiders move, hunters frozen) → Active (everyone)
 ///   → RoundEnd once every hider is caught or the seek limit expires → next round or MatchEnd.
 ///
-/// Scoring: hiders bank the time they survive during the Active phase. Every player takes a
-/// turn as starting hunter before anyone repeats. Highest total after the last round wins.
+/// Rounds: as many as it takes for everyone to start as hunter once. When too few players are left
+/// who haven't hunted to fill every hunter spot, random players hunt again. Then MatchEnd → Scoreboard.
+/// Scoring: hiders bank the time they survive during the Active phase; highest total wins. Stats for
+/// the scoreboard (tags, times tagged, longest hide, rounds survived) go through MatchStats.
 /// </summary>
 public class TagMode : GameMode
 {
-    private const float CountdownSeconds = 3f;
     private const float RoundEndSeconds  = 6f;
-    private const float MatchEndSeconds  = 10f;
+    private const float MatchEndSeconds  = 5f;
     private const float ContactRetrySeconds = 0.5f;
 
     // Master-only bookkeeping (rebuilt from props if the master changes mid-round)
@@ -62,12 +63,12 @@ public class TagMode : GameMode
 
             case MatchPhase.RoundEnd:
                 if (!Clock.IsExpired) break;
-                if (Manager.Round >= MatchRules.RoundCount) EndMatch();
-                else                                        StartRound(Manager.Round + 1);
+                if (EveryoneHasHunted()) EndMatch();
+                else                     StartRound(Manager.Round + 1);
                 break;
 
             case MatchPhase.MatchEnd:
-                if (Clock.IsExpired) Manager.ReturnToLobby();
+                if (Clock.IsExpired) Manager.GoToScoreboard();
                 break;
         }
     }
@@ -77,44 +78,49 @@ public class TagMode : GameMode
         caughtThisRound.Clear();
         becameHunterAt.Clear();
         AssignRoles();
-        Manager.SetPhase(MatchPhase.Countdown, CountdownSeconds, new Hashtable { [RoomKeys.Round] = round });
+        Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = round });
     }
 
-    /// <summary>Picks starting hunters, preferring players who have not been hunter yet.</summary>
+    /// <summary>
+    /// Picks starting hunters from players who haven't hunted yet. If there aren't enough of them left
+    /// (e.g. an odd player out), random players who already hunted fill the remaining spots.
+    /// </summary>
     private void AssignRoles()
     {
         PhotonPlayer[] players = PhotonNetwork.PlayerList;
 
-        // A solo player stays a hider so the mode is still playable for testing
-        int hunterCount = Mathf.Min(MatchRules.HunterCount, players.Length - 1);
+        // At least one hider and one hunter (the lobby caps the rule too, but players may have left).
+        // A solo player stays a hider so the mode is still playable for testing.
+        int hunterCount = Mathf.Clamp(MatchRules.HunterCount, 1, Mathf.Max(0, players.Length - 1));
 
-        var served   = new HashSet<int>(NetProps.Room(RoomKeys.ServedAsHunter, new int[0]));
-        var eligible = new List<PhotonPlayer>();
-        foreach (var p in players)
-            if (!served.Contains(p.ActorNumber)) eligible.Add(p);
+        var served = new HashSet<int>(NetProps.Room(RoomKeys.ServedAsHunter, new int[0]));
+        var fresh  = new List<PhotonPlayer>();
+        var repeat = new List<PhotonPlayer>();
+        foreach (var p in players) (served.Contains(p.ActorNumber) ? repeat : fresh).Add(p);
+        Shuffle(fresh);
+        Shuffle(repeat);
 
-        // Start a new rotation once everyone has had a turn
-        if (eligible.Count < hunterCount)
-        {
-            served.Clear();
-            eligible.Clear();
-            eligible.AddRange(players);
-        }
-
-        Shuffle(eligible);
         var hunters = new HashSet<int>();
-        for (int i = 0; i < hunterCount; i++)
-        {
-            hunters.Add(eligible[i].ActorNumber);
-            served.Add(eligible[i].ActorNumber);
-        }
+        foreach (var p in fresh)  { if (hunters.Count >= hunterCount) break; hunters.Add(p.ActorNumber); }
+        foreach (var p in repeat) { if (hunters.Count >= hunterCount) break; hunters.Add(p.ActorNumber); }
 
         foreach (var p in players)
             PlayerRoles.Set(p, hunters.Contains(p.ActorNumber) ? PlayerRole.Hunter : PlayerRole.Hider);
 
+        served.UnionWith(hunters);
         var servedArray = new int[served.Count];
         served.CopyTo(servedArray);
         NetProps.SetRoom(RoomKeys.ServedAsHunter, servedArray);
+    }
+
+    // Every player still here has started a round as hunter (a solo test match is one round)
+    private static bool EveryoneHasHunted()
+    {
+        if (PhotonNetwork.PlayerList.Length < 2) return true;
+        var served = new HashSet<int>(NetProps.Room(RoomKeys.ServedAsHunter, new int[0]));
+        foreach (var p in PhotonNetwork.PlayerList)
+            if (!served.Contains(p.ActorNumber)) return false;
+        return true;
     }
 
     private void EndRound()
@@ -132,10 +138,21 @@ public class TagMode : GameMode
             new Hashtable { [RoomKeys.Winner] = leader != null ? leader.ActorNumber : -1 });
     }
 
+    // Hiders still free at the end of a round: lock in their time and count the round as survived
     private void BankRemainingHiders()
     {
         foreach (var hider in RemainingHiders())
-            Scores.Bank(hider);
+        {
+            BankHider(hider);
+            MatchStats.Add(hider, PlayerKeys.StatRoundsSurvived);
+        }
+    }
+
+    // Locks in a hider's time, remembering their best single round
+    private void BankHider(PhotonPlayer hider)
+    {
+        MatchStats.Max(hider, PlayerKeys.StatLongestHide, Scores.GetLive(hider) - Scores.GetBanked(hider));
+        Scores.Bank(hider);
     }
 
     /// <summary>The round is over when no hiders remain (or no hunters are left to chase them).</summary>
@@ -168,7 +185,9 @@ public class TagMode : GameMode
             && PhotonNetwork.Time - since < MatchRules.TagCooldown)
             return;
 
-        Scores.Bank(target);
+        BankHider(target);
+        MatchStats.Add(tagger, PlayerKeys.StatTags);
+        MatchStats.Add(target, PlayerKeys.StatTimesTagged);
         if (!Mathf.Approximately(MatchRules.TagBonus, 0f))
             Scores.Add(tagger, MatchRules.TagBonus);
 
@@ -222,6 +241,13 @@ public class TagMode : GameMode
         _                    => true,
     };
 
+    // Rules can switch abilities off for one side
+    public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
+        CanMove(role, phase) && (role == PlayerRole.Hunter ? MatchRules.HunterAbilities : MatchRules.HiderAbilities);
+
+    public override float SpeedMultiplier(PlayerRole role) =>
+        role == PlayerRole.Hunter ? MatchRules.HunterSpeedMultiplier : 1f;
+
     public override float CooldownMultiplier(PlayerRole role) =>
         role == PlayerRole.Hunter ? 1f - MatchRules.HunterCooldownReduction : 1f;
 
@@ -245,6 +271,28 @@ public class TagMode : GameMode
         (PlayerRole.Hider,  MatchPhase.Active)    => "Don't get tagged!",
         _                                         => "",
     };
+
+    // ─── Scoreboard ───────────────────────────────────────────────────────────
+
+    public override IReadOnlyList<ScoreboardColumn> ScoreboardColumns => new[]
+    {
+        new ScoreboardColumn("Survival Time",   p => MatchStats.FormatTime(NetProps.Of(p, PlayerKeys.Score, 0f))),
+        new ScoreboardColumn("Tags",            p => MatchStats.Count(p, PlayerKeys.StatTags)),
+        new ScoreboardColumn("Times Tagged",    p => MatchStats.Count(p, PlayerKeys.StatTimesTagged)),
+        new ScoreboardColumn("Longest Hide",    p => MatchStats.FormatTime(MatchStats.Get(p, PlayerKeys.StatLongestHide))),
+        new ScoreboardColumn("Rounds Survived", p => MatchStats.Count(p, PlayerKeys.StatRoundsSurvived)),
+        new ScoreboardColumn("Abilities Used",  p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
+    };
+
+    // Most survival time first; ties go to more tags
+    public override int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b)
+    {
+        int byScore = NetProps.Of(b, PlayerKeys.Score, 0f).CompareTo(NetProps.Of(a, PlayerKeys.Score, 0f));
+        return byScore != 0 ? byScore : MatchStats.Get(b, PlayerKeys.StatTags).CompareTo(MatchStats.Get(a, PlayerKeys.StatTags));
+    }
+
+    public override string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) =>
+        ranked.Count > 0 ? $"{ranked[0].NickName} wins!" : "Match Over";
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 

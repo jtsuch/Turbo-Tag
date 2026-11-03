@@ -17,6 +17,7 @@ public static class GameModeRegistry
         ["Tag"]      = () => new TagMode(),
         ["Freeplay"] = () => new FreeplayMode(),
         ["Freeroam"] = () => new FreeplayMode(), // Legacy key
+        ["President"] = () => new PresidentMode(),
     };
 
     private static GameModeDefinition[] definitions;

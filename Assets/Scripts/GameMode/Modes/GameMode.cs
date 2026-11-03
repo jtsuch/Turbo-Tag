@@ -1,4 +1,19 @@
+using System;
+using System.Collections.Generic;
 using PhotonPlayer = Photon.Realtime.Player;
+
+/// <summary>One scoreboard column: a header and how to show a player's value.</summary>
+public readonly struct ScoreboardColumn
+{
+    public readonly string                     Header;
+    public readonly Func<PhotonPlayer, string> Value;
+
+    public ScoreboardColumn(string header, Func<PhotonPlayer, string> value)
+    {
+        Header = header;
+        Value  = value;
+    }
+}
 
 /// <summary>
 /// Rules and flow for one game mode. Plain C# (no MonoBehaviour): GameModeManager creates the
@@ -33,6 +48,12 @@ public abstract class GameMode
     /// <summary>True if the HUD should show the match clock.</summary>
     public virtual bool ShowsTimer => true;
 
+    /// <summary>
+    /// True if a tagged player comes back after the respawn delay (Tag: as a hunter). False keeps them caught,
+    /// watching their ragdoll from the caught camera, until the scene changes (the tag ended the match).
+    /// </summary>
+    public virtual bool RespawnsAfterTag => true;
+
     // ─── Master-client hooks ──────────────────────────────────────────────────
 
     /// <summary>Master: called once every player has spawned into the level.</summary>
@@ -60,6 +81,9 @@ public abstract class GameMode
 
     public virtual bool CanUseAbilities(PlayerRole role, MatchPhase phase) => CanMove(role, phase);
 
+    /// <summary>Mode-specific multiplier on movement speed for a role (1 = normal).</summary>
+    public virtual float SpeedMultiplier(PlayerRole role) => 1f;
+
     /// <summary>Mode-specific multiplier on ability cooldowns (0 = no cooldowns).</summary>
     public virtual float CooldownMultiplier(PlayerRole role) => 1f;
 
@@ -79,4 +103,48 @@ public abstract class GameMode
 
     /// <summary>Short instruction shown on the HUD for the local player.</summary>
     public virtual string GetObjective(PlayerRole role, MatchPhase phase) => "";
+
+    /// <summary>
+    /// True when a <paramref name="viewer"/> shouldn't be able to tell who <paramref name="target"/> is: the
+    /// target shows as a black silhouette with no name tag or accessories (e.g. hunters during setup).
+    /// </summary>
+    public virtual bool HidesIdentity(PlayerRole viewer, PlayerRole target, MatchPhase phase) => false;
+
+    /// <summary>
+    /// Whether a <paramref name="viewer"/> can read <paramref name="target"/>'s name tag. Default: teammates
+    /// always (hunters with hunters, everyone else together; modes without roles: everyone), plus the
+    /// non-hunter side can read hunters' names; hunters never see the other side's names.
+    /// </summary>
+    public virtual bool ShowsName(PlayerRole viewer, PlayerRole target)
+    {
+        bool viewerHunts = viewer == PlayerRole.Hunter;
+        bool targetHunts = target == PlayerRole.Hunter;
+        return viewerHunts == targetHunts || !viewerHunts;
+    }
+
+    /// <summary>True when a player in <paramref name="role"/> wears a crown (seen by anyone their identity isn't hidden from).</summary>
+    public virtual bool WearsCrown(PlayerRole role, MatchPhase phase) => false;
+
+    /// <summary>The role's name on the HUD (modes rename them, e.g. hiders are "defenders").</summary>
+    public virtual string RoleName(PlayerRole role) => role switch
+    {
+        PlayerRole.Hunter    => "HUNTER",
+        PlayerRole.Hider     => "HIDER",
+        PlayerRole.President => "PRESIDENT",
+        _                    => "",
+    };
+
+    // ─── Scoreboard (read in the Scoreboard scene: no Manager there, only synced properties) ───
+
+    /// <summary>Columns after the player's name.</summary>
+    public virtual IReadOnlyList<ScoreboardColumn> ScoreboardColumns => new[]
+    {
+        new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
+    };
+
+    /// <summary>Order of the rows (negative: <paramref name="a"/> first).</summary>
+    public virtual int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b) => 0;
+
+    /// <summary>The headline, given the rows in order.</summary>
+    public virtual string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) => "Match Over";
 }

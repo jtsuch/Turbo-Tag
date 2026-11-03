@@ -47,9 +47,6 @@ public class Player : MonoBehaviourPun, IPunObservable
     [Tooltip("Prone collider length as a fraction of standing height (the body lying down).")]
     [SerializeField] private float proneLength = 0.8f;
 
-    [Header("Caught")]
-    [SerializeField] private float respawnDelay = 3f;
-
     // ─── Components ───────────────────────────────────────────────────────────
     public PlayerMovement  Movement  { get; private set; }
     public InputHandler    Input     { get; private set; }
@@ -219,7 +216,8 @@ public class Player : MonoBehaviourPun, IPunObservable
                 MovementState.Hang    => stats.shimmySpeed,
                 _                     => Input != null && Input.SprintHeld ? stats.sprintSpeed : stats.walkSpeed,
             };
-            return baseSpeed * Modifiers.Get(Stat.Speed);
+            float modeSpeed = GameModeManager.Instance != null ? GameModeManager.Instance.SpeedMultiplier(this) : 1f;
+            return baseSpeed * Modifiers.Get(Stat.Speed) * modeSpeed;
         }
     }
 
@@ -327,7 +325,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>
     /// Scales the visible mesh and collider for the current stance and size. Prone keeps the model's
     /// shape (the prone animation lays it down) and turns the collider into a capsule lying along the
-    /// body; crouch still squashes the model, as there is no crouch animation.
+    /// body; crouch squashes the model and collider vertically (to CrouchScale), as there is no crouch animation.
     /// </summary>
     private void ApplyBodyScale()
     {
@@ -335,14 +333,20 @@ public class Player : MonoBehaviourPun, IPunObservable
         bool  prone  = State == MovementState.Prone;
         float squash = prone ? 1f : StanceScale;
 
-        var scale = new Vector3(size, size * squash, size);
         // Position scales too: the model sits at an offset from the root, and scaling only the model
         // moved its feet off the collider's bottom (into the ground when grown)
         for (int i = 0; i < visualRoots.Length; i++)
         {
-            if (visualRoots[i] == null) continue;
-            visualRoots[i].localScale    = Vector3.Scale(baseVisualScales[i], scale);
-            visualRoots[i].localPosition = Vector3.Scale(baseVisualPositions[i], scale);
+            var root = visualRoots[i];
+            if (root == null) continue;
+
+            // Squash the root's own axis that points up. Models from Blender are imported turned 270° on X,
+            // so their Y points forward: squashing Y made a crouching penguin thinner, not shorter.
+            Vector3 localScale = baseVisualScales[i] * size;
+            int up = UpAxis(root.localRotation);
+            localScale[up] *= squash;
+            root.localScale    = localScale;
+            root.localPosition = Vector3.Scale(baseVisualPositions[i], new Vector3(size, size * squash, size));
         }
 
         if (col == null) return;
@@ -363,6 +367,17 @@ public class Player : MonoBehaviourPun, IPunObservable
             col.center    = new Vector3(baseColCenter.x * size, baseColCenter.y * size * StanceScale, baseColCenter.z * size);
         }
     }
+
+    // Which local axis (0 x, 1 y, 2 z) of a child with this rotation points (most nearly) up
+    private static int UpAxis(Quaternion localRotation)
+    {
+        Vector3 up = Quaternion.Inverse(localRotation) * Vector3.up;
+        Vector3 a  = new(Mathf.Abs(up.x), Mathf.Abs(up.y), Mathf.Abs(up.z));
+        return a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
+    }
+
+    /// <summary>World height of the top of the body (the collider's top: stance and size included).</summary>
+    public float TopY => col != null && col.enabled ? col.bounds.max.y : transform.position.y + Height;
 
     private void OnModifierChanged(Stat stat)
     {
@@ -398,12 +413,25 @@ public class Player : MonoBehaviourPun, IPunObservable
         Body.AddForce(Vector3.up * 3f + UnityEngine.Random.insideUnitSphere * 2f, ForceMode.Impulse);
 
         Caught?.Invoke();
-        StartCoroutine(RespawnAfterDelay());
+        if (TagRespawns) StartCoroutine(RespawnAfterDelay()); // Otherwise caught (caught camera) until the scene changes
     }
+
+    // Whether the current mode brings tagged players back (Protect the President doesn't: the tag ended the match)
+    private static bool TagRespawns
+    {
+        get
+        {
+            var manager = GameModeManager.Instance;
+            return manager == null || manager.Mode == null || manager.Mode.RespawnsAfterTag;
+        }
+    }
+
+    /// <summary>True while this player's body is hidden after a tag (the ragdoll stands in for it).</summary>
+    public bool IsDownAfterTag { get; private set; }
 
     private IEnumerator RespawnAfterDelay()
     {
-        yield return new WaitForSeconds(respawnDelay);
+        yield return new WaitForSeconds(MatchRules.RespawnDelay);
         if (Spawner.Instance != null) Spawner.Instance.RespawnLocalPlayer();
         IsCaught = false;
         Respawned?.Invoke();
@@ -432,12 +460,17 @@ public class Player : MonoBehaviourPun, IPunObservable
             hidden.Add(r);
         }
         if (col != null) col.enabled = false;
+        IsDownAfterTag = true;
+
+        // No respawn coming (the tag ended the match): stay hidden until the scene changes
+        if (!TagRespawns) yield break;
 
         // A little longer than the respawn, so the body reappears at the spawn point, not where it fell
-        yield return new WaitForSeconds(respawnDelay + 0.3f);
+        yield return new WaitForSeconds(MatchRules.RespawnDelay + 0.3f);
 
         foreach (var r in hidden) if (r != null) r.enabled = true;
         if (col != null) col.enabled = true;
+        IsDownAfterTag = false;
     }
 
     /// <summary>Moves the player instantly, clearing momentum and stance.</summary>

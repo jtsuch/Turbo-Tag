@@ -9,9 +9,9 @@ using Hashtable    = ExitGames.Client.Photon.Hashtable;
 using PhotonPlayer = Photon.Realtime.Player;
 
 /// <summary>
-/// Lobby screen. The host picks the map, game mode and core rules (written straight to room
-/// properties, so everyone sees the same settings) and starts the game; other players see the
-/// choices read-only. Selecting a mode applies that mode's rule defaults.
+/// Lobby screen. The host picks the map and starts the game; the game mode and its rules are edited
+/// in the game-settings window by <see cref="GameModeRulesPanel"/> (rows built from the mode's data).
+/// Everything is written to room properties, so everyone sees the same settings read-only.
 /// Starting closes the room and moves everyone to Pregame via AutomaticallySyncScene.
 /// Attach to: the LobbyManager GameObject in the Lobby scene (buttons call the public methods).
 /// </summary>
@@ -34,16 +34,6 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     [Header("Map Selection")]
     [SerializeField] private Toggle defaultMapToggle;
 
-    [Header("Game Settings")]
-    [SerializeField] private TMP_Dropdown   gameModeDropdown;
-    [SerializeField] private Toggle         allowCheats;
-    [Tooltip("Hide time, entered as m:ss or seconds.")]
-    [SerializeField] private TMP_InputField hidingDuration;
-    [Tooltip("Seek time limit, entered as m:ss or seconds. 0 = unlimited.")]
-    [SerializeField] private TMP_InputField seekingDuration;
-    [SerializeField] private Slider         hunterCount;
-
-    private readonly List<GameModeDefinition> modes = new();
     private MapToggle[] mapToggles;
     private bool        starting;
 
@@ -53,13 +43,6 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     {
         settingsWindow.SetActive(false);
         BuildMapToggles();
-        PopulateModeDropdown();
-
-        gameModeDropdown.onValueChanged.AddListener(OnModeSelected);
-        allowCheats.onValueChanged.AddListener(on => SetRule(RuleKeys.CheatsEnabled, on));
-        hidingDuration.onEndEdit.AddListener(OnHideTimeEdited);
-        seekingDuration.onEndEdit.AddListener(OnSeekTimeEdited);
-        hunterCount.onValueChanged.AddListener(v => SetRule(RuleKeys.HunterCount, Mathf.Round(v)));
 
         if (PhotonNetwork.IsMasterClient) EnsureRoomDefaults();
 
@@ -86,14 +69,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     {
         if (!PhotonNetwork.IsMasterClient || starting) return;
         starting = true;
-
-        PhotonNetwork.CurrentRoom.IsOpen    = false;
-        PhotonNetwork.CurrentRoom.IsVisible = false;
-
-        // Modes like Freeplay go straight to the map with everyone's last loadout
-        var mode = GameModeRegistry.Find(MatchRules.GameModeKey);
-        bool skipPregame = mode != null && mode.skipAbilitySelection && CanLoad(MatchRules.Map);
-        PhotonNetwork.LoadLevel(skipPregame ? MatchRules.Map : SceneNames.Pregame);
+        MatchLauncher.StartMatch();
     }
 
     public void OnExitPressed() => PhotonNetwork.LeaveRoom();
@@ -130,29 +106,6 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         MatchRules.ApplyGameMode(GameModeRegistry.Find(MatchRules.GameModeKey) ?? FirstMode(), overwrite: false);
     }
 
-    private void OnModeSelected(int index)
-    {
-        if (!PhotonNetwork.IsMasterClient || index < 0 || index >= modes.Count) return;
-        MatchRules.ApplyGameMode(modes[index], overwrite: true);
-    }
-
-    private void OnHideTimeEdited(string text)
-    {
-        if (TryParseTime(text, out float seconds)) SetRule(RuleKeys.HideTime, Mathf.Max(0f, seconds));
-        else Refresh();
-    }
-
-    private void OnSeekTimeEdited(string text)
-    {
-        if (!TryParseTime(text, out float seconds)) { Refresh(); return; }
-
-        NetProps.SetRoom(new Hashtable
-        {
-            [RuleKeys.SeekTimeEnabled] = seconds > 0f,
-            [RuleKeys.SeekTime]        = Mathf.Max(0f, seconds),
-        });
-    }
-
     private static void SetRule(string key, object value)
     {
         if (PhotonNetwork.IsMasterClient) NetProps.SetRoom(key, value);
@@ -172,14 +125,6 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         mapText.text      = "Map: " + MatchRules.Map;
         gameModeText.text = "Mode: " + GameModeRegistry.DisplayName(modeKey);
 
-        int modeIndex = modes.FindIndex(m => m.gameModeKey == modeKey);
-        if (modeIndex >= 0) gameModeDropdown.SetValueWithoutNotify(modeIndex);
-
-        allowCheats.SetIsOnWithoutNotify(MatchRules.CheatsEnabled);
-        hidingDuration.SetTextWithoutNotify(FormatTime(MatchRules.HideTime));
-        seekingDuration.SetTextWithoutNotify(FormatTime(MatchRules.SeekTimeLimit));
-        hunterCount.SetValueWithoutNotify(MatchRules.HunterCount);
-
         foreach (var toggle in mapToggles)
         {
             var t = toggle.GetComponent<Toggle>();
@@ -187,28 +132,12 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         }
 
         // Only the host can change anything
-        playButton.interactable       = isHost && !starting;
-        gameModeDropdown.interactable = isHost;
-        allowCheats.interactable      = isHost;
-        hidingDuration.interactable   = isHost;
-        seekingDuration.interactable  = isHost;
-        hunterCount.interactable      = isHost;
+        playButton.interactable = isHost && !starting;
         foreach (var toggle in mapToggles)
         {
             var t = toggle.GetComponent<Toggle>();
             if (t != null) t.interactable = isHost && CanLoad(toggle.mapName);
         }
-    }
-
-    private void PopulateModeDropdown()
-    {
-        modes.Clear();
-        modes.AddRange(GameModeRegistry.Definitions);
-
-        var options = new List<string>();
-        foreach (var mode in modes) options.Add(mode.gameModeName);
-        gameModeDropdown.ClearOptions();
-        gameModeDropdown.AddOptions(options);
     }
 
     /// <summary>
@@ -278,32 +207,13 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         return SceneNames.DefaultMap;
     }
 
-    private GameModeDefinition FirstMode() => modes.Count > 0 ? modes[0] : null;
+    private static GameModeDefinition FirstMode()
+    {
+        foreach (var mode in GameModeRegistry.Definitions) return mode;
+        return null;
+    }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private static bool CanLoad(string sceneName) =>
-        !string.IsNullOrEmpty(sceneName) && Application.CanStreamedLevelBeLoaded(sceneName);
-
-    private static string FormatTime(float seconds)
-    {
-        int total = Mathf.Max(0, Mathf.RoundToInt(seconds));
-        return $"{total / 60}:{total % 60:D2}";
-    }
-
-    /// <summary>Accepts "m:ss" or plain seconds.</summary>
-    private static bool TryParseTime(string text, out float seconds)
-    {
-        seconds = 0f;
-        if (string.IsNullOrWhiteSpace(text)) return false;
-
-        string[] parts = text.Trim().Split(':');
-        if (parts.Length == 1) return float.TryParse(parts[0], out seconds);
-        if (parts.Length == 2 && int.TryParse(parts[0], out int m) && int.TryParse(parts[1], out int s))
-        {
-            seconds = m * 60 + Mathf.Clamp(s, 0, 59);
-            return true;
-        }
-        return false;
-    }
+    private static bool CanLoad(string sceneName) => MatchLauncher.CanLoad(sceneName);
 }

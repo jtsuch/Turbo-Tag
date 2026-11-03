@@ -48,6 +48,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     [SerializeField] private float maxWaitForPlayers = 6f;
 
     private MatchPhase? pendingPhase;
+    private bool        leavingLevel; // A scene change was started: never start another (each call restarted it)
     private float       pendingSince;
     private MatchPhase  lastAnnouncedPhase;
     private float       sceneStartTime;
@@ -133,10 +134,21 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     public bool CanUseAbilities(Player player) => Mode == null || Mode.CanUseAbilities(player.Role, Phase);
 
     /// <summary>Combined mode and rule multiplier applied to the player's ability cooldowns.</summary>
+    public float SpeedMultiplier(Player player) => Mode != null ? Mode.SpeedMultiplier(player.Role) : 1f;
+
     public float CooldownMultiplier(Player player) =>
         (Mode != null ? Mode.CooldownMultiplier(player.Role) : 1f) * MatchRules.GlobalCooldownMultiplier;
 
     public string PhaseLabel => Mode != null ? Mode.GetPhaseLabel(Phase) : "";
+
+    /// <summary>True when the local player shouldn't be able to tell who <paramref name="target"/> is (silhouette, no name).</summary>
+    public bool HidesIdentityFromLocal(Player target) =>
+        Mode != null && Player.Local != null && target != Player.Local
+        && Mode.HidesIdentity(Player.Local.Role, target.Role, Phase);
+
+    /// <summary>True when <paramref name="target"/> should show a crown on this screen.</summary>
+    public bool ShowsCrown(Player target) =>
+        Mode != null && Mode.WearsCrown(target.Role, Phase) && !HidesIdentityFromLocal(target);
 
     // ─── Master-client API ────────────────────────────────────────────────────
 
@@ -165,29 +177,43 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.Phase]          = (int)MatchPhase.Waiting,
             [RoomKeys.Round]          = 0,
             [RoomKeys.Winner]         = -1,
+            [RoomKeys.WinningTeam]    = "",
             [RoomKeys.ServedAsHunter] = new int[0],
             [RoomKeys.PausedAt]       = -1d,
         });
 
         foreach (var player in PhotonNetwork.PlayerList)
         {
-            player.SetCustomProperties(new Hashtable
+            var props = new Hashtable
             {
                 [PlayerKeys.Role]  = (int)PlayerRole.None,
                 [PlayerKeys.Score] = 0f,
-            });
+            };
+            foreach (string stat in MatchStats.All) props[stat] = 0f;
+            player.SetCustomProperties(props);
         }
+    }
+
+    /// <summary>
+    /// Master: the match is over; everyone moves to the Scoreboard scene (stats stay in player properties).
+    /// Modes call this every frame once their end timer runs out, so only the first call loads: calling
+    /// LoadLevel again each frame kept restarting the host's own load (everyone else arrived, the host didn't).
+    /// </summary>
+    public void GoToScoreboard()
+    {
+        if (!PhotonNetwork.IsMasterClient || leavingLevel) return;
+        leavingLevel = true;
+        PhotonNetwork.LoadLevel(SceneNames.Scoreboard);
     }
 
     /// <summary>Master: reopens the room and takes everyone back to the lobby.</summary>
     public void ReturnToLobby()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
+        if (!PhotonNetwork.IsMasterClient || leavingLevel) return;
+        leavingLevel = true;
 
         ResetMatchState();
-        PhotonNetwork.CurrentRoom.IsOpen    = true;
-        PhotonNetwork.CurrentRoom.IsVisible = true;
-        PhotonNetwork.LoadLevel(SceneNames.Lobby);
+        MatchLauncher.ReturnToLobby();
     }
 
     /// <summary>Master: tells every client that a tag happened (feedback + caught state).</summary>
