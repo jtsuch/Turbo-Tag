@@ -34,6 +34,7 @@ public static class EditorJobQueue
         ["AssignSceneViewIds"] = LevelTools.AssignSceneViewIds,
         ["RemoveStraySpawners"] = LevelTools.RemoveStraySpawners,
         ["ProcessMeshes"] = MeshPrefabBuilder.ProcessMeshes,
+        ["BuildImprovementExpansion"] = ImprovementExpansion.Build,
     };
 
     private static double nextPoll;

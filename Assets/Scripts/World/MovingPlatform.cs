@@ -56,7 +56,9 @@ public class MovingPlatform : MonoBehaviour
         var player = collision.collider.GetComponentInParent<Player>();
         if (player == null || !player.IsLocal) return;
 
-        var follower = player.GetComponent<PlatformFollower>() ?? player.gameObject.AddComponent<PlatformFollower>();
+        // TryGetComponent, not GetComponent ?? Add: in the editor a missing component is a "fake null" object
+        // that ?? doesn't catch, so the follower was never added and riders slid off
+        if (!player.TryGetComponent(out PlatformFollower follower)) follower = player.gameObject.AddComponent<PlatformFollower>();
         follower.Attach(transform);
     }
 
