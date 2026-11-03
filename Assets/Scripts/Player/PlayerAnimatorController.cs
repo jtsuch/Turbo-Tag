@@ -249,20 +249,24 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 
     // ─── Gun ──────────────────────────────────────────────────────────────────
 
-    // Only an equipped (enabled) ability that uses the grapple gun brings it out; Flappy and others never do
-    private bool IsGrappling()
-    {
-        foreach (var ability in abilities)
-            if (ability != null && ability.enabled && ability.ShowsGrappleGun) return true;
-        return false;
-    }
+    private bool gunWasOut;
 
-    // The arm raises as the gun comes out and lowers before it is put away
+    // Only an equipped (enabled) ability brings the gun out or raises the arm; Flappy and others never do.
+    // The arm can rise without the gun (the leaf blower carries its own model).
     private void UpdateGun()
     {
-        bool grappling = IsGrappling();
-        gunWeight = Mathf.MoveTowards(gunWeight, grappling ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
-        ShowGun(grappling || gunWeight > 0.4f);
+        bool armUp = false, gunOut = false;
+        foreach (var ability in abilities)
+        {
+            if (ability == null || !ability.enabled) continue;
+            armUp  |= ability.RaisesArm;
+            gunOut |= ability.ShowsGrappleGun;
+        }
+
+        // The arm raises as the gun comes out and lowers before it is put away
+        gunWeight = Mathf.MoveTowards(gunWeight, armUp ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
+        gunWasOut = gunOut || (gunWasOut && gunWeight > 0.4f);
+        ShowGun(gunWasOut);
     }
 
     private void ShowGun(bool show)

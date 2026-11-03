@@ -27,6 +27,9 @@ public abstract class NetworkedProjectile : MonoBehaviourPun, IPunInstantiateMag
     protected virtual void Awake()
     {
         Body = GetComponent<Rigidbody>();
+        // Fast throws could step straight through a player between physics steps. Speculative detection
+        // also catches kinematic bodies (other players' copies are kinematic).
+        Body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         ObjectTunables.Apply(photonView); // Cheat values from the thrower, before anything reads them
     }
 

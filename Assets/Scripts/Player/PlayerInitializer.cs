@@ -30,6 +30,9 @@ public class PlayerInitializer : MonoBehaviour
         else                                   SetupRemote();
     }
 
+    // The owner's own body renderers (hidden from them; shown while watching from somewhere else)
+    private readonly System.Collections.Generic.List<Renderer> ownBody = new();
+
     private void SetupFirstPerson()
     {
         if (armature != null) armature.SetActive(false);
@@ -40,9 +43,31 @@ public class PlayerInitializer : MonoBehaviour
             if (renderer is LineRenderer) continue; // Rope and trajectory stay visible
 
             bool viewModel = firstPersonCamera != null && renderer.transform.IsChildOf(firstPersonCamera.transform);
-            if (viewModel) renderer.shadowCastingMode = ShadowCastingMode.Off;
-            else           renderer.enabled = false;
+            if (viewModel) { renderer.shadowCastingMode = ShadowCastingMode.Off; continue; }
+
+            renderer.enabled = false;
+            bool onRig = armature != null && renderer.transform.IsChildOf(armature.transform); // Third-person gun etc.
+            if (!onRig) ownBody.Add(renderer);
         }
+    }
+
+    /// <summary>
+    /// Owner: shows or hides their own body (normally hidden from them). Used while viewing from a placed
+    /// Camera, so the player can see themself.
+    /// </summary>
+    public void SetOwnBodyVisible(bool visible)
+    {
+        if (!GetComponent<PhotonView>().IsMine) return;
+
+        if (armature != null && armature.activeSelf != visible)
+        {
+            armature.SetActive(visible);
+            // The rig was off when the Animator started: rebind so the body poses instead of T-posing
+            var animator = GetComponentInChildren<Animator>(true);
+            if (visible && animator != null) animator.Rebind();
+        }
+        foreach (var renderer in ownBody)
+            if (renderer != null) renderer.enabled = visible;
     }
 
     private void SetupRemote()

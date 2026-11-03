@@ -7,6 +7,8 @@ using UnityEngine.Serialization;
 /// (blue = valid, red = blocked), Action places the real networked object, and the ability key
 /// again cancels. Cooldown starts only after a successful placement.
 /// The object spawned is Resources/Object/{Id}; most traps need only an empty subclass.
+/// Hooks for special traps: <see cref="IsValidSurface"/> (e.g. walls only), <see cref="PlacementRotation"/>
+/// and <see cref="OnPlaced"/> (keep a reference to what was placed).
 /// </summary>
 [RequireComponent(typeof(PhotonView))]
 public abstract class TrapAbility : Ability
@@ -30,7 +32,7 @@ public abstract class TrapAbility : Ability
     [SerializeField] private GameObject cameraHolder;
 
     private GameObject  hologram;
-    private Renderer    hologramRenderer;
+    private Renderer[]  hologramRenderers;
     private BoxCollider hologramBox;
     private bool        placing;
     private bool        canPlace;
@@ -80,7 +82,7 @@ public abstract class TrapAbility : Ability
 
         hologram = VisualProxy.Create(prefab, null, keepDisabledColliders: true);
         VisualProxy.ApplyMaterial(hologram, hologramMaterial);
-        hologramRenderer = hologram.GetComponentInChildren<Renderer>();
+        hologramRenderers = hologram.GetComponentsInChildren<Renderer>();
         hologramBox      = hologram.GetComponentInChildren<BoxCollider>(true);
         shownValid       = null;
         placing          = true;
@@ -105,27 +107,39 @@ public abstract class TrapAbility : Ability
             return;
         }
 
-        // Face away from the surface, rotated to match where the player is looking
-        targetRotation = Quaternion.FromToRotation(Vector3.forward, hit.normal)
-                       * Quaternion.Euler(0f, 0f, view.eulerAngles.y - 90f);
+        targetRotation = PlacementRotation(hit, view);
         targetPosition = hit.point;
 
-        if (hologramRenderer != null)
+        if (hologramRenderers.Length > 0)
         {
-            // Measure at the hit point, then push out along the normal so it sits on the surface
+            // Measure every part at the hit point, then push out along the normal so it sits on the surface
             hologram.transform.SetPositionAndRotation(hit.point, targetRotation);
-            Bounds bounds = hologramRenderer.bounds;
+            Bounds bounds = hologramRenderers[0].bounds;
+            foreach (var r in hologramRenderers) bounds.Encapsulate(r.bounds);
             Vector3 pivotOffset = hit.point - bounds.center;
             float   offset = Mathf.Abs(bounds.size.x * hit.normal.x) / 2f
                            + Mathf.Abs(bounds.size.y * hit.normal.y) / 2f
-                           + Mathf.Abs(bounds.size.z * hit.normal.z) / 2f + 0.2f;
+                           + Mathf.Abs(bounds.size.z * hit.normal.z) / 2f + SurfaceGap;
             targetPosition = hit.point + hit.normal * offset + pivotOffset;
         }
 
         hologram.transform.SetPositionAndRotation(targetPosition, targetRotation);
-        canPlace = IsSpaceFree();
+        canPlace = IsValidSurface(hit.normal) && IsSpaceFree();
         ShowValidity(canPlace);
     }
+
+    // A hair off the surface, so the free-space check never counts the surface itself
+    private const float SurfaceGap = 0.02f;
+
+    /// <summary>Whether the trap may go on a surface facing <paramref name="normal"/> (all surfaces by default).</summary>
+    protected virtual bool IsValidSurface(Vector3 normal) => true;
+
+    /// <summary>Default: faces away from the surface (+Z along the normal), turned to match where the player looks.</summary>
+    protected virtual Quaternion PlacementRotation(RaycastHit hit, Transform view) =>
+        Quaternion.FromToRotation(Vector3.forward, hit.normal) * Quaternion.Euler(0f, 0f, view.eulerAngles.y - 90f);
+
+    /// <summary>Owner, right after placing: the networked object that was spawned.</summary>
+    protected virtual void OnPlaced(GameObject placed) { }
 
     private void ShowValidity(bool valid)
     {
@@ -150,10 +164,11 @@ public abstract class TrapAbility : Ability
     {
         if (!canPlace) return;
 
-        PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
+        var placed = PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
             SpawnData.Create(Vector3.zero, power * PowerMultiplier, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
         Cancel();
         StartCooldown();
+        OnPlaced(placed);
     }
 }

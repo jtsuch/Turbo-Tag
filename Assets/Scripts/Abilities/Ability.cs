@@ -71,6 +71,9 @@ public abstract class Ability : MonoBehaviour
     /// </summary>
     public virtual bool ShowsGrappleGun => false;
 
+    /// <summary>True while the right arm should be raised and aimed forward (the gun, or a held tool like the leaf blower).</summary>
+    public virtual bool RaisesArm => ShowsGrappleGun;
+
     /// <summary>Immediately ends any in-progress use (pause, caught, conflicting ability).</summary>
     public virtual void Cancel() { }
 

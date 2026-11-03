@@ -136,6 +136,18 @@ public class PlayerCam : MonoBehaviour
             return;
         }
 
+        // Looking through something else (a placed Camera): the mouse turns that, and the view sits on it
+        if (viewOverride != null)
+        {
+            if (!paused)
+            {
+                float scale = sensitivity / 100f;
+                overrideLook?.Invoke(Input.GetAxisRaw("Mouse X") * scale, Input.GetAxisRaw("Mouse Y") * scale);
+            }
+            if (cam != null) cam.transform.SetPositionAndRotation(viewOverride.position, viewOverride.rotation);
+            return;
+        }
+
         if (!paused) ReadMouse();
 
         float size = player.Size;
@@ -176,6 +188,26 @@ public class PlayerCam : MonoBehaviour
             playerTransform.rotation = upright;
         }
     }
+
+    // ─── View override ────────────────────────────────────────────────────────
+
+    private Transform                 viewOverride;
+    private System.Action<float, float> overrideLook;
+
+    /// <summary>
+    /// Shows the view from <paramref name="viewPoint"/> instead of the player's head; mouse deltas (degrees,
+    /// after sensitivity) go to <paramref name="look"/>. Null puts the camera back on the player.
+    /// </summary>
+    public void SetViewOverride(Transform viewPoint, System.Action<float, float> look = null)
+    {
+        viewOverride = viewPoint;
+        overrideLook = viewPoint != null ? look : null;
+        if (viewPoint == null && cam != null)
+            cam.transform.SetLocalPositionAndRotation(bobOffset, Quaternion.identity);
+    }
+
+    /// <summary>True while the view comes from somewhere other than the player's head.</summary>
+    public bool HasViewOverride => viewOverride != null;
 
     // ─── Free Spin ────────────────────────────────────────────────────────────
 

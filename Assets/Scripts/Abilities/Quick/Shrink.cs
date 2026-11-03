@@ -4,9 +4,10 @@ using UnityEngine;
 /// <summary>
 /// Shrinks the player for a while (smaller collider, body and camera height), optionally
 /// changing speed. Implemented as stat modifiers, so it stacks cleanly with cheats and effects
-/// and the size change is synced to other players by Player.
+/// and the size change is synced to other players by Player. Pressing the key again while small grows
+/// back early (the cooldown still runs from when it was used).
 /// </summary>
-[AbilityInfo("Shrink down for 10 seconds. Smaller, harder to spot, and a little faster.")]
+[AbilityInfo("Shrink down for 10 seconds. Smaller, harder to spot, and a little faster. Press again to grow back early.")]
 public class Shrink : QuickAbility
 {
     [Header("Shrink")]
@@ -19,6 +20,20 @@ public class Shrink : QuickAbility
     [SerializeField] private float speedMultiplier = 1.25f;
 
     private Coroutine shrinkRoutine;
+
+    private bool IsShrunk => shrinkRoutine != null;
+
+    // Pressing again while shrunk grows back early. The cooldown (started when shrinking) still applies
+    public override void HandleInput(AbilityInputEvent inputEvent)
+    {
+        if (inputEvent == AbilityInputEvent.Down && IsShrunk)
+        {
+            StopCoroutine(shrinkRoutine);
+            Revert();
+            return;
+        }
+        base.HandleInput(inputEvent);
+    }
 
     protected override void Activate()
     {

@@ -3,9 +3,11 @@ using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
-/// Semtex: sticks to the first surface it hits, waits, beeps (with a glow pulse) a few times,
-/// then explodes.
-///   owner hit → RPC_Stick (all) → owner fuse → RPC_Beep × N (all) → RPC_Explode (all) → destroy
+/// Semtex: sticks to the first thing it hits (players, boxes and moving platforms included: it rides
+/// along with them), waits, beeps (with a glow pulse) a few times, then explodes.
+///   owner hit → RPC_Stick (all: same anchor + offset everywhere) → owner fuse → RPC_Beep × N → RPC_Explode → destroy
+/// The anchor is found the same way on every client: by PhotonView id for networked objects (players,
+/// boxes), otherwise by its scene path. While stuck it follows the anchor each frame, colliders off.
 /// Attach to: Resources/Object/Semtex (with Rigidbody, Collider, PhotonView). Assign
 /// glowRenderer to a mesh whose material supports _EmissionColor.
 /// </summary>
@@ -42,6 +44,9 @@ public class SemtexObject : NetworkedProjectile
 
     private bool        stuck;
     private bool        exploded;
+    private Transform   anchor;          // What it's stuck to (null = fixed in place)
+    private Vector3     anchorPosition;  // Pose in the anchor's space
+    private Quaternion  anchorRotation;
     private Material    glowMaterial;
     private Coroutine   glowRoutine;
     private AudioSource beepSource;
@@ -66,24 +71,51 @@ public class SemtexObject : NetworkedProjectile
         if (glowMaterial != null) Destroy(glowMaterial);
     }
 
-    private void OnCollisionEnter(Collision _)
+    private void OnCollisionEnter(Collision collision)
     {
         if (!IsAuthority || stuck) return;
         stuck = true;
-        photonView.RPC(nameof(RPC_Stick), RpcTarget.All, transform.position, transform.rotation);
+
+        // Networked things (players, boxes) by view id; everything else by scene path
+        Transform hit  = collision.rigidbody != null ? collision.rigidbody.transform : collision.collider.transform;
+        var       view = hit.GetComponentInParent<PhotonView>();
+        int       viewId = view != null ? view.ViewID : 0;
+        Transform target = view != null ? view.transform : hit;
+        string    path   = view != null ? "" : PathOf(target);
+
+        Vector3    localPos = target.InverseTransformPoint(transform.position);
+        Quaternion localRot = Quaternion.Inverse(target.rotation) * transform.rotation;
+        photonView.RPC(nameof(RPC_Stick), RpcTarget.All, viewId, path, localPos, localRot, transform.position, transform.rotation);
     }
 
     [PunRPC]
-    private void RPC_Stick(Vector3 position, Quaternion rotation)
+    private void RPC_Stick(int viewId, string path, Vector3 localPos, Quaternion localRot, Vector3 position, Quaternion rotation)
     {
         stuck = true;
-        transform.SetPositionAndRotation(position, rotation);
         Body.linearVelocity  = Vector3.zero;
         Body.angularVelocity = Vector3.zero;
         Body.isKinematic     = true;
+        foreach (var col in GetComponentsInChildren<Collider>()) col.enabled = false; // Never shoves what it's on
+
+        var view = viewId != 0 ? PhotonView.Find(viewId) : null;
+        anchor = view != null ? view.transform : !string.IsNullOrEmpty(path) ? GameObject.Find(path)?.transform : null;
+        anchorPosition = localPos;
+        anchorRotation = localRot;
+        if (anchor == null) transform.SetPositionAndRotation(position, rotation);
+        else                FollowAnchor();
 
         if (IsAuthority) StartCoroutine(Fuse());
     }
+
+    private void LateUpdate()
+    {
+        if (stuck && anchor != null) FollowAnchor();
+    }
+
+    private void FollowAnchor() =>
+        transform.SetPositionAndRotation(anchor.TransformPoint(anchorPosition), anchor.rotation * anchorRotation);
+
+    private static string PathOf(Transform t) => t.parent == null ? "/" + t.name : PathOf(t.parent) + "/" + t.name;
 
     private IEnumerator Fuse()
     {

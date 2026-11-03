@@ -128,8 +128,11 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Called by anything applying an outside force (see <see cref="WorldFx.Push"/>).</summary>
     public void NotePushed() => lastPushTime = Time.time;
 
+    /// <summary>Movement off while abilities still work (looking through a placed Camera).</summary>
+    public bool MovementLocked { get; set; }
+
     public bool CanMove =>
-        !IsCaught && !IsHeld && (GameModeManager.Instance == null || GameModeManager.Instance.CanMove(this));
+        !IsCaught && !IsHeld && !MovementLocked && (GameModeManager.Instance == null || GameModeManager.Instance.CanMove(this));
 
     public bool CanUseAbilities =>
         !IsCaught && !IsHeld && (GameModeManager.Instance == null || GameModeManager.Instance.CanUseAbilities(this));
