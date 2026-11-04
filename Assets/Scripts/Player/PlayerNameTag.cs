@@ -92,7 +92,7 @@ public class PlayerNameTag : MonoBehaviour
         Vector3 dir = tagRoot.position - cam.transform.position;
         if (dir != Vector3.zero) tagRoot.rotation = Quaternion.LookRotation(dir);
 
-        label.enabled = dir.magnitude <= readRange && Readable();
+        label.enabled = dir.magnitude <= readRange && Readable() && !Killcam.IsPlaying;
     }
 
     private bool Readable()

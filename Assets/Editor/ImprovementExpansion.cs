@@ -70,6 +70,7 @@ public static class ImprovementExpansion
             BuildRimEast(rimE);
             BuildOuterNorth(rimN, tail, strip);
             BuildOuterEast(rimE, ring);
+            BuildSpawnPoints(rimE);
 
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
                 if (t.gameObject.layer == 0 && t.GetComponent<Light>() == null) t.gameObject.layer = Structure;
@@ -327,6 +328,47 @@ public static class ImprovementExpansion
         Block(outer, "Pit 5",    new Vector3(60f, y, -19f),       new Vector3(3f, 1f, 3f), wallOff, wallLight);
         Block(outer, "Pit 6",    new Vector3(57f, y, -26f),       new Vector3(3f, 1f, 3f), wallOff, wallLight);
         Lamp(outer, new Vector3(59f, ring + 3f, 0f), 12f);
+    }
+
+    // ─── Spawn points (Free for All) ──────────────────────────────────────────
+
+    // Safe spots on every layer, facing the middle of the map. Heights come from the level (huts and the shed
+    // are measured through, so their floors count); the watch deck is ours, so it's added by hand.
+    private static void BuildSpawnPoints(float rimE)
+    {
+        var spawns = Group("Spawn Points");
+        var spots = new (string name, float x, float z, float? y)[]
+        {
+            ("Hub West",      -6f, -10f, null),
+            ("Hub East",      21f,   3f, null),
+            ("Island South",  -6f, -27f, null),
+            ("Shed",          27f, -24f, null),
+            ("West Tunnel",  -29f,   0f, null),
+            ("West Tier",    -12f,  20f, null),
+            ("Upper Tier",     5f,  28f, null),
+            ("North Ledge",   10f,  37f, null),
+            ("Hut A",        -12f,  49f, null),
+            ("Hut B",         16f,  49f, null),
+            ("Rim East",      43f, -12f, null),
+            ("Watch Deck",    44f, -31f, rimE + 5f),
+        };
+
+        Physics.SyncTransforms();
+        int i = 0;
+        foreach (var (name, x, z, y) in spots)
+        {
+            var feet = new Vector3(x, y ?? Top(x, z), z);
+            var go = new GameObject($"Spawn {++i:00} {name}");
+            go.transform.SetParent(spawns, false);
+            Vector3 toMiddle = new Vector3(5f, feet.y, 10f) - feet;
+            go.transform.SetPositionAndRotation(feet + Vector3.up * 0.1f,
+                Quaternion.LookRotation(toMiddle.sqrMagnitude > 0.01f ? toMiddle : Vector3.forward, Vector3.up));
+            go.AddComponent<SpawnPoint>();
+
+            bool blocked = Physics.CheckCapsule(feet + Vector3.up * 0.6f, feet + Vector3.up * 2.4f, 0.5f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            log.Add($"spawn {name} at {feet.y:0.##} m{(blocked ? "  ! BLOCKED" : "")}");
+        }
     }
 
     // ─── Building blocks ──────────────────────────────────────────────────────

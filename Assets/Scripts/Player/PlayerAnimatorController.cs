@@ -251,11 +251,42 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 
     private bool gunWasOut;
 
+    /// <summary>Where this player looks up/down in degrees (positive = down), synced; for the killcam.</summary>
+    public float LookPitch => Mathf.Lerp(90f, -90f, verticalLook);
+
+    /// <summary>A gun-mode gun is in hand (PlayerGun, every copy): the arm is raised.</summary>
+    public bool HoldingGun { get; set; }
+
+    /// <summary>The gun in hand is the built-in pistol, so the pistols show (other guns bring their own model).</summary>
+    public bool HoldingPistol { get; set; }
+
+    /// <summary>Shows the first-person pistol whatever else is going on (the killcam's view model).</summary>
+    public bool ForceFirstPersonGun { get; set; }
+
+    public GameObject FirstPersonPistol => firstPersonGun;
+    public GameObject ThirdPersonPistol => thirdPersonGun;
+
+    // ─── Pose readout (killcam recording) ─────────────────────────────────────
+    public Animator Animator      => animator;
+    public float    MoveSpeedParam => movementSpeed;
+    public float    VerticalLook  => verticalLook;
+    public bool     GroundedParam => onGround;
+    public float    ArmWeight     => gunWeight;
+
+    /// <summary>Muzzle of the first-person or third-person pistol (the gun itself if it has no GunTip).</summary>
+    public Transform GunTip(bool firstPerson)
+    {
+        var gun = firstPerson ? firstPersonGun : thirdPersonGun;
+        if (gun == null) return null;
+        var tip = FindChild(gun.transform, "GunTip");
+        return tip != null ? tip.transform : gun.transform;
+    }
+
     // Only an equipped (enabled) ability brings the gun out or raises the arm; Flappy and others never do.
     // The arm can rise without the gun (the leaf blower carries its own model).
     private void UpdateGun()
     {
-        bool armUp = false, gunOut = false;
+        bool armUp = HoldingGun, gunOut = HoldingGun && HoldingPistol;
         foreach (var ability in abilities)
         {
             if (ability == null || !ability.enabled) continue;
@@ -266,12 +297,14 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         // The arm raises as the gun comes out and lowers before it is put away
         gunWeight = Mathf.MoveTowards(gunWeight, armUp ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
         gunWasOut = gunOut || (gunWasOut && gunWeight > 0.4f);
+        if (HoldingGun && !HoldingPistol) gunWasOut = false; // Another gun's model is in hand
         ShowGun(gunWasOut);
     }
 
     private void ShowGun(bool show)
     {
-        if (firstPersonGun != null && firstPersonGun.activeSelf != show) firstPersonGun.SetActive(show);
+        bool firstPerson = show || ForceFirstPersonGun;
+        if (firstPersonGun != null && firstPersonGun.activeSelf != firstPerson) firstPersonGun.SetActive(firstPerson);
         if (thirdPersonGun != null && thirdPersonGun.activeSelf != show) thirdPersonGun.SetActive(show);
     }
 

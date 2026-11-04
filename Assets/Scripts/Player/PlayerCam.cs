@@ -123,20 +123,26 @@ public class PlayerCam : MonoBehaviour
     {
         bool paused = PauseMenuManager.IsPaused;
 
+        // The gun picker frees the mouse to click a gun (and the view stops turning meanwhile)
+        if (GunPicker.IsOpen && !paused)
+        {
+            if (Cursor.lockState != CursorLockMode.None || !Cursor.visible)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible   = true;
+            }
+            paused = true;
+        }
+
         // Re-lock every frame when not paused (avoids same-frame races with the EventSystem)
-        if (!paused && (Cursor.lockState != CursorLockMode.Locked || Cursor.visible))
+        else if (!paused && (Cursor.lockState != CursorLockMode.Locked || Cursor.visible))
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible   = false;
         }
 
-        if (caughtMode)
-        {
-            UpdateCaughtCamera();
-            return;
-        }
-
-        // Looking through something else (a placed Camera): the mouse turns that, and the view sits on it
+        // Looking through something else (a placed Camera, the killcam): the mouse turns that, and the view
+        // sits on it. Checked before the caught view, so the killcam shows while caught.
         if (viewOverride != null)
         {
             if (!paused)
@@ -145,6 +151,12 @@ public class PlayerCam : MonoBehaviour
                 overrideLook?.Invoke(Input.GetAxisRaw("Mouse X") * scale, Input.GetAxisRaw("Mouse Y") * scale);
             }
             if (cam != null) cam.transform.SetPositionAndRotation(viewOverride.position, viewOverride.rotation);
+            return;
+        }
+
+        if (caughtMode)
+        {
+            UpdateCaughtCamera();
             return;
         }
 
@@ -161,7 +173,7 @@ public class PlayerCam : MonoBehaviour
         if (cam != null)
             cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size);
 
-        // Free Spin (hold R): the mouse turns the whole body on every axis (backflips, barrel turns)
+        // Free Spin (hold the Free Spin key, default 4): the mouse turns the whole body on every axis (backflips, barrel turns)
         bool spinHeld = !paused && player.CanMove && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
         if (spinHeld)
         {
@@ -202,9 +214,12 @@ public class PlayerCam : MonoBehaviour
     {
         viewOverride = viewPoint;
         overrideLook = viewPoint != null ? look : null;
-        if (viewPoint == null && cam != null)
+        if (viewPoint == null && cam != null && !caughtMode)
             cam.transform.SetLocalPositionAndRotation(bobOffset, Quaternion.identity);
     }
+
+    /// <summary>Kicks the view up by <paramref name="degrees"/> (gun recoil).</summary>
+    public void AddRecoil(float degrees) => xRotation = Mathf.Clamp(xRotation - degrees, -90f, 90f);
 
     /// <summary>True while the view comes from somewhere other than the player's head.</summary>
     public bool HasViewOverride => viewOverride != null;

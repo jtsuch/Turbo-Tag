@@ -14,6 +14,7 @@ public static class MatchStats
     {
         PlayerKeys.StatTags, PlayerKeys.StatTimesTagged, PlayerKeys.StatLongestHide,
         PlayerKeys.StatRoundsSurvived, PlayerKeys.StatAbilitiesUsed,
+        PlayerKeys.StatKills, PlayerKeys.StatDeaths, PlayerKeys.StatSelfDestructs, PlayerKeys.StatHeadshots,
     };
 
     public static float Get(PhotonPlayer player, string key) => NetProps.Of(player, key, 0f);

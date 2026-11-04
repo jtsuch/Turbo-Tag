@@ -178,13 +178,16 @@ public class HUDManager : MonoBehaviour
         var go = new GameObject("Uses", typeof(RectTransform));
         go.transform.SetParent(slot.icon.transform, false);
         var text = go.AddComponent<TextMeshProUGUI>();
-        if (slot.key != null) { text.font = slot.key.font; text.fontSharedMaterial = slot.key.fontSharedMaterial; }
+        if (slot.key != null)
+        {
+            text.font = slot.key.font;
+            var outlined = OutlinedMaterial(slot.key.fontSharedMaterial);
+            if (outlined != null) text.fontSharedMaterial = outlined;
+        }
         text.fontSize      = 34f;
         text.fontStyle     = FontStyles.Bold;
         text.alignment     = TextAlignmentOptions.BottomRight;
         text.color         = Color.white;
-        text.outlineWidth  = 0.25f;
-        text.outlineColor  = Color.black;
         text.raycastTarget = false;
         var rect = text.rectTransform;
         rect.anchorMin = new Vector2(1f, 0f);
@@ -193,6 +196,21 @@ public class HUDManager : MonoBehaviour
         rect.anchoredPosition = new Vector2(10f, -6f);
         rect.sizeDelta = new Vector2(60f, 44f);
         return text;
+    }
+
+    // A black-outlined copy of the font material, made once. Setting outlineWidth on the text itself needs its
+    // material instance, which doesn't exist while the hotbar is still inactive (it threw and broke the hotbar).
+    private static Material outlinedMaterial;
+
+    private static Material OutlinedMaterial(Material source)
+    {
+        if (source == null) return null;
+        if (outlinedMaterial != null) return outlinedMaterial;
+        outlinedMaterial = new Material(source) { name = source.name + " (Outlined)" };
+        outlinedMaterial.EnableKeyword(ShaderUtilities.Keyword_Outline);
+        outlinedMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.25f);
+        outlinedMaterial.SetColor(ShaderUtilities.ID_OutlineColor, Color.black);
+        return outlinedMaterial;
     }
 
     private void RefreshHotbar()
@@ -361,7 +379,7 @@ public class HUDManager : MonoBehaviour
             bool showScore = mode != null && mode.ShowsScores;
             totalTimeText.enabled = showScore;
             if (showScore)
-                totalTimeText.text = "Score: " + MatchTimerController.FormatTime(manager.Scores.GetLive(player.Owner));
+                totalTimeText.text = "Score: " + mode.FormatScore(manager.Scores.GetLive(player.Owner));
         }
     }
 
@@ -388,12 +406,21 @@ public class HUDManager : MonoBehaviour
         caughtText.gameObject.SetActive(!string.IsNullOrEmpty(message));
     }
 
-    private void HandleCaught()    => ShowBanner("Caught!", 3f);
-    private void HandleRespawned() => ShowBanner("You're a hunter now!", 2f);
+    private void HandleCaught()    => ShowModeBanner(m => m.CaughtBanner, 3f);
+    private void HandleRespawned() => ShowModeBanner(m => m.RespawnBanner, 2f);
+
+    private void ShowModeBanner(System.Func<GameMode, string> text, float seconds)
+    {
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        string message = mode != null ? text(mode) : "";
+        if (!string.IsNullOrEmpty(message)) ShowBanner(message, seconds);
+    }
 
     private void HandlePlayerTagged(PhotonPlayer tagger, PhotonPlayer target)
     {
         if (target == null || target.IsLocal) return; // The caught player gets their own banner
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && !mode.AnnouncesTags) return;
         string taggerName = tagger != null ? tagger.NickName : "Someone";
         ShowBanner($"{taggerName} tagged {target.NickName}!", 2f);
     }

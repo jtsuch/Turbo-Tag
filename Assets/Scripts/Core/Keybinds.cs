@@ -8,6 +8,8 @@ public enum InputAction
     Action, Jump, Sprint, Crouch, Prone, Grab, Pause,
     AbilityBasic, AbilityQuick, AbilityThrow, AbilityTrap,
     FreeSpin,
+    Reload,
+    Scores,
 }
 
 /// <summary>
@@ -38,7 +40,9 @@ public static class Keybinds
         [InputAction.Crouch]       = KeyCode.LeftControl,
         [InputAction.Prone]        = KeyCode.C,
         [InputAction.Grab]         = KeyCode.F,
-        [InputAction.FreeSpin]     = KeyCode.R,
+        [InputAction.FreeSpin]     = KeyCode.Alpha4,
+        [InputAction.Reload]       = KeyCode.R,
+        [InputAction.Scores]       = KeyCode.Tab,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,
@@ -176,6 +180,10 @@ public static class Keybinds
         customs.Clear();
         matchOverrides.Clear();
         bool any = false;
+
+        // Reload moved to R and Free Spin to 4: drop saved copies of the old defaults so the new ones apply
+        any |= ForgetOldDefault(InputAction.FreeSpin, KeyCode.R);
+        any |= ForgetOldDefault(InputAction.Reload, KeyCode.G);
         foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
         {
             var action = SlotAction(slot);
@@ -190,6 +198,15 @@ public static class Keybinds
                 any = true;
             }
         if (any) PlayerPrefs.Save();
+    }
+
+    private static bool ForgetOldDefault(InputAction action, KeyCode oldDefault)
+    {
+        string key = PrefsKey(action);
+        if (PlayerPrefs.GetString(key, "") != oldDefault.ToString()) return false;
+        PlayerPrefs.DeleteKey(key);
+        cache.Remove(action);
+        return true;
     }
 
     // ─── Display ──────────────────────────────────────────────────────────────

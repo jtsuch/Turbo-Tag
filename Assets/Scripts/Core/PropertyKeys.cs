@@ -58,6 +58,18 @@ public static class RuleKeys
     public const string PresidentTime      = "Rule_PresidentTime";
     public const string PresidentSpeed     = "Rule_PresidentSpeed";
     public const string PresidentAbilities = "Rule_PresidentAbilities";
+
+    // Free for All (and later gun modes)
+    public const string MatchTime          = "Rule_MatchTime";
+    public const string PointLimitEnabled  = "Rule_PointLimitEnabled";
+    public const string PointLimit         = "Rule_PointLimit";
+    public const string MaxHealth          = "Rule_MaxHealth";
+    public const string DamageScale        = "Rule_DamageScale";
+    public const string FallPenalty        = "Rule_FallPenalty";
+    public const string Killcam            = "Rule_Killcam";
+    public const string HealthDrops        = "Rule_HealthDrops";
+    public const string GunPickTime        = "Rule_GunPickTime";
+    public const string GunModeAbilities   = "Rule_GunModeAbilities";
 }
 
 /// <summary>Player custom-property keys.</summary>
@@ -87,6 +99,13 @@ public static class PlayerKeys
     public const string StatLongestHide    = "Stat_LongestHide";    // Master: best single-round survival (s)
     public const string StatRoundsSurvived = "Stat_RoundsSurvived"; // Master
     public const string StatAbilitiesUsed  = "Stat_AbilitiesUsed";  // The player themself
+    public const string StatKills          = "Stat_Kills";          // Master
+    public const string StatDeaths         = "Stat_Deaths";         // Master: every death, falls included
+    public const string StatSelfDestructs  = "Stat_SelfDestructs";  // Master: fell off the map
+    public const string StatHeadshots      = "Stat_Headshots";      // Master: kills by a headshot
+
+    /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
+    public const string Gun = "Gun";
 }
 
 /// <summary>Scene names used for loading. Levels are named by the lobby's map selection.</summary>

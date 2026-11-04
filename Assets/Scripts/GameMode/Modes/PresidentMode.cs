@@ -210,6 +210,20 @@ public class PresidentMode : GameMode
         new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
     };
 
+    // Mid-match: no result yet; roles are hidden from hunters during setup like everything else
+    public override IReadOnlyList<ScoreboardColumn> LiveScoreColumns => new[]
+    {
+        new ScoreboardColumn("Role", p =>
+        {
+            var role = PlayerRoles.Get(p);
+            bool hidden = Manager != null && Player.Local != null && !p.IsLocal
+                && HidesIdentity(Player.Local.Role, role, Phase);
+            return hidden ? "?" : RoleName(role);
+        }),
+        new ScoreboardColumn("Tags",           p => MatchStats.Count(p, PlayerKeys.StatTags)),
+        new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
+    };
+
     // Winners first, the President at the top of their team, then the busiest ability users
     public override int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b)
     {

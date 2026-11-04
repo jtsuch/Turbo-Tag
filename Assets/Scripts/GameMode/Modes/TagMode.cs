@@ -284,6 +284,15 @@ public class TagMode : GameMode
         new ScoreboardColumn("Abilities Used",  p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
     };
 
+    // Mid-match: survival time includes the round in progress
+    public override IReadOnlyList<ScoreboardColumn> LiveScoreColumns => new[]
+    {
+        new ScoreboardColumn("Role",          p => RoleName(PlayerRoles.Get(p))),
+        new ScoreboardColumn("Survival Time", p => MatchStats.FormatTime(Manager != null ? Scores.GetLive(p) : NetProps.Of(p, PlayerKeys.Score, 0f))),
+        new ScoreboardColumn("Tags",          p => MatchStats.Count(p, PlayerKeys.StatTags)),
+        new ScoreboardColumn("Times Tagged",  p => MatchStats.Count(p, PlayerKeys.StatTimesTagged)),
+    };
+
     // Most survival time first; ties go to more tags
     public override int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b)
     {

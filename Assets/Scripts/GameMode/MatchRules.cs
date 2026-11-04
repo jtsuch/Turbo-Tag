@@ -78,6 +78,29 @@ public static class MatchRules
     public static bool  PresidentAbilities => NetProps.Room(RuleKeys.PresidentAbilities, true);
     public static bool HunterAbilities => NetProps.Room(RuleKeys.HunterAbilities, true);
 
+    // ─── Free for All (gun modes) ─────────────────────────────────────────────
+    public const float DefaultMatchTime   = 300f;  // seconds
+    public const float DefaultPointLimit  = 25f;
+    public const float DefaultMaxHealth   = 100f;
+    public const float DefaultDamageScale = 100f;  // %
+    public const float DefaultFallPenalty = 1f;    // points lost for falling off
+    public const float DefaultGunPickTime = 5f;    // seconds to choose a gun after spawning
+
+    public static float MatchTime => UnityEngine.Mathf.Max(10f, NetProps.Room(RuleKeys.MatchTime, DefaultMatchTime));
+
+    /// <summary>Points that end the match early; 0 means no limit.</summary>
+    public static float PointLimit =>
+        NetProps.Room(RuleKeys.PointLimitEnabled, false) ? UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.PointLimit, DefaultPointLimit)) : 0f;
+
+    public static float MaxHealth   => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.MaxHealth, DefaultMaxHealth));
+    /// <summary>Multiplier on gun damage (1 = normal).</summary>
+    public static float DamageScale => UnityEngine.Mathf.Max(0.05f, NetProps.Room(RuleKeys.DamageScale, DefaultDamageScale) / 100f);
+    public static float FallPenalty => UnityEngine.Mathf.Max(0f, NetProps.Room(RuleKeys.FallPenalty, DefaultFallPenalty));
+    public static bool  Killcam     => NetProps.Room(RuleKeys.Killcam, true);
+    public static bool  HealthDrops => NetProps.Room(RuleKeys.HealthDrops, true);
+    public static float GunPickTime => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.GunPickTime, DefaultGunPickTime));
+    public static bool  GunModeAbilities => NetProps.Room(RuleKeys.GunModeAbilities, true);
+
     // ─── Host helpers ─────────────────────────────────────────────────────────
 
     /// <summary>

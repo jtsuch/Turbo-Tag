@@ -53,6 +53,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     public AbilityHandler  Abilities { get; private set; }
     public Rigidbody       Body      { get; private set; }
     public PlayerNetworkSync NetSync { get; private set; }
+    public PlayerHealth    Health    { get; private set; }
+    public PlayerGun       Gun       { get; private set; }
+    public PlayerAnimatorController Animation { get; private set; }
 
     /// <summary>Velocity on every client: the real one for the owner, the synced one for remote copies (which are kinematic).</summary>
     public Vector3 Velocity => NetSync != null ? NetSync.Velocity : Body.linearVelocity;
@@ -244,6 +247,11 @@ public class Player : MonoBehaviourPun, IPunObservable
         Body      = GetComponent<Rigidbody>();
         NetSync   = GetComponent<PlayerNetworkSync>();
         Appearance = GetComponent<PlayerAppearance>();
+        Animation  = GetComponent<PlayerAnimatorController>();
+
+        // Gun-mode parts, idle unless the mode uses guns. Added here on every copy, so their RPCs line up.
+        Health = TryGetComponent(out PlayerHealth health) ? health : gameObject.AddComponent<PlayerHealth>();
+        Gun    = TryGetComponent(out PlayerGun gun)       ? gun    : gameObject.AddComponent<PlayerGun>();
 
         // Model roots are often imported with a non-unit scale; stance/size multiply it
         baseVisualScales    = new Vector3[visualRoots.Length];
@@ -376,6 +384,14 @@ public class Player : MonoBehaviourPun, IPunObservable
         return a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
     }
 
+    /// <summary>Height of the eyes above the feet (matches PlayerCam's stance offsets), for any copy.</summary>
+    public float EyeHeight => Size * State switch
+    {
+        MovementState.Crouch => 1.4f,
+        MovementState.Prone  => 1f,
+        _                    => 2f,
+    };
+
     /// <summary>World height of the top of the body (the collider's top: stance and size included).</summary>
     public float TopY => col != null && col.enabled ? col.bounds.max.y : transform.position.y + Height;
 
@@ -413,8 +429,17 @@ public class Player : MonoBehaviourPun, IPunObservable
         Body.AddForce(Vector3.up * 3f + UnityEngine.Random.insideUnitSphere * 2f, ForceMode.Impulse);
 
         Caught?.Invoke();
-        if (TagRespawns) StartCoroutine(RespawnAfterDelay()); // Otherwise caught (caught camera) until the scene changes
+        if (!TagRespawns) return; // Caught (caught camera) until the scene changes
+
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        float delay = mode != null ? mode.RespawnDelayAfter(tagger, Owner) : MatchRules.RespawnDelay;
+        StartCoroutine(RespawnAfterDelay(delay));
     }
+
+    private bool respawnWaitEnded;
+
+    /// <summary>Local player: respawns now instead of waiting out the rest of the delay (killcam skipped or over).</summary>
+    public void EndRespawnWait() => respawnWaitEnded = true;
 
     // Whether the current mode brings tagged players back (Protect the President doesn't: the tag ended the match)
     private static bool TagRespawns
@@ -429,13 +454,23 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>True while this player's body is hidden after a tag (the ragdoll stands in for it).</summary>
     public bool IsDownAfterTag { get; private set; }
 
-    private IEnumerator RespawnAfterDelay()
+    private IEnumerator RespawnAfterDelay(float delay)
     {
-        yield return new WaitForSeconds(MatchRules.RespawnDelay);
+        respawnWaitEnded = false;
+        float until = Time.time + delay;
+        while (Time.time < until && !respawnWaitEnded) yield return null;
+
         if (Spawner.Instance != null) Spawner.Instance.RespawnLocalPlayer();
         IsCaught = false;
         Respawned?.Invoke();
+        photonView.RPC(nameof(RPC_Respawned), RpcTarget.Others);
     }
+
+    // Other screens show the body again once its owner says it respawned (the wait can be cut short)
+    private bool respawnSignal;
+
+    [PunRPC]
+    private void RPC_Respawned() => respawnSignal = true;
 
     /// <summary>The ragdoll left by the last tag (its torso), followed by the caught camera; null if none.</summary>
     public Transform Corpse { get; private set; }
@@ -465,8 +500,12 @@ public class Player : MonoBehaviourPun, IPunObservable
         // No respawn coming (the tag ended the match): stay hidden until the scene changes
         if (!TagRespawns) yield break;
 
-        // A little longer than the respawn, so the body reappears at the spawn point, not where it fell
-        yield return new WaitForSeconds(MatchRules.RespawnDelay + 0.3f);
+        // Until the owner respawns (or a long safety limit), and a little longer, so the body reappears
+        // at the spawn point, not where it fell
+        respawnSignal = false;
+        float limit = Time.time + 30f;
+        while (!respawnSignal && Time.time < limit) yield return null;
+        yield return new WaitForSeconds(0.3f);
 
         foreach (var r in hidden) if (r != null) r.enabled = true;
         if (col != null) col.enabled = true;

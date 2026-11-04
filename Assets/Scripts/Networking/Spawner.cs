@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Photon.Pun;
 using UnityEngine;
 
@@ -57,8 +58,11 @@ public class Spawner : MonoBehaviour
     private void Update()
     {
         var local = Player.Local;
-        if (local != null && !local.IsCaught && local.transform.position.y < killHeight)
-            RespawnLocalPlayer();
+        if (local == null || local.IsCaught || local.transform.position.y >= killHeight) return;
+
+        // Gun modes: falling off is a death (a self destruction), not a free trip back
+        if (CombatManager.Instance != null) CombatManager.Instance.ReportFall();
+        else RespawnLocalPlayer();
     }
 
     // ─── Spawning ─────────────────────────────────────────────────────────────
@@ -95,6 +99,15 @@ public class Spawner : MonoBehaviour
 
     private void GetSpawnPoint(PlayerRole role, out Vector3 position, out Quaternion rotation)
     {
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && mode.UsesSpawnPoints && SpawnPoint.All.Count > 0)
+        {
+            SpawnPoint point = PickSpawnPoint();
+            position = point.transform.position;
+            rotation = Quaternion.Euler(0f, point.transform.eulerAngles.y, 0f);
+            return;
+        }
+
         int index = LocalPlayerIndex(out int total);
         bool hunter = role == PlayerRole.Hunter;
 
@@ -112,6 +125,38 @@ public class Spawner : MonoBehaviour
         Vector3 dir    = new(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
         position = transform.position + dir * (hunter ? hunterSpawnRadius : spawnRadius);
         rotation = Quaternion.LookRotation(dir, Vector3.up);
+    }
+
+    /// <summary>
+    /// Before the match runs (Waiting, Countdown) everyone takes a different point, spread through the list.
+    /// Mid-match: a random one of the three points furthest from the nearest other living player.
+    /// </summary>
+    private static SpawnPoint PickSpawnPoint()
+    {
+        var points = new List<SpawnPoint>(SpawnPoint.All);
+        points.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+
+        var phase = GameModeManager.Instance != null ? GameModeManager.Instance.Phase : MatchPhase.Waiting;
+        if (phase == MatchPhase.Waiting || phase == MatchPhase.Countdown)
+        {
+            int index = LocalPlayerIndex(out int total);
+            int step  = Mathf.Max(1, points.Count / Mathf.Max(1, total));
+            return points[(index * step) % points.Count];
+        }
+
+        var others = new List<Vector3>();
+        foreach (var p in Player.All)
+            if (!p.IsLocal && !p.IsDownAfterTag) others.Add(p.transform.position);
+
+        float Safety(SpawnPoint point)
+        {
+            float nearest = float.MaxValue;
+            foreach (var pos in others) nearest = Mathf.Min(nearest, Vector3.Distance(pos, point.transform.position));
+            return nearest;
+        }
+
+        points.Sort((a, b) => Safety(b).CompareTo(Safety(a)));
+        return points[Random.Range(0, Mathf.Min(3, points.Count))];
     }
 
     // Stable 0-based index of the local player among everyone in the room

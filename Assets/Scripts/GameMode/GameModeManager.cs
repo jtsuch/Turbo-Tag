@@ -74,6 +74,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             photonView.ViewID = FallbackViewId;
         }
 
+        ScoreOverlay.Create(); // Hold Tab for the standings, in every mode
         Clock  = GetComponent<MatchTimerController>();
         Scores = GetComponent<ScoreController>();
         lastAnnouncedPhase = MatchPhase.Waiting;
@@ -92,6 +93,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         Definition = GameModeRegistry.Find(MatchRules.GameModeKey);
         Mode       = GameModeRegistry.Create(MatchRules.GameModeKey);
         Mode.Attach(this);
+
+        // Gun modes: health, guns, kill feed, health drops and killcam (RPCs share this scene PhotonView)
+        if (Mode.UsesGuns && !TryGetComponent(out CombatManager _)) gameObject.AddComponent<CombatManager>();
 
         // A freshly loaded level always starts from a clean match state
         if (PhotonNetwork.IsMasterClient) ResetMatchState();

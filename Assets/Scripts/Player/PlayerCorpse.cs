@@ -46,23 +46,8 @@ public static class PlayerCorpse
     /// <summary>Builds the corpse of <paramref name="player"/>. Returns the torso (for the caught camera), or null.</summary>
     public static Transform Create(Player player, Vector3 velocity)
     {
-        Transform armature = player.transform.Find("Armature");
-        var skin = player.GetComponentInChildren<SkinnedMeshRenderer>(true);
-        if (armature == null || skin == null) return null;
-
-        var root = new GameObject($"Corpse ({player.DisplayName})").transform;
-        root.SetPositionAndRotation(player.transform.position, player.transform.rotation);
-
-        // Skeleton copy in the current pose (the local player's own armature is inactive, so activate the copy)
-        Transform bones = Object.Instantiate(armature, root);
-        bones.name = "Armature";
-        bones.SetLocalPositionAndRotation(armature.localPosition, armature.localRotation);
-        bones.localScale = armature.localScale;
-        bones.gameObject.SetActive(true);
-        foreach (var renderer in bones.GetComponentsInChildren<MeshRenderer>(true))
-            Object.Destroy(renderer.gameObject); // The gun stays with the player
-
-        CopySkin(skin, armature, bones, root);
+        Transform root = CreateCopy(player, $"Corpse ({player.DisplayName})", out Transform bones);
+        if (root == null) return null;
         Transform torso = BuildRagdoll(bones, velocity, out List<Collider> colliders);
         IgnorePlayers(colliders);
 
@@ -74,6 +59,35 @@ public static class PlayerCorpse
         }
 
         return torso;
+    }
+
+    /// <summary>
+    /// A look-alike of <paramref name="player"/> in their current pose (skeleton copy + skinned mesh with their colour),
+    /// with no physics, at their position. Used by the ragdoll and the killcam's stand-ins (<paramref name="keepGuns"/>:
+    /// the pistol in the hand stays). Null if the model is missing.
+    /// </summary>
+    public static Transform CreateCopy(Player player, string name, out Transform bones, bool keepGuns = false)
+    {
+        bones = null;
+        Transform armature = player.transform.Find("Armature");
+        var skin = player.GetComponentInChildren<SkinnedMeshRenderer>(true);
+        if (armature == null || skin == null) return null;
+
+        var root = new GameObject(name).transform;
+        root.SetPositionAndRotation(player.transform.position, player.transform.rotation);
+
+        // Skeleton copy in the current pose (the local player's own armature is inactive, so activate the copy)
+        bones = Object.Instantiate(armature, root);
+        bones.name = "Armature";
+        bones.SetLocalPositionAndRotation(armature.localPosition, armature.localRotation);
+        bones.localScale = armature.localScale;
+        bones.gameObject.SetActive(true);
+        if (!keepGuns)
+            foreach (var renderer in bones.GetComponentsInChildren<MeshRenderer>(true))
+                Object.Destroy(renderer.gameObject); // The gun stays with the player
+
+        CopySkin(skin, armature, bones, root);
+        return root;
     }
 
     // A new skinned mesh on the copied bones (bones are matched by their path under the armature)

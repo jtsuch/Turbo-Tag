@@ -54,6 +54,30 @@ public abstract class GameMode
     /// </summary>
     public virtual bool RespawnsAfterTag => true;
 
+    /// <summary>
+    /// Seconds a tagged/killed player waits before respawning. <paramref name="tagger"/> is who got them
+    /// (the victim themself for a fall). The wait can be cut short (<see cref="Player.EndRespawnWait"/>, killcam skip).
+    /// </summary>
+    public virtual float RespawnDelayAfter(PhotonPlayer tagger, PhotonPlayer victim) => MatchRules.RespawnDelay;
+
+    /// <summary>True for gun modes: health, guns, the gun picker, kill feed, health drops and killcam (CombatManager).</summary>
+    public virtual bool UsesGuns => false;
+
+    /// <summary>True to spawn on the level's SpawnPoints (random, away from others) instead of the Spawner's ring.</summary>
+    public virtual bool UsesSpawnPoints => false;
+
+    /// <summary>True to show "X tagged Y" banners to everyone else.</summary>
+    public virtual bool AnnouncesTags => true;
+
+    /// <summary>Banner for the local player when tagged ("" for none).</summary>
+    public virtual string CaughtBanner => "Caught!";
+
+    /// <summary>Banner for the local player after respawning ("" for none).</summary>
+    public virtual string RespawnBanner => "You're a hunter now!";
+
+    /// <summary>How the HUD writes a score (Tag: survival time).</summary>
+    public virtual string FormatScore(float score) => MatchTimerController.FormatTime(score);
+
     // ─── Master-client hooks ──────────────────────────────────────────────────
 
     /// <summary>Master: called once every player has spawned into the level.</summary>
@@ -64,6 +88,12 @@ public abstract class GameMode
 
     /// <summary>Master: a client reported that <paramref name="tagger"/> touched <paramref name="target"/>.</summary>
     public virtual void HandleTagRequest(PhotonPlayer tagger, PhotonPlayer target) { }
+
+    /// <summary>
+    /// Master, gun modes: <paramref name="victim"/> died in the Active phase. <paramref name="killer"/> is null
+    /// (or the victim) for a fall. Scoring only: CombatManager handles the respawn, kill feed and drops.
+    /// </summary>
+    public virtual void OnPlayerKilled(PhotonPlayer victim, PhotonPlayer killer, string weapon, bool headshot) { }
 
     /// <summary>Master: a player disconnected mid-match.</summary>
     public virtual void OnPlayerLeft(PhotonPlayer player) { }
@@ -141,6 +171,9 @@ public abstract class GameMode
     {
         new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
     };
+
+    /// <summary>Columns for the in-match standings (hold Tab). Default: the scoreboard's.</summary>
+    public virtual IReadOnlyList<ScoreboardColumn> LiveScoreColumns => ScoreboardColumns;
 
     /// <summary>Order of the rows (negative: <paramref name="a"/> first).</summary>
     public virtual int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b) => 0;

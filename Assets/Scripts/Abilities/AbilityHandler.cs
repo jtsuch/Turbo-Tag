@@ -151,6 +151,9 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         else if (active == ability)    active = null;
     }
 
+    /// <summary>True while an aim/place ability waits for the Action key (guns don't fire then).</summary>
+    public bool IsAwaitingAction => active != null && active.IsAwaitingAction;
+
     public void ConfirmDown()
     {
         if (active != null && active.IsAwaitingAction) active.OnActionDown();
