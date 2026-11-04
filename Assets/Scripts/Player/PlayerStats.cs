@@ -24,11 +24,24 @@ public class PlayerStats
     public float shimmySpeed  = 4f;
 
     [Header("Physics")]
-    public float acceleration     = 50f;
+    [Tooltip("Speeding up on the ground (m/s²). Top sprint speed in about 0.13 s.")]
+    public float acceleration     = 90f;
+    [Tooltip("Stopping and turning on the ground (m/s²). A full stop from a sprint in about 0.1 s.")]
+    public float deceleration     = 120f;
+    [Tooltip("How fast speed above the run speed (dashes, slides, pads, explosions) bleeds off on the ground while still moving that way (m/s²).")]
+    public float overSpeedFriction = 10f;
+    [Tooltip("How fast a prone slide slows on flat ground (m/s²). Downhill slides keep going.")]
+    public float slideFriction    = 4f;
     public float jumpStrength     = 16f;
+    [Tooltip("Vertical speed kept when the jump key is let go early (short hops). 1 = no short hops.")]
+    public float jumpCut          = 0.5f;
+    [Tooltip("A jump pressed this long before landing still happens on landing (s).")]
+    public float jumpBuffer       = 0.12f;
+    [Tooltip("A jump pressed this long after walking off an edge still counts (s).")]
+    public float coyoteTime       = 0.12f;
     public float wallSlideDownMax = 4f;
-    [Tooltip("Steering strength while airborne, relative to grounded (0–1).")]
-    public float airControl       = 0.1f;
+    [Tooltip("Steering strength while airborne, relative to grounded acceleration (0–1).")]
+    public float airControl       = 0.45f;
     [Tooltip("Steering strength while swinging on a grapple, relative to grounded (0–1).")]
     public float swingControl     = 0.01f;
 }

@@ -5,7 +5,14 @@ using UnityEngine;
 /// <summary>
 /// Physics-based player locomotion: grounded movement, jumping, crouch/prone/slide,
 /// wall-running, climbing, ledge hanging and picking up "Grabbable" objects.
-/// All forces are applied in FixedUpdate; discrete inputs are handled in Update.
+///
+/// Feel ("fast but precise"): raw input; on the ground the velocity is steered straight toward the wanted
+/// velocity along the ground plane (quick to top speed, quicker to stop or turn), while speed above the run
+/// speed (dashes, slides, pads, explosions) bleeds off slowly so physics abilities keep their punch. In the air
+/// momentum is kept and the player can steer it (air control) without gaining speed beyond what they had.
+/// Ground is found with a sphere under the feet (standing on an edge counts), small crests and steps down
+/// are snapped to, and jumps set the vertical speed (consistent heights) with a jump buffer, coyote time and
+/// short hops (let go early). All physics runs in FixedUpdate; discrete inputs are read in Update.
 /// Only runs on the owning client — remote copies are kinematic and positioned by PlayerNetworkSync.
 /// Gravity has a single owner here (<see cref="UpdateGravity"/>); abilities only set flags like IsDashing.
 /// Attach to: ThePlayer prefab root.
@@ -38,8 +45,23 @@ public class PlayerMovement : MonoBehaviourPun
     // Ground detection smoothing: grounded through short misses, and landings only after real air time
     private const float GroundGrace          = 0.1f;
     private const float MinAirTimeForLanding = 0.25f;
+    private const float MaxWalkableSlope     = 0.6f;  // Ground normal's up component (about 53 degrees)
+    private const float GroundProbe          = 0.12f; // How far below the feet still counts as standing (m)
+    private const float SnapDistance         = 0.6f;  // Crests and small steps down within this stay grounded (m)
+    private const float JumpLockout          = 0.25f; // No second ground jump this soon (no stacked super jumps)
     private float lastTouchTime = float.NegativeInfinity;
     private float airborneSince;
+
+    // Real contact this physics step, and the walkable surface under the feet
+    private bool    touching;
+    private Vector3 groundNormal = Vector3.up;
+    private CapsuleCollider body;
+
+    // Jumping
+    private float jumpPressedAt = float.NegativeInfinity;
+    private float lastJumpTime  = float.NegativeInfinity;
+    private bool  jumpCutReady;  // The current rise is our own jump, so letting go early may shorten it
+    private bool  jumpedThisStep;
 
     [Tooltip("Grip while iced (Ice Trap, Snowball) as a fraction of normal acceleration.")]
     [SerializeField] private float iceControl = 0.08f;
@@ -81,6 +103,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (player == null) player = GetComponent<Player>();
         if (input  == null) input  = GetComponent<InputHandler>();
         if (rb     == null) rb     = GetComponent<Rigidbody>();
+        body = GetComponent<CapsuleCollider>();
     }
 
     private void Start()
@@ -105,6 +128,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (!photonView.IsMine) return;
         SurfaceCheck();
         UpdateGravity();
+        jumpedThisStep = false;
 
         // Stuck to a surface (Chameleon): no movement, no gravity
         if (player.IsAnchored)
@@ -122,6 +146,8 @@ public class PlayerMovement : MonoBehaviourPun
             return;
         }
 
+        TryBufferedJump();
+        UpdateJumpCut();
         MovePlayer();
     }
 
@@ -153,10 +179,18 @@ public class PlayerMovement : MonoBehaviourPun
     {
         bool wasGrounded = OnGround;
 
-        // Cast from a little above the feet so a bump or seam under a slide can't start the ray below the surface
-        const float lift = 0.3f;
-        bool touching = Physics.Raycast(transform.position + Vector3.up * lift, Vector3.down, out _,
-                                        player.Height * 0.2f + lift, ~0, QueryTriggerInteraction.Ignore);
+        touching = FindGround(GroundProbe, out groundNormal, out _);
+
+        // Just ran over a crest or off a small step: pull down onto the ground instead of floating off it
+        if (!touching && wasGrounded && CanSnap()
+            && FindGround(SnapDistance, out Vector3 snapNormal, out float gap))
+        {
+            Vector3 v = rb.linearVelocity;
+            rb.linearVelocity = new Vector3(v.x, Mathf.Min(v.y, -gap / Time.fixedDeltaTime), v.z);
+            touching     = true;
+            groundNormal = snapNormal;
+        }
+
         if (touching) lastTouchTime = Time.time;
 
         // Brief misses (sliding over uneven ground) don't count as leaving the ground, unless moving up (a jump)
@@ -213,6 +247,34 @@ public class PlayerMovement : MonoBehaviourPun
             player.SetState(Player.MovementState.Idle);
     }
 
+    // A sphere just inside the capsule's bottom, swept down: finds ground under any part of the feet (standing
+    // on an edge counts), and reads the face below the contact so an edge doesn't look like a slope.
+    private bool FindGround(float distance, out Vector3 normal, out float gap)
+    {
+        normal = Vector3.up;
+        gap    = 0f;
+        float radius = (body != null ? body.radius : 0.5f) * 0.9f;
+        const float lift = 0.1f;
+        Vector3 origin = rb.position + Vector3.up * (radius + lift);
+
+        if (!Physics.SphereCast(origin, radius, Vector3.down, out RaycastHit hit, lift + distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            return false;
+
+        normal = hit.normal;
+        if (Physics.Raycast(hit.point + Vector3.up * 0.05f, Vector3.down, out RaycastHit face, 0.15f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            normal = face.normal;
+
+        gap = Mathf.Max(0f, hit.distance - lift);
+        return normal.y >= MaxWalkableSlope;
+    }
+
+    private bool CanSnap() =>
+        Time.time - lastJumpTime > 0.3f && rb.linearVelocity.y < 1f
+        && !player.IsBeingPushed && !player.IsDashing && !player.IsSwinging
+        && State != Player.MovementState.Climb && State != Player.MovementState.WallRun;
+
     // ─── Discrete Input ───────────────────────────────────────────────────────
 
     private void HandleDiscreteInput()
@@ -227,7 +289,12 @@ public class PlayerMovement : MonoBehaviourPun
             else                  Grab();
         }
 
-        if (input.JumpPressed)   Jump();
+        // Jumps are buffered and done in the physics step (letting go of a ledge uses the key itself)
+        if (input.JumpPressed && State != Player.MovementState.Hang)
+        {
+            if (State == Player.MovementState.Prone) player.ToggleProne(); // Jump stands up from prone
+            else jumpPressedAt = Time.time;
+        }
         if (input.CrouchPressed) ToggleCrouch();
         if (input.PronePressed)  ToggleProne();
     }
@@ -255,11 +322,14 @@ public class PlayerMovement : MonoBehaviourPun
             return;
         }
 
-        // A prone slide coasts unless the player is also swinging
+        // A prone slide coasts (with a little friction) unless the player is also swinging
         bool coasting = State == Player.MovementState.Prone && !player.IsSwinging
                      && rb.linearVelocity.magnitude > SlideThreshold;
         if (coasting)
+        {
+            if (touching && !player.IsBeingPushed) SlideFriction();
             return;
+        }
 
         if (State == Player.MovementState.Climb)
         {
@@ -270,93 +340,169 @@ public class PlayerMovement : MonoBehaviourPun
         if (State == Player.MovementState.WallRun)
             WallRun();
 
-        Vector2 move        = input.MoveInput;
-        Vector3 intendedDir = (Heading * move.y + HeadingRight * move.x) * player.TargetSpeed;
-        Vector3 flatVel     = new(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-        bool    hasInput    = intendedDir.sqrMagnitude > 0f;
+        Vector2 move    = input.MoveInput;
+        Vector3 wishDir = Heading * move.y + HeadingRight * move.x;
+        if (wishDir.sqrMagnitude > 1f) wishDir.Normalize();
+        float speed      = player.TargetSpeed * wishDir.magnitude;
+        float accelScale = Mathf.Max(0.05f, player.Modifiers.Get(Stat.Acceleration));
 
-        // No input on the ground: stop quickly. Skipped while swinging (the joint drives momentum), on ice (it
-        // keeps sliding) and while an outside force pushes the player (GravBall, Gravity Well, explosions).
-        bool onIce = OnIce;
-        if (OnGround && !hasInput && !player.IsSwinging && !onIce && !player.IsBeingPushed)
+        if (player.IsSwinging)
+            SwingSteer(wishDir, speed, accelScale);
+        else if (touching && !jumpedThisStep && State != Player.MovementState.WallRun)
+            GroundMove(wishDir, speed, accelScale);
+        else
+            AirMove(wishDir, speed, accelScale);
+    }
+
+    // On the ground: steer the velocity along the ground plane straight toward the wanted one. Speeding up
+    // uses acceleration; stopping and turning use the (stronger) deceleration. Speed above the run speed only
+    // bleeds off slowly while the player keeps moving that way. Upward speed (a pad, a jump) is never touched.
+    private void GroundMove(Vector3 wishDir, float speed, float accelScale)
+    {
+        var     stats    = player.Stats;
+        Vector3 n        = groundNormal;
+        Vector3 v        = rb.linearVelocity;
+        float   vn       = Vector3.Dot(v, n);
+        Vector3 vp       = v - n * vn;
+        float   current  = vp.magnitude;
+        bool    hasInput = speed > 0.01f;
+        bool    pushed   = player.IsBeingPushed;
+        float   dt       = Time.fixedDeltaTime;
+
+        Vector3 target;
+        float   rate;
+        if (!hasInput)
         {
-            if (flatVel.magnitude < 1f)
+            target = Vector3.zero;
+            rate   = pushed ? 0f : stats.deceleration;
+        }
+        else
+        {
+            Vector3 dir     = Vector3.ProjectOnPlane(wishDir, n).normalized;
+            bool    aligned = Vector3.Dot(dir, vp) > 0f;
+            float   want    = speed;
+            if (aligned && current > speed)
             {
-                // Only the horizontal speed: zeroing the vertical too fought gravity every step (standing jitter)
-                rb.linearVelocity  = new Vector3(0f, rb.linearVelocity.y, 0f);
-                rb.angularVelocity = Vector3.zero;
+                // Faster than running (dash, slide, pad, explosion): keep the speed, bleed it off slowly, steer it
+                want = pushed ? current : Mathf.Max(speed, current - stats.overSpeedFriction * dt);
+                rate = stats.acceleration;
             }
             else
             {
-                rb.AddForce(-flatVel * 2f, ForceMode.Acceleration);
+                // Speeding up toward the input uses acceleration; turning across or against it, deceleration
+                rate = Vector3.Dot(dir, vp.normalized) > 0.7f || current < 0.5f ? stats.acceleration : stats.deceleration;
             }
+            target = dir * want;
+            if (pushed) rate *= 0.5f;
         }
 
-        // On ice with no input, keep the slide going
-        if (onIce && !hasInput)
-            intendedDir = flatVel;
+        if (OnIce) rate *= iceControl;
+        vp = Vector3.MoveTowards(vp, target, rate * accelScale * dt);
 
-        // No input in the air: preserve momentum
-        if (!hasInput && !OnGround)
-            intendedDir = flatVel;
+        rb.linearVelocity  = vp + n * Mathf.Max(vn, 0f);
+        rb.angularVelocity = Vector3.zero;
+    }
 
-        float control = player.IsSwinging ? player.Stats.swingControl
-                      : !OnGround         ? player.Stats.airControl * player.Modifiers.Get(Stat.AirControl)
-                      : onIce             ? iceControl
-                      : 1f;
+    // In the air: momentum is kept with no input. With input, the flat velocity is steered toward it without
+    // gaining speed beyond what the player already had (or their run speed), so jumps can be corrected and
+    // curved precisely, but air control is never a way to go faster.
+    private void AirMove(Vector3 wishDir, float speed, float accelScale)
+    {
+        if (speed <= 0.01f) return;
 
-        float   maxAccel   = Mathf.Max(1f, player.Stats.acceleration * player.Modifiers.Get(Stat.Acceleration));
-        Vector3 desiredAcc = (intendedDir - flatVel) / Time.fixedDeltaTime;
-        desiredAcc = Vector3.ClampMagnitude(desiredAcc, maxAccel * Mathf.Max(control, 0.0001f));
+        Vector3 v    = rb.linearVelocity;
+        Vector3 flat = new(v.x, 0f, v.z);
+        Vector3 dir  = wishDir.normalized;
 
-        // Cancel slope-induced sliding while grounded
-        if (OnGround && Physics.Raycast(transform.position, Vector3.down, out RaycastHit groundHit, player.Height + 0.5f, ~0, QueryTriggerInteraction.Ignore))
-        {
-            Vector3 n = groundHit.normal;
-            Vector3 slopeCorrection = n * Physics.gravity.y / Mathf.Max(n.y, 0.0001f);
-            slopeCorrection.y = 0f;
-            desiredAcc += slopeCorrection;
-        }
+        float cap     = Vector3.Dot(flat, dir) > 0f ? Mathf.Max(speed, flat.magnitude) : speed;
+        float control = Mathf.Min(1f, player.Stats.airControl * player.Modifiers.Get(Stat.AirControl));
+        if (player.IsBeingPushed) control *= 0.3f;
 
-        rb.AddForce(desiredAcc, ForceMode.Acceleration);
+        flat = Vector3.MoveTowards(flat, dir * cap, player.Stats.acceleration * accelScale * control * Time.fixedDeltaTime);
+        rb.linearVelocity = new Vector3(flat.x, v.y, flat.z);
+    }
+
+    // On a grapple: only a gentle push (the rope drives the motion)
+    private void SwingSteer(Vector3 wishDir, float speed, float accelScale)
+    {
+        Vector3 flat   = new(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        Vector3 wanted = speed > 0.01f ? wishDir.normalized * speed : flat;
+        Vector3 acc    = (wanted - flat) / Time.fixedDeltaTime;
+        acc = Vector3.ClampMagnitude(acc, player.Stats.acceleration * accelScale * player.Stats.swingControl);
+        rb.AddForce(acc, ForceMode.Acceleration);
+    }
+
+    // A prone slide on the ground slows a little each step (downhill, gravity keeps it going)
+    private void SlideFriction()
+    {
+        Vector3 v    = rb.linearVelocity;
+        Vector3 flat = new(v.x, 0f, v.z);
+        flat = Vector3.MoveTowards(flat, Vector3.zero, player.Stats.slideFriction * Time.fixedDeltaTime);
+        rb.linearVelocity = new Vector3(flat.x, v.y, flat.z);
     }
 
     // ─── Jump ─────────────────────────────────────────────────────────────────
 
-    private void Jump()
+    // A jump pressed shortly before it became possible (landing, reaching a wall) still happens
+    private void TryBufferedJump()
     {
-        if (State == Player.MovementState.Prone)
+        if (Time.time - jumpPressedAt > player.Stats.jumpBuffer) return;
+        if (Jump()) jumpPressedAt = float.NegativeInfinity;
+    }
+
+    // Letting go of the key while still rising from a jump cuts it short (short hops for precise platforming)
+    private void UpdateJumpCut()
+    {
+        if (!jumpCutReady) return;
+        Vector3 v = rb.linearVelocity;
+        if (v.y <= 0f || player.IsBeingPushed) { jumpCutReady = false; return; }
+        if (input.JumpHeld) return;
+
+        rb.linearVelocity = new Vector3(v.x, v.y * player.Stats.jumpCut, v.z);
+        jumpCutReady = false;
+    }
+
+    // Jumps set the vertical speed rather than adding to it, so every jump is the same height
+    private bool Jump()
+    {
+        float   strength = player.Stats.jumpStrength * player.Modifiers.Get(Stat.Jump);
+        bool    grounded = touching || Time.time - lastTouchTime <= player.Stats.coyoteTime;
+        bool    fresh    = Time.time - lastJumpTime > JumpLockout;
+        Vector3 v        = rb.linearVelocity;
+
+        if (!grounded && (WallLeft || WallRight) && currentWallNormal != Vector3.zero)
         {
-            player.ToggleProne();
-            return;
+            // Off a wall: away from it and up, keeping the speed along the wall
+            Vector3 along = Vector3.ProjectOnPlane(new Vector3(v.x, 0f, v.z), currentWallNormal);
+            rb.linearVelocity = along + currentWallNormal * (strength * 0.75f) + Vector3.up * strength;
+            if (State == Player.MovementState.WallRun) StopWallRun();
         }
-
-        float   strength   = player.Stats.jumpStrength * player.Modifiers.Get(Stat.Jump);
-        Vector3 jumpVector = Vector3.zero;
-
-        if (WallLeft && !OnGround)
-            jumpVector = (transform.up + transform.right) * strength;
-        else if (WallRight && !OnGround)
-            jumpVector = (transform.up - transform.right) * strength;
-        else if (State == Player.MovementState.Climb && !OnGround)
-            jumpVector = (transform.up - transform.forward) * strength;
-        else if (OnGround)
+        else if (!grounded && State == Player.MovementState.Climb)
         {
+            // Off a climb: up and back from the wall
+            Vector3 back = -Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+            rb.linearVelocity = back * (strength * 0.7f) + Vector3.up * strength;
+            player.SetState(Player.MovementState.Idle);
+        }
+        else if (grounded && fresh)
+        {
+            float height = strength;
             if (State == Player.MovementState.Crouch)
             {
                 ToggleCrouch();
-                jumpVector = Vector3.up * (strength * crouchJumpMultiplier);
+                height *= crouchJumpMultiplier;
             }
-            else
-            {
-                jumpVector = Vector3.up * strength;
-            }
+            rb.linearVelocity = new Vector3(v.x, Mathf.Max(v.y, 0f) + height, v.z);
+            lastTouchTime = float.NegativeInfinity; // Coyote time is spent
         }
+        else return false;
 
-        if (jumpVector == Vector3.zero) return;
-
-        rb.AddForce(jumpVector, ForceMode.Impulse);
+        lastJumpTime   = Time.time;
+        jumpCutReady   = true;
+        jumpedThisStep = true;
+        touching       = false;
         player.NotifyJumped();
+        return true;
     }
 
     // ─── Crouch / Prone ───────────────────────────────────────────────────────

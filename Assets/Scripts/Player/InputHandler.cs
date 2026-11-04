@@ -13,6 +13,7 @@ public class InputHandler : MonoBehaviourPun
     // ─── Movement intent (read by PlayerMovement, camera, animation) ──────────
     public Vector2 MoveInput     { get; private set; }
     public bool    JumpPressed   { get; private set; }
+    public bool    JumpHeld      { get; private set; }
     public bool    SprintHeld    { get; private set; }
     public bool    CrouchPressed { get; private set; }
     /// <summary>Crouch key held — used by grapples to reel out.</summary>
@@ -53,17 +54,19 @@ public class InputHandler : MonoBehaviourPun
     private void ClearFrameInput()
     {
         MoveInput     = Vector2.zero;
-        JumpPressed   = SprintHeld = CrouchPressed = CrouchHeld = PronePressed = GrabPressed = false;
+        JumpPressed   = JumpHeld = SprintHeld = CrouchPressed = CrouchHeld = PronePressed = GrabPressed = false;
     }
 
     private void ReadMovement()
     {
-        // GetAxis (smoothed) keeps the acceleration curve the movement was tuned with
+        // Raw keys: the input is exactly what's held this frame. (GetAxis smoothed keys over ~0.3 s, so the
+        // player kept walking after letting go and quick taps barely moved them.) PlayerMovement accelerates.
         MoveInput = Vector2.ClampMagnitude(
-            new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical")), 1f)
+            new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")), 1f)
             * player.Modifiers.Get(Stat.ControlDirection);
 
         JumpPressed   = Pressed(InputAction.Jump);
+        JumpHeld      = Held(InputAction.Jump);
         SprintHeld    = Held(InputAction.Sprint);
         CrouchPressed = Pressed(InputAction.Crouch);
         CrouchHeld    = Held(InputAction.Crouch);
