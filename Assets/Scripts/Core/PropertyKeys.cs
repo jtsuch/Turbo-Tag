@@ -70,6 +70,7 @@ public static class RuleKeys
     public const string HealthDrops        = "Rule_HealthDrops";
     public const string GunPickTime        = "Rule_GunPickTime";
     public const string GunModeAbilities   = "Rule_GunModeAbilities";
+    public const string MovementSpread     = "Rule_MovementSpread";
 }
 
 /// <summary>Player custom-property keys.</summary>

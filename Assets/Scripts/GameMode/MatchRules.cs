@@ -100,6 +100,8 @@ public static class MatchRules
     public static bool  HealthDrops => NetProps.Room(RuleKeys.HealthDrops, true);
     public static float GunPickTime => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.GunPickTime, DefaultGunPickTime));
     public static bool  GunModeAbilities => NetProps.Room(RuleKeys.GunModeAbilities, true);
+    /// <summary>Guns get less accurate in the air (off by default: flip and snipe with perfect aim).</summary>
+    public static bool  MovementSpread => NetProps.Room(RuleKeys.MovementSpread, false);
 
     // ─── Host helpers ─────────────────────────────────────────────────────────
 

@@ -15,8 +15,11 @@ public sealed class GunInfo
     public int   Magazine;
     public float ReloadTime;                 // Seconds
     public float Range = 150f;               // Metres
-    public float Spread;                     // Degrees from the crosshair (random cone)
-    public float AirSpread;                  // Extra degrees while airborne
+    public float Spread;                     // Degrees from the crosshair on the first shot (random cone; 0 = perfect)
+    public float AirSpread;                  // Extra degrees while airborne (only with the Movement Inaccuracy rule)
+    public float Bloom;                      // Extra degrees added per shot while spraying
+    public float MaxBloom;                   // Most extra degrees spraying can add
+    public float BloomRecovery = 8f;         // Degrees per second the bloom shrinks once you stop
     public float Recoil;                     // Degrees the view kicks up per shot
     public int   Pellets = 1;                // Bullets per shot (shotguns)
 
@@ -32,9 +35,7 @@ public sealed class GunInfo
 }
 
 /// <summary>
-/// Every gun the picker offers. One primary per life, no secondaries. Planned classes (add an entry here
-/// and they appear in the picker): AR (automatic, mid damage), LMG (big magazine, slow reload), Sniper
-/// (one-shot headshots, slow), Shotgun (pellets, short range).
+/// Every gun the picker offers. One primary per life, no secondaries. Planned: LMG (big magazine, slow reload).
 /// </summary>
 public static class GunCatalog
 {
@@ -47,15 +48,36 @@ public static class GunCatalog
             Id = "Pistol", Name = "Pistol",
             Description = "Reliable semi-auto. Five body shots or three headshots.",
             Damage = 20f, HeadshotMultiplier = 2f, FireInterval = 0.2f, Automatic = false,
-            Magazine = 12, ReloadTime = 1.4f, Range = 150f, Spread = 0.4f, AirSpread = 1.5f, Recoil = 1.2f,
+            Magazine = 12, ReloadTime = 1.4f, Range = 150f, Spread = 0f, AirSpread = 1.5f, Recoil = 1.2f,
+            Bloom = 0.4f, MaxBloom = 2.5f,
         },
         new GunInfo
         {
             Id = "AR", Name = "Assault Rifle", Model = "Guns/AR",
             Description = "Full-auto. Hold to fire; controllable recoil, a long reload.",
             Damage = 14f, HeadshotMultiplier = 1.75f, FireInterval = 0.1f, Automatic = true,
-            Magazine = 30, ReloadTime = 2f, Range = 200f, Spread = 0.8f, AirSpread = 2.5f, Recoil = 0.45f,
+            Magazine = 30, ReloadTime = 2f, Range = 200f, Spread = 0f, AirSpread = 2.5f, Recoil = 0.45f,
+            Bloom = 0.25f, MaxBloom = 3.5f, BloomRecovery = 10f,
             ViewOffset = new Vector3(0.38f, -0.36f, 0.75f), ViewLength = 1.25f, WorldLength = 1.75f,
+        },
+        new GunInfo
+        {
+            // Nine pellets: a close-range one-shot to the body if they all land, useless past ~45 m
+            Id = "Shotgun", Name = "Shotgun", Model = "Guns/AR",
+            Description = "Nine pellets per blast. Devastating up close, nothing at range.",
+            Damage = 12f, HeadshotMultiplier = 1.5f, FireInterval = 0.85f, Automatic = false, Pellets = 9,
+            Magazine = 6, ReloadTime = 2.4f, Range = 45f, Spread = 5f, AirSpread = 2f, Recoil = 3.5f,
+            Bloom = 0.5f, MaxBloom = 1.5f,
+            ViewOffset = new Vector3(0.38f, -0.38f, 0.65f), ViewLength = 1.05f, WorldLength = 1.45f,
+        },
+        new GunInfo
+        {
+            // 80 to the body (two hits), exactly 100 to the head (one); slow and shaky in the air
+            Id = "Sniper", Name = "Sniper", Model = "Guns/AR",
+            Description = "One shot to the head, two to the body. Slow, and dead accurate.",
+            Damage = 80f, HeadshotMultiplier = 1.25f, FireInterval = 1.3f, Automatic = false,
+            Magazine = 5, ReloadTime = 2.6f, Range = 400f, Spread = 0f, AirSpread = 4f, Recoil = 5f,
+            ViewOffset = new Vector3(0.36f, -0.36f, 0.85f), ViewLength = 1.55f, WorldLength = 2.1f,
         },
     };
 

@@ -10,6 +10,7 @@ public enum InputAction
     FreeSpin,
     Reload,
     Scores,
+    Map,
 }
 
 /// <summary>
@@ -43,6 +44,7 @@ public static class Keybinds
         [InputAction.FreeSpin]     = KeyCode.Alpha4,
         [InputAction.Reload]       = KeyCode.R,
         [InputAction.Scores]       = KeyCode.Tab,
+        [InputAction.Map]          = KeyCode.M,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,
@@ -184,6 +186,14 @@ public static class Keybinds
         // Reload moved to R and Free Spin to 4: drop saved copies of the old defaults so the new ones apply
         any |= ForgetOldDefault(InputAction.FreeSpin, KeyCode.R);
         any |= ForgetOldDefault(InputAction.Reload, KeyCode.G);
+
+        // Core controls must always have a key: older settings screens could clear one (an unbound Shoot meant a
+        // player simply couldn't fire). Anything saved as "None" gets its default back.
+        foreach (InputAction action in Enum.GetValues(typeof(InputAction)))
+        {
+            if (IsAbilitySlot(action) || Get(action) != KeyCode.None) continue;
+            Store(action, Default(action), forMatch: false);
+        }
         foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
         {
             var action = SlotAction(slot);

@@ -30,6 +30,7 @@ public class PlayerGun : MonoBehaviourPun
     private Player player;
     private float  nextShotAt;
     private float  reloadEndsAt;
+    private float  bloom;          // Extra spread from spraying (degrees), shrinking back between shots
     private bool   reloadPending;
     private readonly RaycastHit[] hits = new RaycastHit[32];
     private readonly Dictionary<Player, (float damage, bool head)> pending = new();
@@ -61,6 +62,7 @@ public class PlayerGun : MonoBehaviourPun
         reloadEndsAt  = 0f;
         reloadPending = false;
         nextShotAt    = 0f;
+        bloom         = 0f;
         if (PhotonNetwork.InRoom) NetProps.SetLocal(PlayerKeys.Gun, Current != null ? Current.Id : "");
     }
 
@@ -88,6 +90,7 @@ public class PlayerGun : MonoBehaviourPun
             player.Animation.HoldingPistol = shown && Current.Model == null;
         }
 
+        if (photonView.IsMine && Current != null) bloom = Mathf.MoveTowards(bloom, 0f, Current.BloomRecovery * Time.deltaTime);
         if (!photonView.IsMine || !shown) return;
         if (reloadPending && !IsReloading) { Ammo = Current.Magazine; reloadPending = false; }
         if (!CanShoot) return;
@@ -115,7 +118,7 @@ public class PlayerGun : MonoBehaviourPun
         get
         {
             var manager = GameModeManager.Instance;
-            return manager != null && manager.Phase == MatchPhase.Active
+            return manager != null && manager.Phase == MatchPhase.Active && !manager.Clock.IsExpired
                 && !PauseMenuManager.IsPaused && !GunPicker.IsOpen && !Killcam.IsPlaying
                 && !player.IsHeld && !player.MovementLocked
                 && !player.Abilities.IsAwaitingAction
@@ -148,7 +151,9 @@ public class PlayerGun : MonoBehaviourPun
         nextShotAt = Time.time + gun.FireInterval;
 
         Transform view   = PlayerCam.Local.Camera.transform;
-        float     spread = gun.Spread + (player.IsGrounded ? 0f : gun.AirSpread);
+        // Perfect on the first shot; spraying blooms; air/moving error only with the Movement Inaccuracy rule
+        float     spread = gun.Spread + bloom + (MatchRules.MovementSpread && !player.IsGrounded ? gun.AirSpread : 0f);
+        bloom = Mathf.Min(gun.MaxBloom, bloom + gun.Bloom);
         float     damage = gun.Damage * MatchRules.DamageScale;
 
         pending.Clear();

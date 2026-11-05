@@ -162,6 +162,10 @@ public class PresidentMode : GameMode
         viewer == PlayerRole.Hunter && target != PlayerRole.Hunter
         && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding);
 
+    // Two teams: hunters, and the President with the defenders
+    public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) =>
+        (viewer == PlayerRole.Hunter) == (target == PlayerRole.Hunter);
+
     public override bool WearsCrown(PlayerRole role, MatchPhase phase) =>
         role == PlayerRole.President && phase != MatchPhase.Waiting;
 

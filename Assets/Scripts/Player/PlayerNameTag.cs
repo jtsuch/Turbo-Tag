@@ -27,6 +27,9 @@ public class PlayerNameTag : MonoBehaviour
     private PlayerAppearance appearance;
     private TextMeshPro      label;
     private Transform        tagRoot;
+
+    /// <summary>The floating tag object (not a child of the player), so the minimap can hide it.</summary>
+    public Transform TagRoot => tagRoot;
     private Camera           cam;
 
     private void Awake()

@@ -61,10 +61,8 @@ public class CombatHud : MonoBehaviour
 {
     private static CombatHud instance;
 
-    private static readonly Color Orange = new(1f, 0.55f, 0.1f);
-    private static readonly Color Panel  = new(0.05f, 0.06f, 0.08f, 0.75f);
-
-    private TMP_FontAsset font;
+    private static UITheme Theme => UITheme.Current;
+    private static Color Panel => UIKit.WithAlpha(UITheme.Current.panel, 0.9f);
 
     // Health / ammo
     private GameObject    vitals;
@@ -89,13 +87,14 @@ public class CombatHud : MonoBehaviour
     // Picker
     private GameObject     picker;
     private TMP_Text       pickerFooter;
-    private readonly List<(Image bg, TMP_Text text)> pickerRows = new();
+    private readonly List<Button> pickerRows = new();
 
     // Killcam / death notice
     private GameObject    killcamOverlay;
     private TMP_Text      killcamTitle;
     private RectTransform killcamProgress;
     private TMP_Text      deathNotice;
+    private GameObject    deathCard;
 
     private Player subscribed;
 
@@ -139,118 +138,139 @@ public class CombatHud : MonoBehaviour
 
     private void Build()
     {
+        // Same fitting as every kit canvas; over the HUD (0), under the score overlay (5) and pause menu (20)
         var canvas = gameObject.AddComponent<Canvas>();
         canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 1; // Over the scene HUD (nothing overlaps it), under the pause menu (10)
+        canvas.sortingOrder = 1;
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.Expand;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight  = 0.5f;
+        gameObject.AddComponent<UIScaler>();
         gameObject.AddComponent<GraphicRaycaster>(); // The gun picker's buttons
-        font = FindHudFont();
+        UIKit.EnsureEventSystem();
+        var root = (RectTransform)transform;
 
-        // Damage flash (under everything else)
+        // Damage / heal flash (under everything else)
         damageFlash = Img(transform, "Damage", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(0.8f, 0f, 0f, 0f));
-        damageFlash.raycastTarget = false;
 
         // Health (bottom left) and ammo (bottom right)
-        vitals = new GameObject("Vitals", typeof(RectTransform));
-        vitals.transform.SetParent(transform, false);
-        Stretch((RectTransform)vitals.transform);
+        vitals = UIKit.Rect("Vitals", root).gameObject;
+        UIKit.Stretch((RectTransform)vitals.transform);
 
-        var healthBg = Img(vitals.transform, "Health", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(360f, 70f), Panel);
-        healthText = Text(healthBg.transform, "Value", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(16f, 6f), new Vector2(140f, 60f), 46f, TextAlignmentOptions.Left);
-        var barBack = Img(healthBg.transform, "Bar", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(150f, 0f), new Vector2(190f, 16f), new Color(1f, 1f, 1f, 0.15f));
-        healthFillImage = Img(barBack.transform, "Fill", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.white);
+        var health = UIKit.Card(vitals.transform, Panel, 22f, 0.4f, "Health");
+        UIKit.Place(health, new Vector2(0f, 0f), new Vector2(32f, 28f), new Vector2(400f, 108f));
+        var hLabel = UIKit.Text(health, "HEALTH", 18f, UIKit.Font.Bold, Theme.textMuted);
+        UIKit.Place(hLabel.rectTransform, new Vector2(0f, 1f), new Vector2(24f, -12f), new Vector2(200f, 26f));
+        healthText = UIKit.Text(health, "100", 50f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Right);
+        UIKit.Place(healthText.rectTransform, new Vector2(1f, 1f), new Vector2(-22f, -2f), new Vector2(160f, 60f));
+        var barBack = UIKit.Panel(health, Theme.field, 9f, "Bar");
+        barBack.rectTransform.anchorMin = new Vector2(0f, 0f);
+        barBack.rectTransform.anchorMax = new Vector2(1f, 0f);
+        barBack.rectTransform.pivot = new Vector2(0.5f, 0f);
+        barBack.rectTransform.sizeDelta = new Vector2(-48f, 18f);
+        barBack.rectTransform.anchoredPosition = new Vector2(0f, 18f);
+        healthFillImage = UIKit.Panel(barBack.transform, Theme.lime, 9f, "Fill");
         healthFill = healthFillImage.rectTransform;
         healthFill.anchorMin = Vector2.zero;
+        healthFill.anchorMax = Vector2.one;
+        healthFill.sizeDelta = Vector2.zero;
 
-        var ammoBg = Img(vitals.transform, "Ammo", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(300f, 90f), Panel);
-        ammoText = Text(ammoBg.transform, "Rounds", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -4f), new Vector2(270f, 56f), 46f, TextAlignmentOptions.Right);
-        gunText  = Text(ammoBg.transform, "Gun", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 6f), new Vector2(270f, 30f), 22f, TextAlignmentOptions.Right);
-        gunText.color = Orange;
+        var ammo = UIKit.Card(vitals.transform, Panel, 22f, 0.4f, "Ammo");
+        UIKit.Place(ammo, new Vector2(1f, 0f), new Vector2(-32f, 28f), new Vector2(360f, 108f));
+        gunText = UIKit.OneLine(UIKit.Text(ammo, "", 18f, UIKit.Font.Bold, Theme.primary, TextAlignmentOptions.Right));
+        UIKit.Place(gunText.rectTransform, new Vector2(1f, 1f), new Vector2(-22f, -12f), new Vector2(320f, 26f));
+        ammoText = UIKit.Text(ammo, "", 56f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Right);
+        UIKit.Place(ammoText.rectTransform, new Vector2(1f, 0f), new Vector2(-22f, 8f), new Vector2(320f, 66f));
 
         // Hit marker: four short diagonal bars around the crosshair
-        hitMarker = new GameObject("HitMarker", typeof(RectTransform));
-        hitMarker.transform.SetParent(transform, false);
+        hitMarker = UIKit.Rect("HitMarker", root).gameObject;
         hitMarkerBars = new Image[4];
         for (int i = 0; i < 4; i++)
         {
             float angle = 45f + 90f * i;
             Vector2 dir = new(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
-            var bar = Img(hitMarker.transform, "Bar", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), dir * 16f, new Vector2(14f, 3f), Color.white);
+            var bar = Img(hitMarker.transform, "Bar", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), dir * 17f, new Vector2(15f, 4f), Color.white);
+            UIKit.Round(bar, 2f);
+            bar.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            bar.rectTransform.anchoredPosition = dir * 17f;
             bar.rectTransform.localRotation = Quaternion.Euler(0f, 0f, angle);
             hitMarkerBars[i] = bar;
         }
         hitMarker.SetActive(false);
 
-        // Kill feed (top right)
-        feed = new GameObject("KillFeed", typeof(RectTransform)).GetComponent<RectTransform>();
-        feed.SetParent(transform, false);
+        // Kill feed (right, under the score)
+        feed = UIKit.Rect("KillFeed", root);
         feed.anchorMin = feed.anchorMax = feed.pivot = new Vector2(1f, 1f);
-        feed.anchoredPosition = new Vector2(-30f, -240f); // Below the clock and score
-        feed.sizeDelta = new Vector2(560f, 300f);
-        var layout = feed.gameObject.AddComponent<VerticalLayoutGroup>();
-        layout.childAlignment = TextAnchor.UpperRight;
-        layout.spacing = 4f;
-        layout.childControlHeight = layout.childControlWidth = true;
-        layout.childForceExpandHeight = false;
+        feed.anchoredPosition = new Vector2(-32f, -180f);
+        feed.sizeDelta = new Vector2(560f, 320f);
+        var layout = UIKit.VStack(feed, 6f, null, TextAnchor.UpperRight);
+        layout.childForceExpandWidth = true;
 
-        BuildPicker();
+        BuildPicker(root);
 
-        // Killcam: a compact panel under the phase text (the HUD stays visible)
-        var panel = Img(transform, "Killcam", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(900f, 110f), Panel);
-        killcamOverlay = panel.gameObject;
-        var label = Text(panel.transform, "Label", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -6f), new Vector2(860f, 40f), 32f, TextAlignmentOptions.Center);
-        label.text  = "KILLCAM";
-        label.color = Orange;
-        killcamTitle = Text(panel.transform, "Title", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -42f), new Vector2(860f, 36f), 26f, TextAlignmentOptions.Center);
-        var skip = Text(panel.transform, "Skip", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 8f), new Vector2(860f, 26f), 20f, TextAlignmentOptions.Center);
-        skip.text  = "Press SPACE to skip";
-        skip.color = new Color(1f, 1f, 1f, 0.7f);
-        var progressBack = Img(panel.transform, "Progress", new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, 4f), new Color(1f, 1f, 1f, 0.15f));
+        // Killcam: a card under the clock (the rest of the HUD stays visible)
+        var kill = UIKit.Card(root, Panel, 24f, 0.45f, "Killcam");
+        UIKit.Place(kill, new Vector2(0.5f, 1f), new Vector2(0f, -176f), new Vector2(900f, 118f));
+        killcamOverlay = kill.gameObject;
+        var chip = UIKit.Chip(kill, "KILLCAM", Theme.pink, Theme.text, 20f);
+        UIKit.Place(chip.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, 16f), new Vector2(150f, 34f));
+        killcamTitle = UIKit.OneLine(UIKit.Text(kill, "", 28f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Center));
+        UIKit.Place(killcamTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(860f, 40f));
+        var skip = UIKit.Text(kill, "Press SPACE to skip", 18f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
+        UIKit.Place(skip.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(860f, 26f));
+        var progressBack = UIKit.Panel(kill, Theme.field, 3f, "Progress");
+        progressBack.rectTransform.anchorMin = new Vector2(0f, 0f);
+        progressBack.rectTransform.anchorMax = new Vector2(1f, 0f);
         progressBack.rectTransform.pivot = new Vector2(0.5f, 0f);
-        killcamProgress = Img(progressBack.transform, "Fill", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Orange).rectTransform;
+        progressBack.rectTransform.sizeDelta = new Vector2(-48f, 6f);
+        progressBack.rectTransform.anchoredPosition = new Vector2(0f, 8f);
+        killcamProgress = UIKit.Panel(progressBack.transform, Theme.pink, 3f, "Fill").rectTransform;
+        killcamProgress.anchorMin = Vector2.zero;
+        killcamProgress.anchorMax = Vector2.one;
+        killcamProgress.sizeDelta = Vector2.zero;
         killcamOverlay.SetActive(false);
 
-        deathNotice = Text(transform, "DeathNotice", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 120f), new Vector2(1200f, 120f), 40f, TextAlignmentOptions.Center);
-        deathNotice.gameObject.SetActive(false);
+        // Death notice (falls, or no killcam)
+        var death = UIKit.Card(root, Panel, 28f, 0.5f, "Death");
+        UIKit.Place(death, new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(760f, 150f));
+        death.pivot = new Vector2(0.5f, 0.5f);
+        deathNotice = UIKit.Text(death, "", 56f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Center);
+        UIKit.Stretch(deathNotice.rectTransform, 20f, 20f, 10f, 10f);
+        deathCard = death.gameObject;
+        deathCard.SetActive(false);
 
         PlayerGun.LocalHit += HandleHit;
     }
 
-    private void BuildPicker()
+    private void BuildPicker(RectTransform root)
     {
-        picker = Img(transform, "GunPicker", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -170f), new Vector2(720f, 0f), Panel).gameObject;
-        var rect = (RectTransform)picker.transform;
-        float height = 70f + GunCatalog.All.Count * 64f + 50f;
-        rect.sizeDelta = new Vector2(720f, height);
+        var card = UIKit.Card(root, Theme.panel, 28f, 0.55f, "GunPicker");
+        float height = 120f + GunCatalog.All.Count * 86f + 60f;
+        UIKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(760f, height));
+        card.pivot = new Vector2(0.5f, 0.5f);
+        picker = card.gameObject;
+        UIKit.VStack(card, 12f, UIKit.Pad(32, 28), TextAnchor.UpperCenter);
 
-        var title = Text(picker.transform, "Title", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -12f), new Vector2(680f, 48f), 34f, TextAlignmentOptions.Center);
-        title.text  = "CHOOSE YOUR GUN";
-        title.color = Orange;
+        UIKit.Title(card, "Choose Your Gun", 48f, TextAlignmentOptions.Center);
+        UIKit.Spacer(card, 4f);
 
         for (int i = 0; i < GunCatalog.All.Count; i++)
         {
             var gun = GunCatalog.All[i];
-            var row = Img(picker.transform, gun.Id, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -70f - i * 64f), new Vector2(680f, 58f), new Color(1f, 1f, 1f, 0.06f));
-            row.raycastTarget = true;
-            var button = row.gameObject.AddComponent<Button>();
-            button.targetGraphic = row;
-            var colors = button.colors;
-            colors.highlightedColor = new Color(1.6f, 1.3f, 1f, 1f);
-            colors.pressedColor     = new Color(1.2f, 1f, 0.8f, 1f);
-            colors.fadeDuration     = 0.05f;
-            button.colors = colors;
             int index = i;
-            button.onClick.AddListener(() => { GunPicker.Selected = index; GunPicker.Close(pick: true); });
-            var text = Text(row.transform, "Text", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, 26f, TextAlignmentOptions.Left);
-            text.rectTransform.offsetMin = new Vector2(16f, 0f);
-            text.text = $"<b>[{i + 1}]  {gun.Name}</b>   <size=70%><color=#BBBBBB>{gun.Stats}</color></size>";
-            pickerRows.Add((row, text));
+            var button = UIKit.Button(card, "", UIKit.Style.Ghost, () => { GunPicker.Selected = index; GunPicker.Close(pick: true); }, 74f, 28f);
+            var label = UIKit.Label(button);
+            label.enableAutoSizing = false;
+            label.fontSize = 28f;
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.richText = true;
+            label.text = $"<color=#FFC93C>{i + 1}</color>   {gun.Name}   <size=65%><color=#B9B2E0>{gun.Stats}</color></size>";
+            pickerRows.Add(button);
         }
 
-        pickerFooter = Text(picker.transform, "Footer", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 10f), new Vector2(680f, 36f), 22f, TextAlignmentOptions.Center);
+        pickerFooter = UIKit.Text(card, "", 20f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
+        UIKit.Size(pickerFooter, height: 30f);
         picker.SetActive(false);
     }
 
@@ -310,10 +330,10 @@ public class CombatHud : MonoBehaviour
         }
 
         for (int i = 0; i < pickerRows.Count; i++)
-            pickerRows[i].bg.color = i == last ? new Color(Orange.r, Orange.g, Orange.b, 0.35f) : new Color(1f, 1f, 1f, 0.06f);
+            pickerRows[i].GetComponent<UIButtonFx>().FaceColor = i == last ? Theme.secondary : Theme.card;
 
         float left = Mathf.Max(0f, GunPicker.EndsAt - Time.time);
-        pickerFooter.text = $"Click a gun or press 1–{GunCatalog.All.Count}  ·  Space/Enter: {GunCatalog.All[last].Name} ({Mathf.CeilToInt(left)}s)";
+        pickerFooter.text = $"Click a gun or press 1–{GunCatalog.All.Count}   ·   Space / Enter: {GunCatalog.All[last].Name}  ({Mathf.CeilToInt(left)})";
     }
 
     private void UpdateVitals(Player local)
@@ -325,23 +345,24 @@ public class CombatHud : MonoBehaviour
         var health = local.Health;
         healthText.text = Mathf.CeilToInt(health.Current).ToString();
         healthFill.anchorMax = new Vector2(health.Fraction, 1f);
-        healthFillImage.color = Color.Lerp(new Color(0.95f, 0.2f, 0.15f), Color.white, Mathf.InverseLerp(0.25f, 0.6f, health.Fraction));
+        healthFillImage.color = Color.Lerp(Theme.danger, Theme.lime, Mathf.InverseLerp(0.25f, 0.6f, health.Fraction));
+        healthText.color = health.Fraction <= 0.25f ? Color.Lerp(Theme.danger, Color.white, Mathf.PingPong(Time.time * 3f, 1f)) : Theme.text;
 
         var gun = local.Gun.Current;
         if (gun == null)
         {
-            ammoText.text = "-";
+            ammoText.text = "–";
             gunText.text  = GunPicker.IsOpen ? "Choosing..." : "";
         }
         else if (local.Gun.IsReloading)
         {
             ammoText.text = $"<alpha=#55>{local.Gun.Ammo}<size=60%> / {gun.Magazine}</size>"; // The gun animates the reload
-            gunText.text  = gun.Name;
+            gunText.text  = gun.Name.ToUpperInvariant() + "   ·   RELOADING";
         }
         else
         {
             ammoText.text = $"{local.Gun.Ammo}<size=60%> / {gun.Magazine}</size>";
-            gunText.text  = $"{gun.Name}  ·  {Keybinds.Get(InputAction.Reload)} reload";
+            gunText.text  = $"{gun.Name.ToUpperInvariant()}   ·   {Keybinds.Label(Keybinds.Get(InputAction.Reload))} to reload";
         }
     }
 
@@ -372,14 +393,15 @@ public class CombatHud : MonoBehaviour
     {
         string victim = Name(kill.Victim);
         string line = kill.SelfDestruct
-            ? $"{victim} <color=#BBBBBB>fell off</color>"
-            : $"{Name(kill.Killer)} <color=#BBBBBB>[{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? " · headshot" : "")}]</color> {victim}";
+            ? $"{victim} <color=#B9B2E0>fell off</color>"
+            : $"{Name(kill.Killer)}  <color=#B9B2E0>{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? "  <color=#FF4D6D>HEADSHOT</color>" : "")}</color>  {victim}";
 
-        var bg = Img(feed, "Kill", Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(0f, 40f), Panel);
-        bg.gameObject.AddComponent<LayoutElement>().minHeight = 40f;
-        var text = Text(bg.transform, "Text", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, 24f, TextAlignmentOptions.Right);
-        text.rectTransform.offsetMax = new Vector2(-12f, 0f);
-        text.text = line;
+        var bg = UIKit.Panel(feed, Panel, 14f, "Kill");
+        bg.raycastTarget = false;
+        bg.gameObject.AddComponent<LayoutElement>().minHeight = 42f;
+        var text = UIKit.OneLine(UIKit.Text(bg.transform, line, 22f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Right));
+        UIKit.Stretch(text.rectTransform, 16f, 16f, 0f, 0f);
+        text.alignment = TextAlignmentOptions.MidlineRight;
         feedLines.Add((bg.gameObject, Time.time + 6f));
 
         while (feedLines.Count > 6)
@@ -394,9 +416,9 @@ public class CombatHud : MonoBehaviour
         {
             float penalty = MatchRules.FallPenalty;
             deathNotice.text = kill.SelfDestruct
-                ? $"<color=#FF8C1A>SELF DESTRUCTION</color>\n<size=60%>You fell off{(penalty > 0f ? $"  ·  -{penalty:0} point{(penalty == 1f ? "" : "s")}" : "")}</size>"
-                : $"<color=#FF8C1A>ELIMINATED</color>\n<size=60%>by {Name(kill.Killer)}</size>";
-            deathNotice.gameObject.SetActive(true);
+                ? $"<color=#FFC93C>SELF DESTRUCTION</color>\n<size=50%>You fell off{(penalty > 0f ? $"  ·  -{penalty:0} point{(penalty == 1f ? "" : "s")}" : "")}</size>"
+                : $"<color=#FF4D6D>ELIMINATED</color>\n<size=50%>by {Name(kill.Killer)}</size>";
+            deathCard.SetActive(true);
         }
         if (kill.Killer == PhotonNetwork.LocalPlayer.ActorNumber && !kill.SelfDestruct)
         {
@@ -417,33 +439,18 @@ public class CombatHud : MonoBehaviour
 
     private void UpdateDeathNotice(Player local)
     {
-        if (deathNotice.gameObject.activeSelf && (local == null || !local.IsCaught))
-            deathNotice.gameObject.SetActive(false);
+        if (deathCard.activeSelf && (local == null || !local.IsCaught))
+            deathCard.SetActive(false);
     }
 
     private static string Name(int actor)
     {
         var p = PhotonNetwork.CurrentRoom?.GetPlayer(actor);
         string name = p == null ? "Someone" : string.IsNullOrEmpty(p.NickName) ? $"Player {actor}" : p.NickName;
-        return actor == PhotonNetwork.LocalPlayer.ActorNumber ? $"<color=#FF8C1A>{name}</color>" : name;
+        return actor == PhotonNetwork.LocalPlayer.ActorNumber ? $"<color=#FFC93C>{name}</color>" : name;
     }
 
     // ─── Building helpers ─────────────────────────────────────────────────────
-
-    private TMP_FontAsset FindHudFont()
-    {
-        var hud = HUDManager.Instance;
-        if (hud == null) return null;
-        var text = hud.GetComponentInChildren<TMP_Text>(true);
-        return text != null ? text.font : null;
-    }
-
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = rect.offsetMax = Vector2.zero;
-    }
 
     private static Image Img(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, Color color)
     {
@@ -459,25 +466,5 @@ public class CombatHud : MonoBehaviour
         image.color = color;
         image.raycastTarget = false;
         return image;
-    }
-
-    private TMP_Text Text(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, float fontSize, TextAlignmentOptions align)
-    {
-        var go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var text = go.AddComponent<TextMeshProUGUI>();
-        var rect = text.rectTransform;
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.pivot     = anchorMin == anchorMax ? anchorMin : new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
-        if (font != null) text.font = font;
-        text.fontSize  = fontSize;
-        text.alignment = align;
-        text.color     = Color.white;
-        text.raycastTarget = false;
-        text.textWrappingMode = TextWrappingModes.NoWrap;
-        return text;
     }
 }

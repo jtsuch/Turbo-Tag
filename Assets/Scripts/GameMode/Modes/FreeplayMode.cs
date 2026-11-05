@@ -20,6 +20,9 @@ public class FreeplayMode : GameMode
 
     public override float CooldownMultiplier(PlayerRole role) => 0f;
 
+    // Practice: everyone on the map
+    public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => true;
+
     // No objective text once playing
     public override string GetPhaseLabel(MatchPhase phase) =>
         phase == MatchPhase.Active ? "" : base.GetPhaseLabel(phase);

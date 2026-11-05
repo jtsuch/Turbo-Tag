@@ -20,7 +20,6 @@ public class ScoreOverlay : MonoBehaviour
     private const float ColumnWidth = 170f;
     private const float Refresh     = 0.25f;
 
-    private static readonly Color Orange = new(1f, 0.55f, 0.1f);
 
     private GameObject    panel;
     private RectTransform table;
@@ -47,29 +46,27 @@ public class ScoreOverlay : MonoBehaviour
         canvas.sortingOrder = 5; // Over the HUD and combat HUD, under the pause menu
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.Expand;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight  = 0.5f;
+        gameObject.AddComponent<UIScaler>();
 
-        panel = new GameObject("Panel", typeof(RectTransform), typeof(Image));
-        panel.transform.SetParent(transform, false);
-        var rect = (RectTransform)panel.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        panel.GetComponent<Image>().color = new Color(0.05f, 0.06f, 0.08f, 0.85f);
-        panel.GetComponent<Image>().raycastTarget = false;
+        var card = UIKit.Card(transform, UIKit.WithAlpha(UITheme.Current.panel, 0.96f), 30f, 0.55f, "Panel");
+        card.anchorMin = card.anchorMax = card.pivot = new Vector2(0.5f, 0.5f);
+        panel = card.gameObject;
 
-        title = Text(panel.transform, "", 34f, TextAlignmentOptions.Center);
-        title.color = Orange;
+        title = UIKit.Title(panel.transform, "", 44f, TextAlignmentOptions.Center);
+        title.color = UITheme.Current.primary;
         var titleRect = title.rectTransform;
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
         titleRect.pivot     = new Vector2(0.5f, 1f);
-        titleRect.anchoredPosition = new Vector2(0f, -12f);
-        titleRect.sizeDelta = new Vector2(0f, 48f);
+        titleRect.anchoredPosition = new Vector2(0f, -18f);
+        titleRect.sizeDelta = new Vector2(0f, 56f);
 
         table = new GameObject("Table", typeof(RectTransform)).GetComponent<RectTransform>();
         table.SetParent(panel.transform, false);
         table.anchorMin = table.anchorMax = table.pivot = new Vector2(0.5f, 1f);
-        table.anchoredPosition = new Vector2(0f, -70f);
+        table.anchoredPosition = new Vector2(0f, -86f);
 
         panel.SetActive(false);
     }
@@ -86,7 +83,7 @@ public class ScoreOverlay : MonoBehaviour
 
     private void Rebuild(GameMode mode)
     {
-        if (font == null) font = FindHudFont();
+        if (font == null) font = UIKit.FontAsset(UIKit.Font.Bold);
         foreach (Transform child in table) Destroy(child.gameObject);
 
         var players = new List<PhotonPlayer>(PhotonNetwork.PlayerList);
@@ -95,25 +92,26 @@ public class ScoreOverlay : MonoBehaviour
 
         float width = RankWidth + NameWidth + columns.Count * ColumnWidth;
         float height = (players.Count + 1) * RowHeight;
-        ((RectTransform)panel.transform).sizeDelta = new Vector2(width + 40f, height + 100f);
+        ((RectTransform)panel.transform).sizeDelta = new Vector2(width + 64f, height + 120f);
         table.sizeDelta = new Vector2(width, height);
         title.text = mode.DisplayName;
 
         // Header
         var header = new List<string> { "#", "Player" };
         foreach (var column in columns) header.Add(column.Header);
-        Row(header, 0, new Color(1f, 1f, 1f, 0.6f), null);
+        Row(header, 0, UITheme.Current.textMuted, null, header: true);
 
         for (int i = 0; i < players.Count; i++)
         {
             var p = players[i];
             var cells = new List<string> { (i + 1).ToString(), string.IsNullOrEmpty(p.NickName) ? $"Player {p.ActorNumber}" : p.NickName };
             foreach (var column in columns) cells.Add(column.Value(p));
-            Row(cells, i + 1, p.IsLocal ? Orange : Color.white, p.IsLocal ? new Color(1f, 0.55f, 0.1f, 0.15f) : (Color?)null);
+            Row(cells, i + 1, p.IsLocal ? UITheme.Current.primary : Color.white,
+                p.IsLocal ? UIKit.WithAlpha(UITheme.Current.primary, 0.16f) : (i % 2 == 0 ? UIKit.WithAlpha(Color.white, 0.04f) : (Color?)null));
         }
     }
 
-    private void Row(List<string> cells, int index, Color color, Color? highlight)
+    private void Row(List<string> cells, int index, Color color, Color? highlight, bool header = false)
     {
         float y = -index * RowHeight;
         if (highlight.HasValue)
@@ -125,6 +123,7 @@ public class ScoreOverlay : MonoBehaviour
             r.anchoredPosition = new Vector2(0f, y);
             r.sizeDelta = new Vector2(0f, RowHeight);
             var image = bg.GetComponent<Image>();
+            UIKit.Round(image, 12f);
             image.color = highlight.Value;
             image.raycastTarget = false;
         }
@@ -133,7 +132,9 @@ public class ScoreOverlay : MonoBehaviour
         for (int c = 0; c < cells.Count; c++)
         {
             float w = c == 0 ? RankWidth : c == 1 ? NameWidth : ColumnWidth;
-            var text = Text(table, cells[c], 26f, c == 1 ? TextAlignmentOptions.Left : TextAlignmentOptions.Center);
+            var text = Text(table, cells[c], header ? 18f : 26f, c == 1 ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center);
+            text.font = UIKit.FontAsset(header ? UIKit.Font.Bold : c <= 1 ? UIKit.Font.Display : UIKit.Font.Bold);
+            if (header) text.text = cells[c].ToUpperInvariant();
             text.color = color;
             var r = text.rectTransform;
             r.anchorMin = r.anchorMax = r.pivot = new Vector2(0f, 1f);
@@ -156,13 +157,5 @@ public class ScoreOverlay : MonoBehaviour
         text.textWrappingMode = TextWrappingModes.NoWrap;
         text.overflowMode     = TextOverflowModes.Ellipsis;
         return text;
-    }
-
-    private static TMP_FontAsset FindHudFont()
-    {
-        var hud = HUDManager.Instance;
-        if (hud == null) return null;
-        var text = hud.GetComponentInChildren<TMP_Text>(true);
-        return text != null ? text.font : null;
     }
 }

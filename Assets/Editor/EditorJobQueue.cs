@@ -35,6 +35,7 @@ public static class EditorJobQueue
         ["RemoveStraySpawners"] = LevelTools.RemoveStraySpawners,
         ["ProcessMeshes"] = MeshPrefabBuilder.ProcessMeshes,
         ["BuildImprovementExpansion"] = ImprovementExpansion.Build,
+        ["BuildUITheme"] = UIThemeBuilder.Build,
         ["BuildGunPrefabs"] = GunPrefabBuilder.Build,
     };
 

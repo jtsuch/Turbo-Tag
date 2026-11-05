@@ -118,8 +118,9 @@ public class FreeForAllMode : GameMode
 
     public override bool CanMove(PlayerRole role, MatchPhase phase) => phase != MatchPhase.Countdown;
 
+    // Abilities only while the match is live (none on the winner screen: no last-second knock-offs)
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
-        CanMove(role, phase) && MatchRules.GunModeAbilities;
+        phase == MatchPhase.Active && MatchRules.GunModeAbilities;
 
     // Shot dead: the killcam's length (skippable). Fell off: the normal respawn delay.
     public override float RespawnDelayAfter(PhotonPlayer tagger, PhotonPlayer victim) =>

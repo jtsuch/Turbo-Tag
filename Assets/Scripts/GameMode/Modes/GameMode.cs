@@ -152,6 +152,12 @@ public abstract class GameMode
         return viewerHunts == targetHunts || !viewerHunts;
     }
 
+    /// <summary>
+    /// Whether the minimap shows <paramref name="target"/> to <paramref name="viewer"/> (it never shows bodies, only
+    /// these markers). Default: teammates (same role; nobody when roles aren't used).
+    /// </summary>
+    public virtual bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => viewer == target && viewer != PlayerRole.None;
+
     /// <summary>True when a player in <paramref name="role"/> wears a crown (seen by anyone their identity isn't hidden from).</summary>
     public virtual bool WearsCrown(PlayerRole role, MatchPhase phase) => false;
 

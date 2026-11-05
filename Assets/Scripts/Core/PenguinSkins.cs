@@ -7,7 +7,7 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// (Resources/Player/Skins/Penguin-{Name}): the black body parts take the skin's colour; the belly, feet,
 /// beak and the (transparent, so black in game) eyes stay. "Black" is the original map. A player's pick is the
 /// <see cref="PlayerKeys.Skin"/> property (synced), remembered locally between games, and drawn by
-/// PlayerAppearance. Chosen in the Lobby (SkinPicker).
+/// PlayerAppearance. Chosen on the main menu player card or in the Lobby (MainMenuScreen, LobbyScreen).
 /// </summary>
 public static class PenguinSkins
 {

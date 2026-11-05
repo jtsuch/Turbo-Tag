@@ -155,7 +155,7 @@ public class CombatManager : MonoBehaviourPun
 
         PhotonPlayer killer = killerActor >= 0 ? PhotonNetwork.CurrentRoom.GetPlayer(killerActor) : null;
         bool selfDestruct = killer == null || killer == victim;
-        bool live = manager.Phase == MatchPhase.Active;
+        bool live = manager.Phase == MatchPhase.Active && !manager.Clock.IsExpired;
 
         if (live) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
 

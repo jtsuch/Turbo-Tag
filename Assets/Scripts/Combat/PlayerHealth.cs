@@ -48,7 +48,8 @@ public class PlayerHealth : MonoBehaviourPun
         if (!photonView.IsMine || dead || player.IsCaught) return;
         var combat  = CombatManager.Instance;
         var manager = GameModeManager.Instance;
-        if (combat == null || manager == null || manager.Phase != MatchPhase.Active) return;
+        // Only while the match is live: not once the clock has run out (the winner screen follows)
+        if (combat == null || manager == null || manager.Phase != MatchPhase.Active || manager.Clock.IsExpired) return;
 
         Current        = Mathf.Max(0f, Current - amount);
         LastAttacker   = attacker;

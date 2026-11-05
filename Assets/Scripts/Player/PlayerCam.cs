@@ -91,10 +91,16 @@ public class PlayerCam : MonoBehaviour
 
         currentCameraOffset = normalCameraOffset;
         yRotation = playerTransform.eulerAngles.y;
-        if (cam != null) DefaultFov = cam.fieldOfView;
-
-        if (SettingsManager.Instance != null) sensitivity = SettingsManager.Instance.Sensitivity;
+        if (SettingsManager.Instance != null)
+        {
+            sensitivity = SettingsManager.Instance.Sensitivity;
+            invertY     = SettingsManager.Instance.InvertY;
+            HandleFovChanged(SettingsManager.Instance.FieldOfView);
+        }
+        else if (cam != null) DefaultFov = cam.fieldOfView;
         SettingsManager.SensitivityChanged += HandleSensitivityChanged;
+        SettingsManager.FieldOfViewChanged += HandleFovChanged;
+        SettingsManager.InvertYChanged     += HandleInvertChanged;
 
         player.StateChanged += HandlePlayerStateChanged;
         player.Jumped       += HandleJump;
@@ -107,6 +113,8 @@ public class PlayerCam : MonoBehaviour
     {
         if (_local == this) _local = null;
         SettingsManager.SensitivityChanged -= HandleSensitivityChanged;
+        SettingsManager.FieldOfViewChanged -= HandleFovChanged;
+        SettingsManager.InvertYChanged     -= HandleInvertChanged;
 
         if (player != null)
         {
@@ -288,7 +296,8 @@ public class PlayerCam : MonoBehaviour
         // Sensitivity 100 = raw 1:1 mouse delta
         float scale = sensitivity / 100f;
         yRotation += Input.GetAxisRaw("Mouse X") * scale;
-        xRotation  = Mathf.Clamp(xRotation - Input.GetAxisRaw("Mouse Y") * scale, -90f, 90f);
+        float mouseY = Input.GetAxisRaw("Mouse Y") * (invertY ? -1f : 1f);
+        xRotation  = Mathf.Clamp(xRotation - mouseY * scale, -90f, 90f);
     }
 
     private void UpdateHeadBob(float size)
@@ -333,6 +342,16 @@ public class PlayerCam : MonoBehaviour
     private void HandleJump() => bumpOffset = jumpBumpAmount;
     private void HandleLand() => bumpOffset = landBumpAmount;
     private void HandleSensitivityChanged(float value) => sensitivity = value;
+    private void HandleInvertChanged(bool value)       => invertY = value;
+
+    // The field of view setting: the resting FOV that FOV effects (dash, teleport) return to
+    private void HandleFovChanged(float value)
+    {
+        DefaultFov = value;
+        if (cam != null) { cam.DOKill(); cam.fieldOfView = value; }
+    }
+
+    private bool invertY;
 
     private void HandlePlayerStateChanged(Player.MovementState newState)
     {
