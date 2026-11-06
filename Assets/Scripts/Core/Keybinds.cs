@@ -11,6 +11,7 @@ public enum InputAction
     Reload,
     Scores,
     Map,
+    Emote,
 }
 
 /// <summary>
@@ -45,6 +46,7 @@ public static class Keybinds
         [InputAction.Reload]       = KeyCode.R,
         [InputAction.Scores]       = KeyCode.Tab,
         [InputAction.Map]          = KeyCode.M,
+        [InputAction.Emote]        = KeyCode.T,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,

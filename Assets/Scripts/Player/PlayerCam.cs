@@ -57,7 +57,15 @@ public class PlayerCam : MonoBehaviour
 
     // ─── Runtime ──────────────────────────────────────────────────────────────
     public Camera Camera     => cam;
-    public float  DefaultFov { get; private set; } = 60f;
+    /// <summary>The resting field of view: the setting, times any effect's scale (Tunnel Vision). FOV kicks return here.</summary>
+    public float  DefaultFov => baseFov * fovScale;
+    private float baseFov  = 60f;
+    private float fovScale = 1f;
+    private float fovTween = 60f;   // The FOV kicks (dash, teleport) tween this; the camera adds the speed stretch on top
+    private float speedFov;         // Extra degrees while moving fast
+
+    /// <summary>0 at running speed, 1 when really flying (≈35 m/s): drives the FOV stretch, speed lines and wind.</summary>
+    public float SpeedFeel { get; private set; }
 
     private float   sensitivity = SettingsManager.DefaultSensitivity;
     private Vector3 currentCameraOffset;
@@ -98,7 +106,8 @@ public class PlayerCam : MonoBehaviour
             invertY     = SettingsManager.Instance.InvertY;
             HandleFovChanged(SettingsManager.Instance.FieldOfView);
         }
-        else if (cam != null) DefaultFov = cam.fieldOfView;
+        else if (cam != null) baseFov = cam.fieldOfView;
+        fovTween = DefaultFov;
         SettingsManager.SensitivityChanged += HandleSensitivityChanged;
         SettingsManager.FieldOfViewChanged += HandleFovChanged;
         SettingsManager.InvertYChanged     += HandleInvertChanged;
@@ -125,11 +134,12 @@ public class PlayerCam : MonoBehaviour
             player.Caught       -= EnterCaughtMode;
             player.Respawned    -= ExitCaughtMode;
         }
-        if (cam != null) cam.DOKill();
+        DOTween.Kill(this);
     }
 
     private void LateUpdate()
     {
+        UpdateSpeedFeel();
         bool paused = PauseMenuManager.IsPaused;
 
         // The gun picker frees the mouse to click a gun (and the view stops turning meanwhile)
@@ -172,6 +182,10 @@ public class PlayerCam : MonoBehaviour
         if (!paused) ReadMouse();
         ApplyLure();
         float adminRoll = ApplyAdminEffects();
+        punchRoll = Mathf.Lerp(punchRoll, 0f, 1f - Mathf.Exp(-10f * Time.deltaTime));
+        adminRoll += punchRoll;
+        flipRoll = Mathf.MoveTowards(flipRoll, upsideDown ? 180f : 0f, 360f * Time.deltaTime);
+        adminRoll += flipRoll;
 
         float size = player.Size;
         transform.localPosition = Vector3.SmoothDamp(
@@ -187,7 +201,7 @@ public class PlayerCam : MonoBehaviour
             cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size) + shakeOffset;
 
         // Free Spin (hold the Free Spin key, default 4): the mouse turns the whole body on every axis (backflips, barrel turns)
-        bool spinHeld = !paused && player.CanMove && !IsLured && !player.IsMagnetized && player.SurfaceFrame == Quaternion.identity
+        bool spinHeld = !paused && player.CanMove && !IsLured && !EmoteMenu.IsOpen && !player.IsMagnetized && player.SurfaceFrame == Quaternion.identity
                      && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
         if (spinHeld)
         {
@@ -256,6 +270,11 @@ public class PlayerCam : MonoBehaviour
     // ─── Admin teases (AdminCommands) ─────────────────────────────────────────
 
     private float dizzyUntil, spinUntil;
+    private bool  upsideDown;
+    private float flipRoll;
+
+    /// <summary>Turns the view upside down (the Upside Down donut), rolling over smoothly.</summary>
+    public void SetUpsideDown(bool on) => upsideDown = on;
 
     /// <summary>A wobbly, drifting, tilting view for <paramref name="seconds"/> (admin "dizzy").</summary>
     public void Dizzy(float seconds) => dizzyUntil = Time.time + Mathf.Clamp(seconds, 0f, 120f);
@@ -323,6 +342,21 @@ public class PlayerCam : MonoBehaviour
 
     /// <summary>Shakes the view (explosions, hard hits): 0–1, adds up, fades in about half a second.</summary>
     public void AddShake(float amount) => shake = Mathf.Clamp01(Mathf.Max(shake, 0f) + amount);
+
+    /// <summary>
+    /// Getting shot: the view jolts away from the shot (pitch and a quick roll toward the side it came from),
+    /// harder for bigger hits, plus a little shake.
+    /// </summary>
+    public void Punch(Vector3 shotDirection, float damage)
+    {
+        float k = Mathf.Clamp01(damage / 60f);
+        Vector3 local = transform.InverseTransformDirection(shotDirection);
+        xRotation = Mathf.Clamp(xRotation - Mathf.Lerp(1.5f, 6f, k) * Mathf.Sign(local.z + 0.01f), -90f, 90f);
+        punchRoll += Mathf.Lerp(4f, 12f, k) * -Mathf.Sign(local.x + 0.001f);
+        AddShake(Mathf.Lerp(0.15f, 0.45f, k));
+    }
+
+    private float punchRoll; // Degrees, springs back to 0
 
     /// <summary>Kicks the view up by <paramref name="degrees"/> (gun recoil).</summary>
     public void AddRecoil(float degrees) => xRotation = Mathf.Clamp(xRotation - degrees, -90f, 90f);
@@ -445,8 +479,9 @@ public class PlayerCam : MonoBehaviour
     // The field of view setting: the resting FOV that FOV effects (dash, teleport) return to
     private void HandleFovChanged(float value)
     {
-        DefaultFov = value;
-        if (cam != null) { cam.DOKill(); cam.fieldOfView = value; }
+        baseFov = value;
+        DOTween.Kill(this);
+        fovTween = DefaultFov;
     }
 
     private bool invertY;
@@ -505,12 +540,29 @@ public class PlayerCam : MonoBehaviour
 
     // ─── FOV ──────────────────────────────────────────────────────────────────
 
+    // Going fast stretches the view a little (on top of the FOV setting and any kick)
+    private void UpdateSpeedFeel()
+    {
+        float speed = player != null && player.Body != null && !player.IsCaught ? player.Body.linearVelocity.magnitude : 0f;
+        float feel  = Mathf.InverseLerp(15f, 35f, speed);
+        SpeedFeel   = Mathf.Lerp(SpeedFeel, feel, 1f - Mathf.Exp(-6f * Time.deltaTime));
+        speedFov    = SpeedFeel * 12f;
+        if (cam != null) cam.fieldOfView = fovTween + speedFov;
+    }
+
     public void ChangeFov(float endValue, float duration = 0.25f)
     {
         if (cam == null) return;
-        cam.DOKill();
-        cam.DOFieldOfView(endValue, duration);
+        DOTween.Kill(this);
+        DOTween.To(() => fovTween, v => fovTween = v, endValue, duration).SetTarget(this);
     }
 
     public void ResetFov(float duration = 0.25f) => ChangeFov(DefaultFov, duration);
+
+    /// <summary>Scales the resting field of view (1 = the setting) and eases to it.</summary>
+    public void SetFovScale(float scale)
+    {
+        fovScale = Mathf.Clamp(scale, 0.2f, 2f);
+        ResetFov(0.4f);
+    }
 }

@@ -129,8 +129,29 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Owner: an admin made this player immune to gun damage ("name god 1").</summary>
     public bool AdminGod { get; set; }
 
-    /// <summary>Shield (synced): immune to other players' abilities (blasts, pulls, ice, traps, flashes, Honk, Fish Bait…).</summary>
-    public bool IsShielded { get; set; }
+    /// <summary>Owner: the Shield ability is held up.</summary>
+    public bool ShieldHeld { get; set; }
+
+    /// <summary>Owner: the Bubble donut effect is on.</summary>
+    public bool ShieldBubble { get; set; }
+
+    /// <summary>
+    /// Shielded (synced): immune to other players' abilities (blasts, pulls, ice, traps, flashes, Honk, Fish Bait…).
+    /// Drawn on every screen by <see cref="ShieldBubble"/>.
+    /// </summary>
+    public bool IsShielded => IsLocal ? ShieldHeld || ShieldBubble : remoteShielded;
+
+    /// <summary>Synced: everyone else sees this player through walls (the Beacon donut curse).</summary>
+    public bool IsBeacon
+    {
+        get => IsLocal ? beacon : remoteBeacon;
+        set => beacon = value;
+    }
+
+    /// <summary>Owner: abilities are switched off by an effect (the Butterfingers donut curse).</summary>
+    public bool AbilitiesLockedByEffect { get; set; }
+
+    private bool beacon, remoteBeacon, remoteShielded;
 
     /// <summary>
     /// True when an ability from <paramref name="sourceActor"/> may affect this player: always, unless shielded
@@ -163,7 +184,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         !IsCaught && !IsHeld && !MovementLocked && (GameModeManager.Instance == null || GameModeManager.Instance.CanMove(this));
 
     public bool CanUseAbilities =>
-        !IsCaught && !IsHeld && !AdminAbilitiesOff && (GameModeManager.Instance == null || GameModeManager.Instance.CanUseAbilities(this));
+        !IsCaught && !IsHeld && !AdminAbilitiesOff && !AbilitiesLockedByEffect && (GameModeManager.Instance == null || GameModeManager.Instance.CanUseAbilities(this));
 
     // ─── Timed stat changes (Adrenaline, Grow Ray…) ───────────────────────────
     private readonly Dictionary<string, (Stat stat, float until)> timedModifiers = new();
@@ -281,6 +302,9 @@ public class Player : MonoBehaviourPun, IPunObservable
         Health = TryGetComponent(out PlayerHealth health) ? health : gameObject.AddComponent<PlayerHealth>();
         Gun    = TryGetComponent(out PlayerGun gun)       ? gun    : gameObject.AddComponent<PlayerGun>();
         if (!TryGetComponent(out PlayerFx _)) gameObject.AddComponent<PlayerFx>(); // Jump/land dust for others
+        if (!TryGetComponent(out ShieldBubble _)) gameObject.AddComponent<ShieldBubble>(); // Shield / Bubble, every screen
+        if (!TryGetComponent(out HitFlinch _)) gameObject.AddComponent<HitFlinch>();       // Shot reactions on the body
+        if (!TryGetComponent(out PlayerEmotes _)) gameObject.AddComponent<PlayerEmotes>(); // Emote bubbles and moves
 
         // Model roots are often imported with a non-unit scale; stance/size multiply it
         baseVisualScales    = new Vector3[visualRoots.Length];
@@ -359,12 +383,27 @@ public class Player : MonoBehaviourPun, IPunObservable
         _                    => 1f,
     };
 
+    private float bounce = 1f;
+
+    /// <summary>
+    /// Visual squash (below 1) or stretch (above 1) of the body along its height, volume kept (landing and
+    /// take-off bounce, <see cref="PlayerFx"/>). Looks only: the collider doesn't change.
+    /// </summary>
+    public void SetBounce(float stretch)
+    {
+        if (Mathf.Approximately(stretch, bounce)) return;
+        bounce = stretch;
+        ApplyBodyScale(visualOnly: true);
+    }
+
+    private void ApplyBodyScale() => ApplyBodyScale(visualOnly: false);
+
     /// <summary>
     /// Scales the visible mesh and collider for the current stance and size. Prone keeps the model's
     /// shape (the prone animation lays it down) and turns the collider into a capsule lying along the
     /// body; crouch squashes the model and collider vertically (to CrouchScale), as there is no crouch animation.
     /// </summary>
-    private void ApplyBodyScale()
+    private void ApplyBodyScale(bool visualOnly)
     {
         float size   = Size;
         bool  prone  = State == MovementState.Prone;
@@ -381,12 +420,13 @@ public class Player : MonoBehaviourPun, IPunObservable
             // so their Y points forward: squashing Y made a crouching penguin thinner, not shorter.
             Vector3 localScale = baseVisualScales[i] * size;
             int up = UpAxis(root.localRotation);
-            localScale[up] *= squash;
+            float across = 1f / Mathf.Sqrt(Mathf.Max(0.3f, bounce)); // Squash and stretch keep the volume
+            for (int a = 0; a < 3; a++) localScale[a] *= a == up ? squash * bounce : across;
             root.localScale    = localScale;
-            root.localPosition = Vector3.Scale(baseVisualPositions[i], new Vector3(size, size * squash, size));
+            root.localPosition = Vector3.Scale(baseVisualPositions[i], new Vector3(size, size * squash * bounce, size));
         }
 
-        if (col == null) return;
+        if (visualOnly || col == null) return;
 
         float radius = baseColRadius * size;
         col.radius = radius;
@@ -515,7 +555,15 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// </summary>
     public void LeaveCorpse()
     {
-        Corpse = PlayerCorpse.Create(this, Velocity + Vector3.up * 3f);
+        // Shot dead: thrown along the shot (a headshot snaps back harder); tagged: carried by its momentum
+        Vector3 velocity = Velocity + Vector3.up * 2f;
+        Vector3? shot = null;
+        if (Health != null && Time.time - Health.LastHitTime < 1.5f)
+        {
+            shot = Health.LastHitDirection;
+            velocity += Vector3.ProjectOnPlane(shot.Value, Vector3.up).normalized * 4f;
+        }
+        Corpse = PlayerCorpse.Create(this, velocity, shot, Health != null && Health.LastHitHeadshot);
         if (!IsLocal) StartCoroutine(HideBodyUntilRespawn());
     }
 
@@ -570,12 +618,16 @@ public class Player : MonoBehaviourPun, IPunObservable
             stream.SendNext((byte)State);
             stream.SendNext(Size);
             stream.SendNext(IsOnIce);
+            stream.SendNext((byte)((IsShielded ? 1 : 0) | (IsBeacon ? 2 : 0)));
         }
         else
         {
             var   state = (MovementState)(byte)stream.ReceiveNext();
             float size  = (float)stream.ReceiveNext();
             remoteOnIce = (bool)stream.ReceiveNext();
+            byte flags     = (byte)stream.ReceiveNext();
+            remoteShielded = (flags & 1) != 0;
+            remoteBeacon   = (flags & 2) != 0;
 
             bool sizeChanged = !Mathf.Approximately(size, remoteSize);
             remoteSize = size;

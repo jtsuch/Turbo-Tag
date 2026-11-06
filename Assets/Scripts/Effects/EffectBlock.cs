@@ -29,6 +29,9 @@ public class EffectBlock : MonoBehaviourPun
         DropFrameRate,
         KeybindSwitch,
         CenterOfImpulse,
+        NoCooldown,
+        AirControl,
+        XRay,
     }
 
     [System.Serializable]
@@ -86,13 +89,7 @@ public class EffectBlock : MonoBehaviourPun
             Debug.LogWarning($"[EffectBlock] No type found for {entry.type}");
             return;
         }
-
-        // If the player already has this effect, cancel it cleanly before reapplying
-        var existing = player.GetComponent(effectType) as PlayerEffect;
-        if (existing != null) existing.CancelEffect();
-
-        PlayerEffect effect = player.gameObject.AddComponent(effectType) as PlayerEffect;
-        effect.Initialize(player, entry.duration);
+        PlayerEffect.Apply(effectType, player, entry.duration); // Already has it: the timer restarts
     }
 
     // Maps enum → concrete type.  Add a case here whenever a new EffectType is added.
@@ -104,6 +101,9 @@ public class EffectBlock : MonoBehaviourPun
         EffectType.DropFrameRate   => typeof(DropFrameRateEffect),
         EffectType.KeybindSwitch   => typeof(KeybindSwitchEffect),
         EffectType.CenterOfImpulse => typeof(CenterOfImpulseEffect),
+        EffectType.NoCooldown      => typeof(NoCooldownEffect),
+        EffectType.AirControl      => typeof(AirControlEffect),
+        EffectType.XRay            => typeof(XRayEffect),
         _                          => null,
     };
 

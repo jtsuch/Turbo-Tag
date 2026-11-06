@@ -77,6 +77,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         ScoreOverlay.Create(); // Hold Tab for the standings, in every mode
         AdminConsole.Create(); // ` for admins (AdminConsole.Admins)
         if (!TryGetComponent(out AdminCommands _)) gameObject.AddComponent<AdminCommands>(); // Shares this scene PhotonView
+        if (!TryGetComponent(out DonutManager _)) gameObject.AddComponent<DonutManager>();   // Random-effect donuts
+        if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
         Scores = GetComponent<ScoreController>();
@@ -153,9 +155,21 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         Mode != null && Player.Local != null && target != Player.Local
         && Mode.HidesIdentity(Player.Local.Role, target.Role, Phase);
 
-    /// <summary>True when <paramref name="target"/> should show a crown on this screen.</summary>
+    /// <summary>True when <paramref name="target"/> should show a crown on this screen (the President, or the leader).</summary>
     public bool ShowsCrown(Player target) =>
-        Mode != null && Mode.WearsCrown(target.Role, Phase) && !HidesIdentityFromLocal(target);
+        Mode != null && !HidesIdentityFromLocal(target)
+        && (Mode.WearsCrown(target.Role, Phase) || (Mode.CrownsLeader && IsLeader(target.Owner)));
+
+    /// <summary>Strictly ahead of everyone else, with points (modes with <see cref="GameMode.CrownsLeader"/>).</summary>
+    public bool IsLeader(Photon.Realtime.Player who)
+    {
+        if (who == null || Phase == MatchPhase.Waiting || Phase == MatchPhase.Countdown) return false;
+        float mine = Scores.GetLive(who);
+        if (mine <= 0f) return false;
+        foreach (var other in PhotonNetwork.PlayerList)
+            if (other != who && Scores.GetLive(other) >= mine) return false;
+        return true;
+    }
 
     // ─── Master-client API ────────────────────────────────────────────────────
 
@@ -178,6 +192,11 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     public void ResetMatchState()
     {
         if (!PhotonNetwork.IsMasterClient) return;
+
+        // Treat it as Waiting at once: until Photon echoes this back, the room still says the last match's phase
+        // (MatchEnd, with its clock run out), and the mode would send everyone straight back to the Scoreboard
+        pendingPhase = MatchPhase.Waiting;
+        pendingSince = Time.time;
 
         NetProps.SetRoom(new Hashtable
         {

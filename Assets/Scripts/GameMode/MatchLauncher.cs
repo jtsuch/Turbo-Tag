@@ -15,6 +15,10 @@ public static class MatchLauncher
         PhotonNetwork.CurrentRoom.IsOpen    = false;
         PhotonNetwork.CurrentRoom.IsVisible = false;
 
+        // The finished match's phase must not survive into the next level (Play Again went straight back to
+        // the Scoreboard: the new level read MatchEnd with an expired clock before its own reset arrived)
+        NetProps.SetRoom(RoomKeys.Phase, (int)MatchPhase.Waiting);
+
         // Modes like Freeplay go straight to the map with everyone's last loadout
         var  mode        = GameModeRegistry.Find(MatchRules.GameModeKey);
         bool skipPregame = mode != null && mode.skipAbilitySelection && CanLoad(MatchRules.Map);

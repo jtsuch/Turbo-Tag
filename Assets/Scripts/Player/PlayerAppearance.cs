@@ -53,6 +53,12 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     /// <summary>Owner: nearly invisible while true.</summary>
     public bool Cloaked { get; set; }
 
+    /// <summary>
+    /// This screen sees every other player through walls (X-Ray Vision): an extra see-through pass that only draws
+    /// where the body is hidden, blue for teammates and red for everyone else.
+    /// </summary>
+    public static bool XRay { get; set; }
+
     /// <summary>Owner: paints the body this colour while set (null = normal look).</summary>
     public Color? Camouflage { get; set; }
 
@@ -142,7 +148,8 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         bool clear   = CloakAmount > 0.001f;
         bool outline = !clear && !silhouette && manager != null && manager.Mode != null
                        && manager.Mode.UsesRoles && player.Role == PlayerRole.Hunter;
-        if (clear != showingClear || outline != showingOutline) SetMaterials(clear, outline);
+        Material xray = (XRay || player.IsBeacon) && !player.IsDownAfterTag ? XRayMaterial(IsTeammateOfLocal()) : null;
+        if (clear != showingClear || outline != showingOutline || xray != showingXRay) SetMaterials(clear, outline, xray);
 
         float alpha = Mathf.Lerp(1f, cloakedAlpha, CloakAmount);
         for (int i = 0; i < bodyRenderers.Length; i++)
@@ -227,14 +234,41 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     // ─── Cloak materials ──────────────────────────────────────────────────────
 
     private static Material outlineMaterial;
+    private static Material xrayAlly, xrayEnemy;
+    private Material showingXRay;
+
+    // Resources/Cosmetics/XRay (TurboTag/XRay shader): one copy per colour
+    private static Material XRayMaterial(bool ally)
+    {
+        if (xrayAlly == null || xrayEnemy == null)
+        {
+            var source = Resources.Load<Material>("Cosmetics/XRay");
+            if (source == null) return null;
+            xrayAlly  = new Material(source) { name = "XRay Ally" };
+            xrayEnemy = new Material(source) { name = "XRay Enemy" };
+            xrayAlly.SetColor("_Color",  new Color(0.25f, 0.6f, 1f, 0.75f));
+            xrayEnemy.SetColor("_Color", new Color(1f, 0.25f, 0.3f, 0.75f));
+        }
+        return ally ? xrayAlly : xrayEnemy;
+    }
+
+    // Same side as the local player: both hunters or both not, in modes with roles (no teams otherwise)
+    private bool IsTeammateOfLocal()
+    {
+        var local   = Player.Local;
+        var manager = GameModeManager.Instance;
+        if (local == null || manager == null || manager.Mode == null || !manager.Mode.UsesRoles) return false;
+        return (local.Role == PlayerRole.Hunter) == (player.Role == PlayerRole.Hunter);
+    }
     private bool showingOutline;
 
     // The body's materials: see-through copies while cloaked, plus the outline pass on hunters.
     // An extra material on a single-mesh renderer draws that mesh again, which is how the outline works.
-    private void SetMaterials(bool clear, bool outline)
+    private void SetMaterials(bool clear, bool outline, Material xray = null)
     {
         showingClear   = clear;
         showingOutline = outline;
+        showingXRay    = xray;
         if (clear && clearMaterials == null) BuildClearMaterials();
         if (outline && outlineMaterial == null) outlineMaterial = Resources.Load<Material>("Cosmetics/HunterOutline");
 
@@ -248,6 +282,13 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
                 set.CopyTo(withOutline, 0);
                 withOutline[set.Length] = outlineMaterial;
                 set = withOutline;
+            }
+            if (xray != null)
+            {
+                var withXRay = new Material[set.Length + 1];
+                set.CopyTo(withXRay, 0);
+                withXRay[set.Length] = xray;
+                set = withXRay;
             }
             bodyRenderers[i].sharedMaterials   = set;
             bodyRenderers[i].shadowCastingMode = clear ? ShadowCastingMode.Off : shadowModes[i];

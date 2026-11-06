@@ -45,7 +45,8 @@ public static class RuleKeys
     public const string HunterCooldown    = "Rule_HunterCooldown";
     public const string TagCooldown       = "Rule_TagCooldown";
     public const string Gravity           = "Rule_Gravity";
-    public const string EffectsRespawn    = "Rule_EffectsRespawn";
+    public const string EffectsRespawn    = "Rule_EffectsRespawn"; // Seconds between donuts
+    public const string Donuts            = "Rule_Donuts";
     public const string GlobalCooldown    = "Rule_GlobalCooldown";
     public const string TagBonus          = "Rule_HuntedBonus";
     public const string ScoreLimit        = "Rule_ScoreLimit";

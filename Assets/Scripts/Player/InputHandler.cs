@@ -21,6 +21,9 @@ public class InputHandler : MonoBehaviourPun
     public bool    PronePressed  { get; private set; }
     public bool    GrabPressed   { get; private set; }
 
+    /// <summary>Optional rewrite of the movement keys (Scrambled Keys effect); null = normal.</summary>
+    public System.Func<Vector2, Vector2> MoveRemap { get; set; }
+
     private Player         player;
     private AbilityHandler abilities;
     private bool           abilitiesBlocked;
@@ -63,9 +66,9 @@ public class InputHandler : MonoBehaviourPun
     {
         // Raw keys: the input is exactly what's held this frame. (GetAxis smoothed keys over ~0.3 s, so the
         // player kept walking after letting go and quick taps barely moved them.) PlayerMovement accelerates.
-        MoveInput = Vector2.ClampMagnitude(
-            new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")), 1f)
-            * player.Modifiers.Get(Stat.ControlDirection);
+        Vector2 keys = new(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        if (MoveRemap != null) keys = MoveRemap(keys);
+        MoveInput = Vector2.ClampMagnitude(keys, 1f) * player.Modifiers.Get(Stat.ControlDirection);
 
         JumpPressed   = Pressed(InputAction.Jump);
         JumpHeld      = Held(InputAction.Jump);

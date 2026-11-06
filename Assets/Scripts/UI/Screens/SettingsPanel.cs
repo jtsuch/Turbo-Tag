@@ -23,6 +23,7 @@ public class SettingsPanel : MonoBehaviour
         ("Free Spin",     InputAction.FreeSpin),
         ("Scores",        InputAction.Scores),
         ("Map",           InputAction.Map),
+        ("Emotes",        InputAction.Emote),
         ("Ability 1",     InputAction.AbilityBasic),
         ("Ability 2",     InputAction.AbilityQuick),
         ("Ability 3",     InputAction.AbilityThrow),

@@ -8,7 +8,9 @@ using UnityEngine.UI;
 /// <summary>
 /// A live 3D penguin for menus: a copy of the player model (only its mesh, skeleton and Animator; every script,
 /// collider and Rigidbody stripped) idling far below the scene, filmed by its own camera into a transparent texture
-/// shown in a RawImage. <see cref="SetSkin"/> recolours it (and makes it hop). Used on the main menu player card.
+/// shown in a RawImage. <see cref="SetSkin"/> recolours it (and makes it hop); <see cref="Dance"/> keeps it hopping
+/// and twirling (the scoreboard podium). Each preview gets its own spot below the scene, so several can exist.
+/// Used on the main menu player card and the scoreboard podium.
 /// </summary>
 public class PenguinPreview : MonoBehaviour
 {
@@ -25,6 +27,12 @@ public class PenguinPreview : MonoBehaviour
     private MaterialPropertyBlock block;
     private string skin;
     private float spin;
+    private Vector3 stage;
+    private float nextMove;
+    private static int created;
+
+    /// <summary>Keeps hopping and twirling (with a little sway), for celebrations.</summary>
+    public bool Dance { get; set; }
 
     /// <summary>Adds the preview image to <paramref name="parent"/> (a layout child of the given size).</summary>
     public static PenguinPreview Create(Transform parent, float size)
@@ -45,7 +53,8 @@ public class PenguinPreview : MonoBehaviour
 
         holder = new GameObject("Penguin Preview Stage");
         holder.SetActive(false); // Nothing on the copy wakes up while it's stripped
-        holder.transform.position = Stage;
+        stage = Stage + Vector3.right * (40f * (created++ % 16)); // Apart, so cameras never film each other's penguin
+        holder.transform.position = stage;
 
         var prefab = Resources.Load<GameObject>("Player/ThePlayer");
         if (prefab == null) return;
@@ -70,7 +79,7 @@ public class PenguinPreview : MonoBehaviour
         cam.targetTexture = texture;
         cam.depth = -20;
         camGo.transform.localPosition = new Vector3(0f, Height * 0.55f, 9.5f);
-        camGo.transform.LookAt(Stage + Vector3.up * Height * 0.48f);
+        camGo.transform.LookAt(stage + Vector3.up * Height * 0.48f);
         var data = camGo.AddComponent<UniversalAdditionalCameraData>();
         data.renderShadows = false;
         data.renderPostProcessing = false;
@@ -167,7 +176,20 @@ public class PenguinPreview : MonoBehaviour
         // A slow look around, and a quick twirl after a colour change
         spin = Mathf.MoveTowards(spin, 0f, Time.unscaledDeltaTime * 720f);
         float yaw = Mathf.Sin(Time.unscaledTime * 0.6f) * 25f + spin;
-        model.localRotation = Quaternion.Euler(0f, yaw, 0f);
+        float sway = 0f;
+        if (Dance)
+        {
+            sway = Mathf.Sin(Time.unscaledTime * 6f) * 10f;
+            if (Time.unscaledTime >= nextMove)
+            {
+                nextMove = Time.unscaledTime + UnityEngine.Random.Range(0.9f, 1.6f);
+                if (animator != null)
+                    foreach (var p in animator.parameters)
+                        if (p.name == "Jump" && p.type == AnimatorControllerParameterType.Trigger) animator.SetTrigger("Jump");
+                if (UnityEngine.Random.value < 0.45f) spin = UnityEngine.Random.value < 0.5f ? 360f : -360f;
+            }
+        }
+        model.localRotation = Quaternion.Euler(0f, yaw, sway);
     }
 
     private void OnDestroy()

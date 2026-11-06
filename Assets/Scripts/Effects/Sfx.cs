@@ -7,7 +7,7 @@ public enum SfxKind
     Pistol, Rifle, Shotgun, Sniper, Reload, Empty,
     Hit, Headshot, Kill, Hurt, Heal,
     Whoosh, Thwip, Warp, ZapUp, ZapDown, Heartbeat, Shimmer, Toss, Place, Flap, Blow, Pop,
-    Explosion, Boing, Land, Jump, Tag, Respawn, Ice, Snap, Splat, Horn, Fanfare, Honk, Plop,
+    Explosion, Boing, Land, Jump, Tag, Respawn, Ice, Snap, Splat, Horn, Fanfare, Honk, Plop, Wind, Tick,
 }
 
 /// <summary>
@@ -90,6 +90,9 @@ public static class Sfx
 
     // ─── Synthesis ────────────────────────────────────────────────────────────
 
+    /// <summary>The clip itself (for looping sources: wind).</summary>
+    public static AudioClip Get(SfxKind kind) => Clip(kind);
+
     private static AudioClip Clip(SfxKind kind)
     {
         if (clips.TryGetValue(kind, out var clip) && clip != null) return clip;
@@ -131,6 +134,8 @@ public static class Sfx
             SfxKind.Fanfare   => Concat(Chord(0.15f, new[] { 392f, 494f }, 0.2f), Chord(0.15f, new[] { 440f, 554f }, 0.2f), Chord(0.6f, new[] { 523f, 659f, 784f }, 0.22f)),
             SfxKind.Honk      => Honk(0.42f),
             SfxKind.Plop      => Mix(Tone(0.12f, 900f, 250f, 0.6f, 25f), Filtered(Noise(0.1f), 0.3f, 0.4f, decay: 30f)),
+            SfxKind.Wind      => WindLoop(3f),
+            SfxKind.Tick      => Mix(Click(0.03f, 1800f), Tone(0.06f, 1200f, 1200f, 0.35f, 40f)),
             _                 => Silence(0.05f),
         };
         clip = AudioClip.Create("Sfx" + kind, d.Length, 1, Rate, false);
@@ -270,6 +275,21 @@ public static class Sfx
             d[i] = reed * 0.28f * env;
         }
         return d;
+    }
+
+    // Rushing air that loops without a seam: dark noise, its end blended back into its start
+    private static float[] WindLoop(float s)
+    {
+        var d = Filtered(Noise(s + 0.5f), 0.04f, 3f, decay: 0f);
+        int n = Mathf.CeilToInt(s * Rate), blend = d.Length - n;
+        var loop = new float[n];
+        for (int i = 0; i < n; i++) loop[i] = d[i];
+        for (int i = 0; i < blend; i++)
+        {
+            float k = i / (float)blend;
+            loop[i] = Mathf.Lerp(d[n + i], d[i], k);
+        }
+        return Clamp(loop);
     }
 
     private static float[] Chord(float s, float[] freqs, float gain)

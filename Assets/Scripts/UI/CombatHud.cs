@@ -403,12 +403,19 @@ public class CombatHud : MonoBehaviour
 
     // ─── Kill feed ────────────────────────────────────────────────────────────
 
+    // " ×3" after a killer's name once they're on a streak of three or more
+    private static string StreakTag(int actor)
+    {
+        int n = KillStreaks.Streak(actor);
+        return n >= 3 ? $" <color=#FF8A3D>×{n}</color>" : "";
+    }
+
     private void HandleKilled(KillInfo kill)
     {
         string victim = Name(kill.Victim);
         string line = kill.SelfDestruct
             ? $"{victim} <color=#B9B2E0>fell off</color>"
-            : $"{Name(kill.Killer)}  <color=#B9B2E0>{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? "  <color=#FF4D6D>HEADSHOT</color>" : "")}</color>  {victim}";
+            : $"{Name(kill.Killer)}{StreakTag(kill.Killer)}  <color=#B9B2E0>{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? "  <color=#FF4D6D>HEADSHOT</color>" : "")}</color>  {victim}";
 
         var bg = UIKit.Panel(feed, Panel, 14f, "Kill");
         bg.raycastTarget = false;

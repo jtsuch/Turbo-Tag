@@ -16,7 +16,7 @@ public static class MatchRules
     public const float DefaultTagCooldown    = 2f;    // seconds a newly tagged hunter must wait
     public const float DefaultGlobalCooldown = 100f;  // %
     public const float DefaultGravity        = 100f;  // %
-    public const float DefaultEffectsRespawn = 30f;   // seconds
+    public const float DefaultEffectsRespawn = 25f;   // seconds between donuts
     public const float DefaultTagBonus       = 0f;    // seconds
     public const float DefaultScoreLimit     = 600f;   // seconds
     public const float DefaultCountdownTime  = 3f;     // seconds frozen before each round
@@ -53,6 +53,9 @@ public static class MatchRules
     public static float GravityMultiplier => NetProps.Room(RuleKeys.Gravity, DefaultGravity) / 100f;
 
     public static float EffectsRespawn => NetProps.Room(RuleKeys.EffectsRespawn, DefaultEffectsRespawn);
+
+    /// <summary>Donuts (random-effect pickups) appear around the map. On by default (and in Freeplay).</summary>
+    public static bool Donuts => NetProps.Room(RuleKeys.Donuts, true);
     public static float TagBonus       => NetProps.Room(RuleKeys.TagBonus, DefaultTagBonus);
 
     public static bool  ScoreLimitEnabled => NetProps.Room(RuleKeys.ScoreLimitEnabled, false);

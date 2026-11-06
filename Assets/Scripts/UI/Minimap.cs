@@ -146,6 +146,9 @@ public class Minimap : MonoBehaviour
         }
     }
 
+    /// <summary>Every player gets a marker, whatever the mode allows (the Radar donut).</summary>
+    public static bool ShowEveryone { get; set; }
+
     private void LateUpdate()
     {
         var local = Player.Local;
@@ -171,39 +174,55 @@ public class Minimap : MonoBehaviour
         var manager = GameModeManager.Instance;
         var mode = manager != null ? manager.Mode : null;
         int used = 0;
+
+        // Donuts: pink, pulsing, pinned to the rim when out of view (so players can go and find them)
+        if (DonutManager.Instance != null)
+        {
+            float pulse = 12f + Mathf.PingPong(Time.unscaledTime * 10f, 4f);
+            foreach (var donut in DonutManager.Instance.Donuts)
+                if (donut != null) Mark(ref used, donut.transform.position, local, new Color(1f, 0.45f, 0.8f), pulse);
+        }
+
         foreach (var p in Player.All)
         {
             if (p == null || p == local || p.IsDownAfterTag) continue;
-            if (mode == null || !mode.ShowsOnMap(local.Role, p.Role)) continue;
+            if (!ShowEveryone && (mode == null || !mode.ShowsOnMap(local.Role, p.Role))) continue;
             if (manager.HidesIdentityFromLocal(p)) continue;
 
-            Vector3 d = p.transform.position - local.transform.position;
-            Vector2 pos = new Vector2(d.x, d.z) / (radius * 2f) * mapSize;
-            float edge = mapSize * 0.5f - 10f;
-            if (pos.magnitude > edge) pos = pos.normalized * edge; // Pinned to the rim when out of view
-
-            if (used >= dots.Count)
-            {
-                var dot = UIKit.Rect("Mate", markers).gameObject.AddComponent<Image>();
-                dot.sprite = UISprites.Circle;
-                dot.rectTransform.sizeDelta = new Vector2(14f, 14f);
-                var o = dot.gameObject.AddComponent<Outline>();
-                o.effectColor = UITheme.Current.textDark;
-                o.effectDistance = new Vector2(1.5f, -1.5f);
-                dots.Add(dot);
-            }
-            var img = dots[used++];
-            img.gameObject.SetActive(true);
-            img.rectTransform.anchoredPosition = pos;
-            img.color = p.Role switch
+            Color color = p.Role switch
             {
                 PlayerRole.Hunter    => UITheme.Current.danger,
                 PlayerRole.President => UITheme.Current.primary,
                 _                    => UITheme.Current.cyan,
             };
+            Mark(ref used, p.transform.position, local, color, 14f);
         }
         for (int i = used; i < dots.Count; i++) dots[i].gameObject.SetActive(false);
         arrow.SetAsLastSibling();
+    }
+
+    // One round marker at a world position (reusing the pool of dots)
+    private void Mark(ref int used, Vector3 world, Player local, Color color, float size)
+    {
+        Vector3 d = world - local.transform.position;
+        Vector2 pos = new Vector2(d.x, d.z) / (radius * 2f) * mapSize;
+        float edge = mapSize * 0.5f - 10f;
+        if (pos.magnitude > edge) pos = pos.normalized * edge; // Pinned to the rim when out of view
+
+        if (used >= dots.Count)
+        {
+            var dot = UIKit.Rect("Mark", markers).gameObject.AddComponent<Image>();
+            dot.sprite = UISprites.Circle;
+            var o = dot.gameObject.AddComponent<Outline>();
+            o.effectColor = UITheme.Current.textDark;
+            o.effectDistance = new Vector2(1.5f, -1.5f);
+            dots.Add(dot);
+        }
+        var img = dots[used++];
+        img.gameObject.SetActive(true);
+        img.rectTransform.sizeDelta = new Vector2(size, size);
+        img.rectTransform.anchoredPosition = pos;
+        img.color = color;
     }
 
     // ─── Hide bodies from the map camera ──────────────────────────────────────

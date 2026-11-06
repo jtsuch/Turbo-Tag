@@ -151,6 +151,10 @@ public class HUDManager : MonoBehaviour
         BuildCentre();
         BuildAbilityBar();
         Minimap.Create(root);
+        EffectTray.Create(root); // Running effects (donuts), right side
+        SpeedFx.Create(root);    // Speed lines and wind when moving fast
+        TagFeel.Create(root);    // TAGGED! / +1 TAG stamps, heartbeat when a hunter is near
+        EmoteMenu.Create(root);  // T: emotes
 
         debugText = UIKit.Text(root, "", 20f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.TopLeft, "Debug");
         UIKit.Place(debugText.rectTransform, new Vector2(0f, 1f), new Vector2(32f, -170f), new Vector2(420f, 220f));
@@ -481,7 +485,24 @@ public class HUDManager : MonoBehaviour
             phaseText.text = (manager.PhaseLabel ?? "").ToUpperInvariant();
             bool urgent = clock.HasLimit && time <= 10f && !clock.IsPaused && phase == MatchPhase.Active;
             clockText.color = urgent ? Color.Lerp(Theme.danger, Color.white, Mathf.PingPong(Time.unscaledTime * 2f, 1f)) : Theme.text;
+
+            // The last ten seconds tick (higher as it runs out) and the clock thumps on each one
+            int second = urgent ? Mathf.CeilToInt(time) : -1;
+            if (urgent && second != lastTick && second > 0)
+            {
+                Sfx.Here(SfxKind.Tick, 0.7f, Mathf.Lerp(1.3f, 0.9f, second / 10f));
+                clockPop = Time.unscaledTime;
+            }
+            lastTick = second;
+            float pop = Mathf.Clamp01(1f - (Time.unscaledTime - clockPop) / 0.2f);
+            clockCard.localScale = Vector3.one * (1f + 0.08f * pop);
+
+            // The music speeds up near the end
+            bool closing = clock.HasLimit && !clock.IsPaused && phase == MatchPhase.Active;
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.SetTempo(closing && time <= 10f ? 1.12f : closing && time <= 30f ? 1.05f : 1f);
         }
+        else if (AudioManager.Instance != null) AudioManager.Instance.SetTempo(1f);
         bool paused = showClock && clock.IsPaused;
         pausedChip.SetActive(paused);
         roundText.text = showClock && !paused && mode.UsesRoles && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
@@ -489,7 +510,61 @@ public class HUDManager : MonoBehaviour
         // Score
         bool showScore = mode != null && mode.ShowsScores && player != null;
         scoreCard.gameObject.SetActive(showScore);
-        if (showScore) scoreText.text = mode.FormatScore(manager.Scores.GetLive(player.Owner));
+        if (showScore) UpdateScore(mode, manager);
+    }
+
+    // ─── Score pop and leader chip ────────────────────────────────────────────
+
+    private float lastScore = float.NaN, scorePopAt = -10f, clockPop = -10f;
+    private int   lastTick = -1;
+    private TMP_Text scoreGain;
+    private GameObject leaderChip;
+
+    private void UpdateScore(GameMode mode, GameModeManager manager)
+    {
+        float score = manager.Scores.GetLive(player.Owner);
+        scoreText.text = mode.FormatScore(score);
+
+        // A real jump (a kill, a tag), not a timer ticking up: the card bumps and "+1" floats off it
+        if (!float.IsNaN(lastScore) && Mathf.Abs(score - lastScore) >= 0.99f && manager.Phase == MatchPhase.Active)
+        {
+            scorePopAt = Time.unscaledTime;
+            float gain = score - lastScore;
+            if (scoreGain == null)
+            {
+                scoreGain = UIKit.Text(scoreCard, "", 40f, UIKit.Font.Display, Theme.lime, TextAlignmentOptions.Center, "Gain");
+                UIKit.Place(scoreGain.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -40f), new Vector2(200f, 50f));
+                scoreGain.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(2f, -2f);
+            }
+            scoreGain.text  = gain > 0f ? $"+{mode.FormatScore(gain)}" : mode.FormatScore(gain);
+            scoreGain.color = gain > 0f ? Theme.lime : Theme.danger;
+            if (gain > 0f) Sfx.Here(SfxKind.Pop, 0.5f, 1.4f);
+        }
+        lastScore = score;
+
+        float age = Time.unscaledTime - scorePopAt;
+        float bump = age < 0.3f ? Mathf.Sin(age / 0.3f * Mathf.PI) : 0f;
+        scoreCard.localScale = Vector3.one * (1f + 0.15f * bump);
+        if (scoreGain != null)
+        {
+            bool on = age < 1.1f;
+            scoreGain.gameObject.SetActive(on);
+            if (on)
+            {
+                scoreGain.rectTransform.anchoredPosition = new Vector2(0f, -40f - age * 50f);
+                scoreGain.alpha = Mathf.Clamp01((1.1f - age) / 0.3f);
+            }
+        }
+
+        // In the lead (modes that crown a leader): a gold chip under the score
+        bool leading = mode.CrownsLeader && manager.IsLeader(player.Owner);
+        if (leaderChip == null && leading)
+        {
+            var chip = UIKit.Chip(scoreCard, "LEADER", Theme.primary, Theme.textDark, 16f);
+            UIKit.Place(chip.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -16f), new Vector2(110f, 26f));
+            leaderChip = chip.gameObject;
+        }
+        if (leaderChip != null && leaderChip.activeSelf != leading) leaderChip.SetActive(leading);
     }
 
     // ─── Countdowns ───────────────────────────────────────────────────────────

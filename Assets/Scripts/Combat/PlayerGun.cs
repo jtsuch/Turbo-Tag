@@ -17,6 +17,9 @@ public class PlayerGun : MonoBehaviourPun
     /// <summary>Local: (headshot) after a shot hit a player, for the hit marker.</summary>
     public static event System.Action<bool> LocalHit;
 
+    /// <summary>Owner: shots don't use ammo (the Bottomless Mag donut).</summary>
+    public bool InfiniteAmmo { get; set; }
+
     /// <summary>The gun in hand (owner: set by Equip; other copies: the synced property). Null when none.</summary>
     public GunInfo Current { get; private set; }
 
@@ -35,7 +38,7 @@ public class PlayerGun : MonoBehaviourPun
     private readonly RaycastHit[] hits = new RaycastHit[32];
     private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
     private bool lastTraceHit; // The last Trace stopped on something (for impact sparks)
-    private readonly Dictionary<Player, (float damage, bool head)> pending = new();
+    private readonly Dictionary<Player, (float damage, bool head, Vector3 point)> pending = new();
 
     // Visuals: first-person (owner) and third-person (others) models per gun id
     private readonly Dictionary<string, GameObject> viewModels  = new();
@@ -159,7 +162,7 @@ public class PlayerGun : MonoBehaviourPun
     private void Shoot()
     {
         var gun = Current;
-        Ammo--;
+        if (!InfiniteAmmo) Ammo--;
         nextShotAt = Time.time + gun.FireInterval;
 
         Transform view   = PlayerCam.Local.Camera.transform;
@@ -186,11 +189,15 @@ public class PlayerGun : MonoBehaviourPun
             anyHead |= head;
             float amount = damage * (head ? gun.HeadshotMultiplier : 1f);
             pending.TryGetValue(target, out var sum);
-            pending[target] = (sum.damage + amount, sum.head || head);
+            pending[target] = (sum.damage + amount, sum.head || head, end);
         }
 
         foreach (var pair in pending)
-            pair.Key.Health.RequestDamage(pair.Value.damage, gun.Id, pair.Value.head);
+        {
+            Vector3 shotDir = (pair.Value.point - view.position).normalized;
+            pair.Key.Health.RequestDamage(pair.Value.damage, gun.Id, pair.Value.head, shotDir);
+            DamageNumber.Show(pair.Value.point, pair.Value.damage, pair.Value.head);
+        }
 
         GunFx.Flash(muzzle);
         Fx.Shot(gun.Id, muzzle, local: true);

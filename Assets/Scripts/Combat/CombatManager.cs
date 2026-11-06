@@ -60,6 +60,7 @@ public class CombatManager : MonoBehaviourPun
         _instance = this;
         if (!TryGetComponent(out Killcam _)) gameObject.AddComponent<Killcam>();
         CombatHud.Create();
+        CombatFeedback.Create(); // Kill confirms, streaks, low health, hit direction
     }
 
     private void OnEnable()
@@ -218,7 +219,9 @@ public class CombatManager : MonoBehaviourPun
             Killcam.Instance.Play(killer, $"Eliminated by <color=#FF8C1A>{by}</color>  ·  {gun}{(headshot ? "  ·  headshot" : "")}");
         }
 
-        Killed?.Invoke(new KillInfo(killer, victim, weapon, headshot, selfDestruct));
+        var info = new KillInfo(killer, victim, weapon, headshot, selfDestruct);
+        KillStreaks.Record(info); // Before the event: the HUD reads streaks while handling it
+        Killed?.Invoke(info);
     }
 
     // ─── Health drops ─────────────────────────────────────────────────────────

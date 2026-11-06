@@ -36,14 +36,21 @@ public class PlayerHealth : MonoBehaviourPun
         dead    = false;
     }
 
+    /// <summary>Owner: adds health, up to the maximum (the Vampire donut). Nothing once dead.</summary>
+    public void Heal(float amount)
+    {
+        if (dead || amount <= 0f) return;
+        Current = Mathf.Min(Max, Current + amount);
+    }
+
     // ─── Any client ───────────────────────────────────────────────────────────
 
-    /// <summary>The local shooter hurts this player; the owner applies it.</summary>
-    public void RequestDamage(float amount, string weapon, bool headshot) =>
-        photonView.RPC(nameof(RPC_Damage), photonView.Owner, amount, PhotonNetwork.LocalPlayer.ActorNumber, weapon, headshot);
+    /// <summary>The local shooter hurts this player (shot travelling along <paramref name="direction"/>); the owner applies it.</summary>
+    public void RequestDamage(float amount, string weapon, bool headshot, Vector3 direction) =>
+        photonView.RPC(nameof(RPC_Damage), photonView.Owner, amount, PhotonNetwork.LocalPlayer.ActorNumber, weapon, headshot, direction);
 
     [PunRPC]
-    private void RPC_Damage(float amount, int attacker, string weapon, bool headshot)
+    private void RPC_Damage(float amount, int attacker, string weapon, bool headshot, Vector3 direction)
     {
         if (!photonView.IsMine || dead || player.IsCaught || player.AdminGod) return;
         var combat  = CombatManager.Instance;
@@ -51,13 +58,51 @@ public class PlayerHealth : MonoBehaviourPun
         // Only while the match is live: not once the clock has run out (the winner screen follows)
         if (combat == null || manager == null || manager.Phase != MatchPhase.Active || manager.Clock.IsExpired) return;
 
-        Current        = Mathf.Max(0f, Current - amount);
-        LastAttacker   = attacker;
-        LastDamageTime = Time.time;
+        Current          = Mathf.Max(0f, Current - amount);
+        LastAttacker     = attacker;
+        LastDamageTime   = Time.time;
+        LastHitDirection = direction; // Before Damaged: the HUD's hit-direction arcs read it
+        LastHitTime      = Time.time;
         Damaged?.Invoke(amount, attacker);
 
-        if (Current > 0f) return;
+        bool fatal = Current <= 0f;
+        // Everyone sees the hit land: a flinch, feathers, a thud; the corpse is thrown along the shot
+        photonView.RPC(nameof(RPC_HitReact), RpcTarget.All, direction, amount, headshot, fatal);
+        KnockBack(direction, amount, fatal);
+
+        if (!fatal) return;
         dead = true;
         combat.ReportLocalDeath(attacker, weapon, headshot);
+    }
+
+    // Owner: the shot shoves the body a little (more for big hits) and punches the view
+    private void KnockBack(Vector3 direction, float amount, bool fatal)
+    {
+        if (fatal) return; // The ragdoll takes the hit instead
+        Vector3 flat = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
+        float push = Mathf.Clamp(amount * 0.08f, 1f, 6f);
+        player.Body.linearVelocity += flat * push + Vector3.up * push * 0.25f;
+        player.NotePushed();
+        if (PlayerCam.Local != null) PlayerCam.Local.Punch(direction, amount);
+    }
+
+    /// <summary>Last shot that hit this player (every screen), for the flinch and for throwing the ragdoll.</summary>
+    public Vector3 LastHitDirection { get; private set; }
+    public float   LastHitTime      { get; private set; } = float.NegativeInfinity;
+    public bool    LastHitHeadshot  { get; private set; }
+
+    [PunRPC]
+    private void RPC_HitReact(Vector3 direction, float amount, bool headshot, bool fatal)
+    {
+        LastHitDirection = direction;
+        LastHitTime      = Time.time;
+        LastHitHeadshot  = headshot;
+
+        if (player.TryGetComponent(out HitFlinch flinch)) flinch.Flinch(direction, amount, headshot);
+        if (photonView.IsMine) return; // Your own hit: the HUD flash, hurt sound and view punch cover it
+
+        Vector3 at = player.transform.position + Vector3.up * (headshot ? player.EyeHeight : player.EyeHeight * 0.6f);
+        Fx.Feathers(at, -direction, headshot ? 18 : 10);
+        Sfx.At(SfxKind.Hurt, at, headshot ? 1f : 0.7f, 40f, headshot ? 1.25f : 1f);
     }
 }

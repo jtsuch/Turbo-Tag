@@ -10,6 +10,10 @@ public abstract class BasicAbility : Ability
     [Header("Duration")]
     [TunableParam("Max Duration", 0.5f, 30f)]
     [SerializeField] protected float maxDuration = 6f;
+    [Tooltip("Meter refilled per second of rest, in seconds of use (1 = an empty meter takes as long to fill as it " +
+             "lasts; 0.5 = twice as long, so strong movers can't be chained).")]
+    [TunableParam("Refill Rate", 0.1f, 5f)]
+    [SerializeField] protected float rechargeRate = 1f;
 
     public override AbilitySlot Slot => AbilitySlot.Basic;
 
@@ -47,13 +51,20 @@ public abstract class BasicAbility : Ability
 
         if (IsActive)
         {
-            if (Draining) CurrentDuration -= Time.fixedDeltaTime;
+            // No Cooldowns (donut, or the cheats' cooldown at 0): the meter never runs down
+            if (Draining && Owner.Modifiers.Get(Stat.Cooldown) > 0f) CurrentDuration -= Time.fixedDeltaTime;
             if (CurrentDuration <= 0.01f) Deactivate();
         }
         else
         {
-            CurrentDuration = Mathf.Min(MaxDuration, CurrentDuration + Time.fixedDeltaTime);
+            CurrentDuration = Mathf.Min(MaxDuration, CurrentDuration + Time.fixedDeltaTime * Mathf.Max(0.01f, rechargeRate));
         }
+    }
+
+    public override void RefillNow()
+    {
+        base.RefillNow();
+        CurrentDuration = MaxDuration;
     }
 
     /// <summary>While active, whether the meter runs down this step (Wall Magnet rests while standing still).</summary>

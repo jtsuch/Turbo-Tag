@@ -95,6 +95,13 @@ public abstract class Ability : MonoBehaviour
         CountUse();
     }
 
+    /// <summary>Owner: every charge back at once (the Refill donut). Basic abilities also fill their meter.</summary>
+    public virtual void RefillNow()
+    {
+        charges       = MaxCharges;
+        rechargeStart = Time.time;
+    }
+
     /// <summary>
     /// Gives a spent charge back <paramref name="delay"/> seconds from now (Spy Camera picked back up), or sooner
     /// if the normal recharge would bring it back first.

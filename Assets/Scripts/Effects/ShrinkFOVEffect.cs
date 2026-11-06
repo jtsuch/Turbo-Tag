@@ -1,18 +1,22 @@
 using UnityEngine;
 
-/// <summary>Effect: narrows the local camera's field of view for the duration.</summary>
+/// <summary>Curse: tunnel vision. The local camera's field of view narrows (dash and teleport kicks still work on top).</summary>
 public class ShrinkFOVEffect : PlayerEffect
 {
-    [Tooltip("FOV to tween to while the effect is active.")]
-    [SerializeField] private float shrunkenFOV = 40f;
+    [Tooltip("Share of the normal field of view while the effect lasts.")]
+    [SerializeField] private float fovScale = 0.6f;
+
+    public override string DisplayName => "Tunnel Vision";
+    public override string Description => "Your view is squeezed";
+    public override bool   IsGood      => false;
 
     protected override void OnEffectStart()
     {
-        if (IsLocalEffect && PlayerCam.Local != null) PlayerCam.Local.ChangeFov(shrunkenFOV);
+        if (IsLocalEffect && PlayerCam.Local != null) PlayerCam.Local.SetFovScale(fovScale);
     }
 
     protected override void OnEffectEnd()
     {
-        if (IsLocalEffect && PlayerCam.Local != null) PlayerCam.Local.ResetFov();
+        if (IsLocalEffect && PlayerCam.Local != null) PlayerCam.Local.SetFovScale(1f);
     }
 }

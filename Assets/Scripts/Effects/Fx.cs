@@ -157,6 +157,14 @@ public static class Fx
         Shake(Mathf.Clamp01(1f - distance / (radius * 4f)) * 0.9f);
     }
 
+    /// <summary>A penguin's feathers knocked loose by a hit (black and white puffs that drift down).</summary>
+    public static void Feathers(Vector3 position, Vector3 outward, int count)
+    {
+        Vfx.Burst(position, new Color(0.95f, 0.95f, 0.97f), count, 4f, 0.16f, 0.9f, gravity: true, direction: outward, spread: 0.7f);
+        Vfx.Burst(position, new Color(0.12f, 0.12f, 0.16f), count / 2, 3.5f, 0.14f, 0.9f, gravity: true, direction: outward, spread: 0.7f);
+        Vfx.Burst(position, new Color(1f, 0.3f, 0.35f, 0.8f), count / 2, 2.5f, 0.2f, 0.3f, direction: outward, spread: 0.5f);
+    }
+
     /// <summary>A bounce pad (or anything springy) launching someone.</summary>
     public static void Bounce(Vector3 position)
     {

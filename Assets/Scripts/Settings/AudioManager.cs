@@ -66,6 +66,8 @@ public class AudioManager : MonoBehaviour
     // The single place that decides which music plays where
     private void HandleMusicForScene(string sceneName)
     {
+        tempo = 1f; // A new scene starts at normal speed (the last round may have sped it up)
+        if (musicSource != null) musicSource.pitch = 1f;
         if (SceneNames.IsLevel(sceneName)) StartPlaylist();
         else                              PlayTrack(menuMusic);
     }
@@ -137,6 +139,17 @@ public class AudioManager : MonoBehaviour
     }
 
     // ─── Controls ─────────────────────────────────────────────────────────────
+
+    private float tempo = 1f;
+
+    /// <summary>Music speed (1 = normal; the HUD raises it in a round's last 30 and 10 seconds). Eases there.</summary>
+    public void SetTempo(float pitch) => tempo = Mathf.Clamp(pitch, 0.5f, 2f);
+
+    private void Update()
+    {
+        if (musicSource != null && !Mathf.Approximately(musicSource.pitch, tempo))
+            musicSource.pitch = Mathf.MoveTowards(musicSource.pitch, tempo, Time.unscaledDeltaTime * 0.15f);
+    }
 
     public void SetMusicVolume(float volume)
     {

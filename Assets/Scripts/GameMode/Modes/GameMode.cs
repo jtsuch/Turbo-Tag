@@ -61,6 +61,9 @@ public abstract class GameMode
     public virtual float RespawnDelayAfter(PhotonPlayer tagger, PhotonPlayer victim) => MatchRules.RespawnDelay;
 
     /// <summary>True for gun modes: health, guns, the gun picker, kill feed, health drops and killcam (CombatManager).</summary>
+    /// <summary>The player strictly in the lead wears a crown (Free for All).</summary>
+    public virtual bool CrownsLeader => false;
+
     public virtual bool UsesGuns => false;
 
     /// <summary>True to spawn on the level's SpawnPoints (random, away from others) instead of the Spawner's ring.</summary>
