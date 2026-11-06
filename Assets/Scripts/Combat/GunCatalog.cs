@@ -63,17 +63,17 @@ public static class GunCatalog
         new GunInfo
         {
             // Nine pellets: a close-range one-shot to the body if they all land, useless past ~45 m
-            Id = "Shotgun", Name = "Shotgun", Model = "Guns/AR",
+            Id = "Shotgun", Name = "Shotgun", Model = "Guns/Shotgun",
             Description = "Nine pellets per blast. Devastating up close, nothing at range.",
             Damage = 12f, HeadshotMultiplier = 1.5f, FireInterval = 0.85f, Automatic = false, Pellets = 9,
             Magazine = 6, ReloadTime = 2.4f, Range = 45f, Spread = 5f, AirSpread = 2f, Recoil = 3.5f,
             Bloom = 0.5f, MaxBloom = 1.5f,
-            ViewOffset = new Vector3(0.38f, -0.38f, 0.65f), ViewLength = 1.05f, WorldLength = 1.45f,
+            ViewOffset = new Vector3(0.36f, -0.37f, 0.52f), ViewLength = 1.25f, WorldLength = 1.6f,
         },
         new GunInfo
         {
             // 80 to the body (two hits), exactly 100 to the head (one); slow and shaky in the air
-            Id = "Sniper", Name = "Sniper", Model = "Guns/AR",
+            Id = "Sniper", Name = "Sniper", Model = "Guns/Sniper",
             Description = "One shot to the head, two to the body. Slow, and dead accurate.",
             Damage = 80f, HeadshotMultiplier = 1.25f, FireInterval = 1.3f, Automatic = false,
             Magazine = 5, ReloadTime = 2.6f, Range = 400f, Spread = 0f, AirSpread = 4f, Recoil = 5f,

@@ -70,10 +70,12 @@ public static class GunPrefabBuilder
             if (Vector3.Dot(p - mean, axis) >= max - length * 0.01f) { muzzle += p; n++; }
         muzzle /= Mathf.Max(1, n);
 
-        // Pivot: on the barrel line above the magazine (or the middle when there's no magazine)
+        // Pivot: on the barrel line above the magazine
         Transform magazine = Find(model.transform, "Magazine");
-        Vector3 station = magazine != null && magazine.TryGetComponent(out Renderer magRenderer) ? magRenderer.bounds.center : mean;
-        Vector3 pivot = mean + axis * Vector3.Dot(station - mean, axis);
+        // (no magazine, e.g. a pump shotgun: near the trigger, 38% of the length from the back)
+        Vector3 pivot = magazine != null && magazine.TryGetComponent(out Renderer magRenderer)
+            ? mean + axis * Vector3.Dot(magRenderer.bounds.center - mean, axis)
+            : mean + axis * (min + length * 0.38f);
 
         // Root frame: forward = axis, up = grip-up; the model goes under it, scaled to 1 m
         Quaternion frame = Quaternion.LookRotation(axis, up);
@@ -94,8 +96,9 @@ public static class GunPrefabBuilder
 
         string outPath = $"{OutputFolder}/{id}.prefab";
         PrefabUtility.SaveAsPrefabAsset(root, outPath);
+        string result = $"{id}: {outPath}, model length {length:0.###}, axis {axis}, magazine {(magazine != null ? "yes" : "no")}, tip {tip.localPosition}";
         Object.DestroyImmediate(root);
-        return $"{id}: {outPath}, model length {length:0.###}, axis {axis}, magazine {(magazine != null ? "yes" : "no")}, tip {tip.localPosition}";
+        return result;
     }
 
     private static Transform Find(Transform root, string name)

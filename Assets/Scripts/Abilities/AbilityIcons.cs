@@ -18,6 +18,7 @@ public static class AbilityIcons
     {
         ["bouncepadtrap"] = new[] { "jumppad", "bouncepad" },
         ["infiniteclimb"] = new[] { "infiniteclimbing" },
+        ["groundpound"]   = new[] { "groundpount" },   // Spelled that way on SpriteAbilityPage5
     };
 
     private static Dictionary<string, Sprite> sheet;
