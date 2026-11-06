@@ -462,7 +462,7 @@ public class HUDManager : MonoBehaviour
         }
 
         float now = Time.unscaledTime;
-        if (number != lastCountdown && number > 0) { countdownPop = now; UISound.Play(UISound.Kind.Click); }
+        if (number != lastCountdown && number > 0) { countdownPop = now; Sfx.Here(SfxKind.Hit, 0.7f, number <= 3 ? 0.5f : 0.4f); }
         lastCountdown = number;
 
         string text = number > 0 ? number.ToString() : now < goUntil ? "GO!" : "";
@@ -533,15 +533,17 @@ public class HUDManager : MonoBehaviour
             case MatchPhase.Hiding:
             case MatchPhase.Active:
                 goUntil = Time.unscaledTime + 0.9f;
-                UISound.Play(UISound.Kind.Confirm);
+                Sfx.Here(SfxKind.Horn, 0.7f);
                 if (phase == MatchPhase.Active && manager.Mode.UsesRoles) ShowBanner("Hunters released!", 2f);
                 break;
             case MatchPhase.RoundEnd:
                 ShowBanner("Round over!", 4f);
+                Sfx.Here(SfxKind.Horn, 0.6f, 0.8f);
                 break;
             case MatchPhase.MatchEnd:
                 var winner = PhotonNetwork.CurrentRoom?.GetPlayer(manager.WinnerActorNumber);
                 ShowBanner(winner != null ? $"{winner.NickName} wins!" : "Match over!", 10f);
+                Sfx.Here(SfxKind.Fanfare, 0.8f);
                 break;
         }
     }

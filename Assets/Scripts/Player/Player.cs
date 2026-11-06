@@ -110,6 +110,31 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Stuck in place on a surface (Chameleon): no movement and no gravity until cleared.</summary>
     public bool IsAnchored { get; set; }
 
+    /// <summary>
+    /// Wall Magnet (owner): the "up" of the surface being walked on (a wall's or ceiling's normal), or null for
+    /// normal gravity. PlayerMovement walks along that surface; PlayerCam turns the body and view to match.
+    /// </summary>
+    public Vector3? MagnetUp { get; set; }
+    public bool IsMagnetized => MagnetUp.HasValue;
+
+    /// <summary>Owner: the turn from world up to the surface the body stands on, smoothed by PlayerCam (identity normally).</summary>
+    public Quaternion SurfaceFrame { get; set; } = Quaternion.identity;
+
+    /// <summary>Owner: an admin turned this player's abilities off ("name ability 0" in the admin console).</summary>
+    public bool AdminAbilitiesOff { get; set; }
+
+    /// <summary>Owner: an admin made this player immune to gun damage ("name god 1").</summary>
+    public bool AdminGod { get; set; }
+
+    /// <summary>Shield (synced): immune to other players' abilities (blasts, pulls, ice, traps, flashes, Honk, Fish Bait…).</summary>
+    public bool IsShielded { get; set; }
+
+    /// <summary>
+    /// True when an ability from <paramref name="sourceActor"/> may affect this player: always, unless shielded
+    /// (then only their own). Actor 0 means the world (fans, pads), which shields don't block.
+    /// </summary>
+    public bool AffectedBy(int sourceActor) => !IsShielded || sourceActor == 0 || sourceActor == ActorNumber;
+
     /// <summary>Climb speed that never runs out while above 0 (Infinite Climb); 0 = normal climbing.</summary>
     public float SteadyClimbSpeed { get; set; }
 
@@ -135,7 +160,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         !IsCaught && !IsHeld && !MovementLocked && (GameModeManager.Instance == null || GameModeManager.Instance.CanMove(this));
 
     public bool CanUseAbilities =>
-        !IsCaught && !IsHeld && (GameModeManager.Instance == null || GameModeManager.Instance.CanUseAbilities(this));
+        !IsCaught && !IsHeld && !AdminAbilitiesOff && (GameModeManager.Instance == null || GameModeManager.Instance.CanUseAbilities(this));
 
     // ─── Timed stat changes (Adrenaline, Grow Ray…) ───────────────────────────
     private readonly Dictionary<string, (Stat stat, float until)> timedModifiers = new();
@@ -252,6 +277,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         // Gun-mode parts, idle unless the mode uses guns. Added here on every copy, so their RPCs line up.
         Health = TryGetComponent(out PlayerHealth health) ? health : gameObject.AddComponent<PlayerHealth>();
         Gun    = TryGetComponent(out PlayerGun gun)       ? gun    : gameObject.AddComponent<PlayerGun>();
+        if (!TryGetComponent(out PlayerFx _)) gameObject.AddComponent<PlayerFx>(); // Jump/land dust for others
 
         // Model roots are often imported with a non-unit scale; stance/size multiply it
         baseVisualScales    = new Vector3[visualRoots.Length];
@@ -463,14 +489,19 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (Spawner.Instance != null) Spawner.Instance.RespawnLocalPlayer();
         IsCaught = false;
         Respawned?.Invoke();
-        photonView.RPC(nameof(RPC_Respawned), RpcTarget.Others);
+        Fx.Respawn(transform.position);
+        photonView.RPC(nameof(RPC_Respawned), RpcTarget.Others, transform.position);
     }
 
     // Other screens show the body again once its owner says it respawned (the wait can be cut short)
     private bool respawnSignal;
 
     [PunRPC]
-    private void RPC_Respawned() => respawnSignal = true;
+    private void RPC_Respawned(Vector3 feet)
+    {
+        respawnSignal = true;
+        Fx.Respawn(feet);
+    }
 
     /// <summary>The ragdoll left by the last tag (its torso), followed by the caught camera; null if none.</summary>
     public Transform Corpse { get; private set; }
@@ -516,9 +547,12 @@ public class Player : MonoBehaviourPun, IPunObservable
     public void Teleport(Vector3 position, Quaternion rotation)
     {
         Abilities.CancelAll();
+        MagnetUp     = null;                 // Arrive upright, not still turned to a wall (Wall Magnet)
+        SurfaceFrame = Quaternion.identity;
         Body.linearVelocity  = Vector3.zero;
         Body.angularVelocity = Vector3.zero;
         Body.position        = position;
+        Body.rotation        = rotation;
         transform.SetPositionAndRotation(position, rotation);
         SetState(MovementState.Idle);
     }

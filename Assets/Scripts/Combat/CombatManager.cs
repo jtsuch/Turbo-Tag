@@ -90,6 +90,8 @@ public class CombatManager : MonoBehaviourPun
         if (subscribed == null && Player.Local != null) HandleLocalSpawned(Player.Local);
 
         UpdatePickups();
+        ResendLostDeathReport();
+        AdoptPickupsIfNewMaster();
         if (PhotonNetwork.IsMasterClient) ExpirePickups();
     }
 
@@ -139,7 +141,38 @@ public class CombatManager : MonoBehaviourPun
         var local = Player.Local;
         if (deathReported || local == null || local.IsCaught) return;
         deathReported = true;
+        deathReportedAt = Time.time;
+        lastReport = (killerActor, weapon ?? "", headshot);
         photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, killerActor, weapon ?? "", headshot, local.transform.position);
+    }
+
+    // A death report lost on the way (the host left as it was sent) would leave this player alive at 0 health
+    // and unkillable: if no tag has come back after a few seconds, report it again.
+    private float deathReportedAt;
+    private (int killer, string weapon, bool headshot) lastReport;
+
+    private void ResendLostDeathReport()
+    {
+        var local = Player.Local;
+        if (!deathReported || local == null || local.IsCaught || Time.time - deathReportedAt < 3f) return;
+        deathReportedAt = Time.time;
+        photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, lastReport.killer, lastReport.weapon, lastReport.headshot, local.transform.position);
+    }
+
+    // A new host doesn't know the old host's health packs: it takes over every pack still on the ground
+    private bool wasMaster;
+
+    private void AdoptPickupsIfNewMaster()
+    {
+        bool master = PhotonNetwork.IsMasterClient;
+        if (master && !wasMaster)
+            foreach (var pair in pickups)
+                if (pair.Value != null && !livePickups.ContainsKey(pair.Key))
+                {
+                    livePickups[pair.Key] = Time.time + PickupLifetime;
+                    nextPickupId = Mathf.Max(nextPickupId, pair.Key + 1);
+                }
+        wasMaster = master;
     }
 
     [PunRPC]
@@ -154,10 +187,13 @@ public class CombatManager : MonoBehaviourPun
         lastDeath[victim.ActorNumber] = Time.time;
 
         PhotonPlayer killer = killerActor >= 0 ? PhotonNetwork.CurrentRoom.GetPlayer(killerActor) : null;
+        // Shot by someone who has since left: still a death, but not a self destruction (no fall penalty)
+        bool killerLeft   = killerActor >= 0 && killer == null;
+        if (killerLeft) killer = victim;
         bool selfDestruct = killer == null || killer == victim;
         bool live = manager.Phase == MatchPhase.Active && !manager.Clock.IsExpired;
 
-        if (live) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
+        if (live && !killerLeft) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
 
         photonView.RPC(nameof(RPC_Killed), RpcTarget.All,
             selfDestruct ? victim.ActorNumber : killer.ActorNumber, victim.ActorNumber, weapon, headshot, selfDestruct);
@@ -172,6 +208,7 @@ public class CombatManager : MonoBehaviourPun
     {
         // Shot dead: watch it from the killer's eyes (the tag that follows starts the respawn wait)
         bool mine = victim == PhotonNetwork.LocalPlayer.ActorNumber;
+        if (!selfDestruct && killer == PhotonNetwork.LocalPlayer.ActorNumber && !mine) Sfx.Here(SfxKind.Kill, 0.9f);
         if (mine && !selfDestruct && MatchRules.Killcam && Killcam.Instance != null)
         {
             var room  = PhotonNetwork.CurrentRoom;
@@ -247,6 +284,8 @@ public class CombatManager : MonoBehaviourPun
     {
         if (pickups.TryGetValue(id, out var pickup))
         {
+            if (pickup != null && takenBy > 0)
+                Fx.Heal(pickup.transform.position, takenBy == PhotonNetwork.LocalPlayer.ActorNumber);
             if (pickup != null) Destroy(pickup.gameObject);
             pickups.Remove(id);
         }

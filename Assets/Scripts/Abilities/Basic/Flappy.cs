@@ -1,10 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// Glider: while held in the air, caps fall speed and boosts air control. Drains duration only
+/// Glider: while held in the air, caps fall speed and boosts air control; while still rising it holds up
+/// part of gravity, so a jump (or launch) with Flappy held goes higher and further. Drains duration only
 /// while actually airborne.
 /// </summary>
-[AbilityInfo("Hold in the air to glide: you fall slowly and steer much better.")]
+[AbilityInfo("Hold in the air to glide: you fall slowly, steer much better and jumps carry higher.")]
 public class Flappy : BasicAbility
 {
     [Header("Glide")]
@@ -12,6 +13,9 @@ public class Flappy : BasicAbility
     [SerializeField] private float glideFallSpeed = 2f;
     [TunableParam("Air Control Boost", 1f, 20f)]
     [SerializeField] private float airControlMultiplier = 5f;
+    [Tooltip("Share of gravity the wings hold up while still rising, so a held jump carries higher and further.")]
+    [TunableParam("Rising Lift", 0f, 1f)]
+    [SerializeField] private float risingLift = 0.55f;
 
     private bool held;
 
@@ -36,8 +40,10 @@ public class Flappy : BasicAbility
             IsActive = !Owner.IsGrounded;
             if (IsActive)
             {
-                // Air control stays boosted for the whole glide; only falling is limited, never rising
+                // Air control stays boosted for the whole glide; falling is limited, rising is carried on
                 Owner.Modifiers.Set(Stat.AirControl, this, airControlMultiplier);
+                if (Body.linearVelocity.y > 0f && Body.useGravity)
+                    Body.AddForce(-Physics.gravity * risingLift, ForceMode.Acceleration);
                 if (Body.linearVelocity.y < -glideFallSpeed)
                     Body.linearVelocity = new Vector3(Body.linearVelocity.x, -glideFallSpeed, Body.linearVelocity.z);
             }

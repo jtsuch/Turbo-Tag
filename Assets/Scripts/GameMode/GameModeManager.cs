@@ -75,6 +75,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         }
 
         ScoreOverlay.Create(); // Hold Tab for the standings, in every mode
+        AdminConsole.Create(); // ` for admins (AdminConsole.Admins)
+        if (!TryGetComponent(out AdminCommands _)) gameObject.AddComponent<AdminCommands>(); // Shares this scene PhotonView
+        Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
         Scores = GetComponent<ScoreController>();
         lastAnnouncedPhase = MatchPhase.Waiting;
@@ -248,7 +251,11 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
         // Everyone leaves a ragdoll where the tagged player was; the tagged player then runs the caught flow
         var tagged = Player.Find(targetActor);
-        if (tagged != null) tagged.LeaveCorpse();
+        if (tagged != null)
+        {
+            Fx.Tagged(tagged.transform.position, Mode != null && Mode.UsesGuns);
+            tagged.LeaveCorpse();
+        }
 
         if (targetActor == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null)
             Player.Local.OnTagged(tagger);

@@ -27,7 +27,7 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
         }
     }
 
-    public static bool IsPaused => _instance != null && _instance.open;
+    public static bool IsPaused => (_instance != null && _instance.open) || AdminConsole.IsOpen; // The admin console pauses input too
 
     public static event Action<bool> PausedChanged;
 

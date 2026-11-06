@@ -26,7 +26,7 @@ public class SnowballObject : NetworkedProjectile
         hasHit = true;
 
         var target = collision.collider.GetComponentInParent<Player>();
-        if (target != null && !target.IsCaught) target.RequestIce(iceDuration * Power);
+        if (target != null && !target.IsCaught && target.AffectedBy(photonView.OwnerActorNr)) target.RequestIce(iceDuration * Power);
 
         HideAndFreeze();
         photonView.RPC(nameof(RPC_Splat), RpcTarget.All, transform.position);
@@ -34,5 +34,10 @@ public class SnowballObject : NetworkedProjectile
     }
 
     [PunRPC]
-    private void RPC_Splat(Vector3 hitPos) => WorldFx.SpawnVfx(hitVFX, hitPos);
+    private void RPC_Splat(Vector3 hitPos)
+    {
+        WorldFx.SpawnVfx(hitVFX, hitPos);
+        Sfx.At(SfxKind.Splat, hitPos, 0.9f, 30f);
+        Fx.Frost(hitPos);
+    }
 }

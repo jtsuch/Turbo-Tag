@@ -98,7 +98,8 @@ public static class WorldFx
     /// its own networked objects (including the local player) and un-networked scene props.
     /// Remote objects are moved by their owners, so pushing them here would only cause jitter.
     /// </summary>
-    public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f)
+    /// <param name="sourceActor">Who caused it (0 = the world): a shielded player ignores other players' blasts.</param>
+    public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f, int sourceActor = 0)
     {
         int layers = mask.value != 0 ? mask.value : Physics.AllLayers;
         int count  = Physics.OverlapSphereNonAlloc(position, radius, overlapBuffer, layers, QueryTriggerInteraction.Ignore);
@@ -110,9 +111,9 @@ public static class WorldFx
             Rigidbody body = overlapBuffer[i].attachedRigidbody;
             if (body == null || body.isKinematic || !pushed.Add(body)) continue;
             if (!HasAuthority(body)) continue;
-
-            body.AddExplosionForce(force, position, radius, upwardsModifier, ForceMode.Impulse);
             var player = body.GetComponent<Player>();
+            if (player != null && !player.AffectedBy(sourceActor)) continue;
+            body.AddExplosionForce(force, position, radius, upwardsModifier, ForceMode.Impulse);
             if (player != null) player.NotePushed();
         }
     }
@@ -121,10 +122,12 @@ public static class WorldFx
     /// Applies an outside force to a body this client has authority over. For a player it also tells the
     /// movement code not to brake for a moment, so pulls and blasts actually move them.
     /// </summary>
-    public static void Push(Rigidbody body, Vector3 force, ForceMode mode)
+    /// <param name="sourceActor">Who caused it (0 = the world, e.g. fans): a shielded player ignores other players' pushes.</param>
+    public static void Push(Rigidbody body, Vector3 force, ForceMode mode, int sourceActor = 0)
     {
-        body.AddForce(force, mode);
         var player = body.GetComponent<Player>();
+        if (player != null && !player.AffectedBy(sourceActor)) return;
+        body.AddForce(force, mode);
         if (player != null) player.NotePushed();
     }
 

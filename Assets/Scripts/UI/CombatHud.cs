@@ -209,26 +209,35 @@ public class CombatHud : MonoBehaviour
 
         BuildPicker(root);
 
-        // Killcam: a card under the clock (the rest of the HUD stays visible)
-        var kill = UIKit.Card(root, Panel, 24f, 0.45f, "Killcam");
-        UIKit.Place(kill, new Vector2(0.5f, 1f), new Vector2(0f, -176f), new Vector2(900f, 118f));
+        // Killcam: a pink frame around the whole screen (so it's clear this is a replay) with a slim strip along
+        // the very bottom edge holding the label, the skip hint and the progress (under the HUD cards, out of the view)
+        var kill = UIKit.Rect("Killcam", root);
+        UIKit.Stretch(kill);
         killcamOverlay = kill.gameObject;
-        var chip = UIKit.Chip(kill, "KILLCAM", Theme.pink, Theme.text, 20f);
-        UIKit.Place(chip.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, 16f), new Vector2(150f, 34f));
-        killcamTitle = UIKit.OneLine(UIKit.Text(kill, "", 28f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Center));
-        UIKit.Place(killcamTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(860f, 40f));
-        var skip = UIKit.Text(kill, "Press SPACE to skip", 18f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
-        UIKit.Place(skip.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(860f, 26f));
-        var progressBack = UIKit.Panel(kill, Theme.field, 3f, "Progress");
-        progressBack.rectTransform.anchorMin = new Vector2(0f, 0f);
-        progressBack.rectTransform.anchorMax = new Vector2(1f, 0f);
-        progressBack.rectTransform.pivot = new Vector2(0.5f, 0f);
-        progressBack.rectTransform.sizeDelta = new Vector2(-48f, 6f);
-        progressBack.rectTransform.anchoredPosition = new Vector2(0f, 8f);
-        killcamProgress = UIKit.Panel(progressBack.transform, Theme.pink, 3f, "Fill").rectTransform;
-        killcamProgress.anchorMin = Vector2.zero;
-        killcamProgress.anchorMax = Vector2.one;
-        killcamProgress.sizeDelta = Vector2.zero;
+        var tint = Img(kill, "Tint", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(1f, 0.24f, 0.5f, 0.05f));
+        tint.raycastTarget = false;
+        const float Edge = 8f, StripHeight = 30f;
+        Color frame = Theme.pink;
+        Img(kill, "Top",   new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, Edge), frame).rectTransform.pivot = new Vector2(0.5f, 1f);
+        Img(kill, "Left",  new Vector2(0f, 0f), new Vector2(0f, 1f), Vector2.zero, new Vector2(Edge, 0f), frame).rectTransform.pivot = new Vector2(0f, 0.5f);
+        Img(kill, "Right", new Vector2(1f, 0f), new Vector2(1f, 1f), Vector2.zero, new Vector2(Edge, 0f), frame).rectTransform.pivot = new Vector2(1f, 0.5f);
+
+        var strip = Img(kill, "Strip", new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, StripHeight), new Color(0.07f, 0.04f, 0.14f, 0.94f)).rectTransform;
+        strip.pivot = new Vector2(0.5f, 0f);
+        strip.anchoredPosition = Vector2.zero;
+        killcamProgress = Img(strip, "Progress", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, UIKit.WithAlpha(Theme.pink, 0.45f)).rectTransform;
+        var line = Img(strip, "Line", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, 3f), frame).rectTransform;
+        line.pivot = new Vector2(0.5f, 1f);
+        line.anchoredPosition = Vector2.zero;
+
+        var chip = UIKit.Text(strip, "KILLCAM", 20f, UIKit.Font.Display, Theme.pink, TextAlignmentOptions.MidlineLeft);
+        UIKit.Stretch(chip.rectTransform, 20f, 0f, 0f, 2f);
+        killcamTitle = UIKit.OneLine(UIKit.Text(strip, "", 19f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Midline));
+        UIKit.Stretch(killcamTitle.rectTransform, 200f, 200f, 0f, 2f);
+        killcamTitle.alignment = TextAlignmentOptions.Midline;
+        var skip = UIKit.Text(strip, "SPACE to skip", 17f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.MidlineRight);
+        UIKit.Stretch(skip.rectTransform, 0f, 20f, 0f, 2f);
+        foreach (var graphic in kill.GetComponentsInChildren<Graphic>()) graphic.raycastTarget = false;
         killcamOverlay.SetActive(false);
 
         // Death notice (falls, or no killcam)
@@ -308,7 +317,7 @@ public class CombatHud : MonoBehaviour
         bool open = GunPicker.IsOpen && local != null && !local.IsCaught;
         if (GunPicker.IsOpen && !open) GunPicker.Close(pick: false);
         picker.SetActive(open && !PauseMenuManager.IsPaused);
-        if (!open) return;
+        if (!open || AdminConsole.IsOpen || AdminConsole.ClosedFrame == Time.frameCount) return; // Typing isn't picking
 
         // Click a gun or press its number; Space or Enter (or waiting) takes the gun used last
         for (int i = 0; i < GunCatalog.All.Count && i < 9; i++)
@@ -381,11 +390,16 @@ public class CombatHud : MonoBehaviour
     private void HandleHit(bool headshot)
     {
         hitMarkerUntil = Time.time + 0.15f;
+        Sfx.Here(headshot ? SfxKind.Headshot : SfxKind.Hit, headshot ? 0.7f : 0.5f);
         foreach (var bar in hitMarkerBars) bar.color = headshot ? new Color(1f, 0.25f, 0.2f) : Color.white;
     }
 
-    private void HandleDamaged(float amount, int attacker) =>
+    private void HandleDamaged(float amount, int attacker)
+    {
         flashAlpha = Mathf.Clamp(flashAlpha + amount / 100f, 0.15f, 0.45f);
+        Sfx.Here(SfxKind.Hurt, Mathf.Lerp(0.5f, 1f, amount / 60f));
+        Fx.Shake(Mathf.Clamp(amount / 120f, 0.08f, 0.5f));
+    }
 
     // ─── Kill feed ────────────────────────────────────────────────────────────
 

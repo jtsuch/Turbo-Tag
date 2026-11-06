@@ -98,7 +98,7 @@ public abstract class Ability : MonoBehaviour
     /// <summary>Owner: one more use of an ability, for the scoreboard's "Abilities Used".</summary>
     protected void CountUse()
     {
-        if (IsLocal && Handler != null) Handler.CountUse();
+        if (IsLocal && Handler != null) Handler.CountUse(Id);
     }
 
     // ─── Input contract ───────────────────────────────────────────────────────

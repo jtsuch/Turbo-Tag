@@ -40,11 +40,21 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     private float nextUsesWrite;
     private const float UsesWriteInterval = 0.5f;
 
-    /// <summary>Owner: an ability was used. The total goes to this player's stats a few times a second.</summary>
-    public void CountUse()
+    /// <summary>
+    /// Owner: an ability was used. The total goes to this player's stats a few times a second, and every
+    /// screen plays the ability's sound and burst on this player (<see cref="Fx.Ability"/>).
+    /// </summary>
+    public void CountUse(string abilityId)
     {
         usesThisMatch++;
         usesDirty = true;
+        if (Fx.HasAbilityFx(abilityId)) photonView.RPC(nameof(RPC_AbilityFx), RpcTarget.All, abilityId);
+    }
+
+    [PunRPC]
+    private void RPC_AbilityFx(string abilityId)
+    {
+        if (TryGetComponent(out Player player)) Fx.Ability(abilityId, player);
     }
 
     private void Update()

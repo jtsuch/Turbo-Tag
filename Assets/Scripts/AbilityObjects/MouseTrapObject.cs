@@ -45,6 +45,7 @@ public class MouseTrapObject : MonoBehaviourPun
         var player = other.GetComponentInParent<Player>();
         if (player == null || !player.IsLocal || player.IsCaught) return;
         if (player.ActorNumber == photonView.OwnerActorNr) return; // The placer knows where it is
+        if (!player.AffectedBy(photonView.OwnerActorNr)) return; // Shielded
 
         sprung = true;
         player.HoldFor(holdSeconds);
@@ -55,6 +56,8 @@ public class MouseTrapObject : MonoBehaviourPun
     private void RPC_Snap()
     {
         sprung = true;
+        Sfx.At(SfxKind.Snap, transform.position, 1f, 30f);
+        Vfx.Burst(transform.position + Vector3.up * 0.3f, new Color(1f, 0.85f, 0.4f), 12, 3f, 0.18f, 0.4f);
         WorldFx.Beep(transform.position, audioRadius, snapSFX, 0.45f, 1f);
         if (bar != null) StartCoroutine(SlamBar());
         if (photonView.IsMine) StartCoroutine(RemoveAfterHold());

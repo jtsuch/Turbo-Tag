@@ -33,6 +33,8 @@ public class PlayerGun : MonoBehaviourPun
     private float  bloom;          // Extra spread from spraying (degrees), shrinking back between shots
     private bool   reloadPending;
     private readonly RaycastHit[] hits = new RaycastHit[32];
+    private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
+    private bool lastTraceHit; // The last Trace stopped on something (for impact sparks)
     private readonly Dictionary<Player, (float damage, bool head)> pending = new();
 
     // Visuals: first-person (owner) and third-person (others) models per gun id
@@ -93,6 +95,14 @@ public class PlayerGun : MonoBehaviourPun
         if (photonView.IsMine && Current != null) bloom = Mathf.MoveTowards(bloom, 0f, Current.BloomRecovery * Time.deltaTime);
         if (!photonView.IsMine || !shown) return;
         if (reloadPending && !IsReloading) { Ammo = Current.Magazine; reloadPending = false; }
+
+        // A click that places a trap or throws something never fires too: while an ability waits for the
+        // Action key, firing is blocked until that key is let go (the place/throw can land before this runs)
+        KeyCode action = Keybinds.Get(InputAction.Action);
+        if (player.Abilities != null && player.Abilities.IsAwaitingAction) fireBlockedUntilRelease = true;
+        else if (!Input.GetKey(action)) fireBlockedUntilRelease = false;
+        if (fireBlockedUntilRelease) return;
+
         if (!CanShoot) return;
 
         if (Input.GetKeyDown(Keybinds.Get(InputAction.Reload)) && Ammo < Current.Magazine && !IsReloading)
@@ -132,6 +142,7 @@ public class PlayerGun : MonoBehaviourPun
     {
         reloadEndsAt  = Time.time + Current.ReloadTime;
         reloadPending = true;
+        Sfx.Here(SfxKind.Reload, 0.6f);
         photonView.RPC(nameof(RPC_Reload), RpcTarget.Others);
     }
 
@@ -140,6 +151,7 @@ public class PlayerGun : MonoBehaviourPun
     {
         var gun = GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, ""));
         if (gun != null) reloadEndsAt = Time.time + gun.ReloadTime;
+        Sfx.At(SfxKind.Reload, transform.position + Vector3.up, 0.6f, 20f);
     }
 
     // ─── Shooting (owner) ─────────────────────────────────────────────────────
@@ -167,6 +179,7 @@ public class PlayerGun : MonoBehaviourPun
             Vector3 end = Trace(view.position, dir, gun.Range, out Player target, out bool head);
             if (p == 0) firstEnd = end;
             GunFx.Tracer(muzzle, end);
+            if (lastTraceHit) Fx.Impact(end, view.position, target != null);
 
             if (target == null) continue;
             anyHit = true;
@@ -180,6 +193,7 @@ public class PlayerGun : MonoBehaviourPun
             pair.Key.Health.RequestDamage(pair.Value.damage, gun.Id, pair.Value.head);
 
         GunFx.Flash(muzzle);
+        Fx.Shot(gun.Id, muzzle, local: true);
         var model = ViewModel(gun.Id);
         if (model != null) model.Kick();
         PlayerCam.Local.AddRecoil(gun.Recoil);
@@ -213,6 +227,7 @@ public class PlayerGun : MonoBehaviourPun
             best = hits[i].distance;
             hitIndex = i;
         }
+        lastTraceHit = hitIndex >= 0;
         if (hitIndex < 0) return origin + dir * range;
 
         var hit = hits[hitIndex];
@@ -238,6 +253,8 @@ public class PlayerGun : MonoBehaviourPun
         if (model != null) model.Kick();
 
         Vector3 from = Muzzle(false).position;
+        Fx.Shot(Current != null ? Current.Id : null, from, local: false);
+        if (Vector3.Distance(from, end) < (Current != null ? Current.Range : 150f) - 1f) Fx.Impact(end, from, false);
         GunFx.Tracer(from, end);
         for (int i = 1; i < pellets; i++)
             GunFx.Tracer(from, end + Random.insideUnitSphere * Vector3.Distance(from, end) * 0.05f);

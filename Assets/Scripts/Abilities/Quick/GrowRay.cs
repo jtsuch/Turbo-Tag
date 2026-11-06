@@ -56,7 +56,7 @@ public class GrowRay : QuickAbility
             target  = hitPlayer;
         }
 
-        if (target != null && !target.IsCaught)
+        if (target != null && !target.IsCaught && target.AffectedBy(Owner.ActorNumber))
             target.RequestTimedModifier(Stat.Size, nameof(GrowRay), growMultiplier, growDuration);
 
         ShowShot(end);

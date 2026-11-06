@@ -42,6 +42,7 @@ public class BoomStickObject : NetworkedProjectile
         if (vfx != null) vfx.transform.localScale = Vector3.one * vfxScale;
 
         WorldFx.PlayClip(explosionSFX, position, audioRadius, audioVolume);
-        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers);
+        Fx.Explosion(position, explosionRadius * Mathf.Sqrt(Power));
+        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr);
     }
 }

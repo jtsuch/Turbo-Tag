@@ -40,7 +40,9 @@ public class InputHandler : MonoBehaviourPun
 
         ClearFrameInput();
 
-        if (Input.GetKeyDown(Keybinds.Get(InputAction.Pause)) && PauseMenuManager.Instance != null)
+        // Escape while typing in the admin console closes the console, not opens the pause menu
+        bool consoleHasEscape = AdminConsole.IsOpen || AdminConsole.ClosedFrame == Time.frameCount;
+        if (!consoleHasEscape && Input.GetKeyDown(Keybinds.Get(InputAction.Pause)) && PauseMenuManager.Instance != null)
             PauseMenuManager.Instance.Toggle();
 
         bool paused = PauseMenuManager.IsPaused;

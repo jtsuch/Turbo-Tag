@@ -106,8 +106,9 @@ public class NukeSequence : MonoBehaviourPun
 
         WorldFx.PlayClip(explosionSound, transform.position, explosionRadius);
         WorldFx.SpawnVfx(explosionEffect, transform.position);
+        Fx.Explosion(transform.position, explosionRadius);
         // explosionForce is tuned as a continuous force; convert to one physics step of impulse
-        WorldFx.Explode(transform.position, explosionRadius, explosionForce * power * Time.fixedDeltaTime, affectedLayers);
+        WorldFx.Explode(transform.position, explosionRadius, explosionForce * power * Time.fixedDeltaTime, affectedLayers, sourceActor: photonView.OwnerActorNr);
 
         if (photonView.IsMine) PhotonNetwork.Destroy(gameObject);
     }
@@ -117,6 +118,8 @@ public class NukeSequence : MonoBehaviourPun
     {
         if (!isActive) return;
         isActive = false;
+        Sfx.At(SfxKind.Pop, transform.position, 1f, 30f);
+        Vfx.Burst(transform.position, new Color(0.5f, 1f, 0.5f), 20, 3f, 0.25f, 0.6f);
         if (photonView.IsMine) PhotonNetwork.Destroy(gameObject);
     }
 

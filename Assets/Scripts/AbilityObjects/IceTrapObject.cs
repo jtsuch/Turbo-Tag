@@ -3,8 +3,8 @@ using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
-/// Placed Ice Trap. The first player other than its placer to come within <see cref="triggerRadius"/>
-/// is iced (slides with almost no grip) for <see cref="iceDuration"/> seconds, then the trap is used up.
+/// Placed Ice Trap. The first player other than its placer whose body comes within <see cref="triggerRadius"/>
+/// (measured to the nearest point of their collider, so about a 6 m wide circle around the trap at 3) is iced (slides with almost no grip) for <see cref="iceDuration"/> seconds, then the trap is used up.
 ///   local player in range → Player.IceFor → RPC_Trigger (all: icing effect, trap hidden) → owner removes it
 /// Each client only checks its own player, so the victim's machine decides (like the Mouse Trap).
 /// Attach to: Resources/Object/IceTrap (kinematic Rigidbody, trigger collider, PhotonView). Optional humSFX/icingVFX.
@@ -12,8 +12,8 @@ using UnityEngine;
 public class IceTrapObject : MonoBehaviourPun
 {
     [Header("Detection")]
-    [TunableParam("Trigger Radius", 1f, 20f)]
-    [SerializeField] private float triggerRadius = 5f;
+    [TunableParam("Trigger Radius", 0.5f, 20f)]
+    [SerializeField] private float triggerRadius = 3f;
 
     [Header("Ice")]
     [TunableParam("Ice Duration", 1f, 30f)]
@@ -30,6 +30,7 @@ public class IceTrapObject : MonoBehaviourPun
 
     private float power = 1f;
     private bool  triggered;
+    private Collider bodyCollider;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -63,11 +64,23 @@ public class IceTrapObject : MonoBehaviourPun
         if (triggered) return;
         var local = Player.Local;
         if (local == null || local.IsCaught || local.ActorNumber == photonView.OwnerActorNr) return;
-        if (Vector3.Distance(transform.position, local.transform.position) > triggerRadius * power) return;
+        if (!local.AffectedBy(photonView.OwnerActorNr)) return; // Shielded: walks right over it
+        if (DistanceToBody(local) > triggerRadius * power) return;
 
         triggered = true;
         local.IceFor(iceDuration * power);
         photonView.RPC(nameof(RPC_Trigger), RpcTarget.All, local.transform.position);
+    }
+
+    // To the nearest point of the player's collider (their whole body counts, not just their pivot)
+    private float DistanceToBody(Player player)
+    {
+        if (bodyCollider == null || bodyCollider.attachedRigidbody != player.Body)
+            player.TryGetComponent(out bodyCollider);
+        Vector3 nearest = bodyCollider != null && bodyCollider.enabled
+            ? bodyCollider.ClosestPoint(transform.position)
+            : player.transform.position;
+        return Vector3.Distance(transform.position, nearest);
     }
 
     [PunRPC]
@@ -75,6 +88,9 @@ public class IceTrapObject : MonoBehaviourPun
     {
         triggered = true;
         if (icingVFX != null) Instantiate(icingVFX, feet, Quaternion.identity);
+        Sfx.At(SfxKind.Ice, feet);
+        Vfx.Burst(feet + Vector3.up, new Color(0.6f, 0.9f, 1f), 40, 6f, 0.35f, 0.9f);
+        Vfx.Ring(feet, new Color(0.8f, 0.95f, 1f), 28, 7f, 0.5f, 0.7f);
         foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = false;
         if (photonView.IsMine) StartCoroutine(RemoveSoon());
     }

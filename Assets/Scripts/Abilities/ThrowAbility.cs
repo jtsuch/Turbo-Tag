@@ -32,7 +32,7 @@ public abstract class ThrowAbility : Ability
 
     [Header("References")]
     [Tooltip("Where throws originate (the first-person ThrowPoint).")]
-    [SerializeField] private Transform    throwOrigin;
+    [SerializeField] protected Transform  throwOrigin;
     [SerializeField] private LineRenderer trajectoryLine;
     [Tooltip("Where remote players see the object held. Defaults to in front of the chest.")]
     [SerializeField] private Transform    remoteHoldPoint;

@@ -47,7 +47,7 @@ public abstract class BasicAbility : Ability
 
         if (IsActive)
         {
-            CurrentDuration -= Time.fixedDeltaTime;
+            if (Draining) CurrentDuration -= Time.fixedDeltaTime;
             if (CurrentDuration <= 0.01f) Deactivate();
         }
         else
@@ -55,6 +55,9 @@ public abstract class BasicAbility : Ability
             CurrentDuration = Mathf.Min(MaxDuration, CurrentDuration + Time.fixedDeltaTime);
         }
     }
+
+    /// <summary>While active, whether the meter runs down this step (Wall Magnet rests while standing still).</summary>
+    protected virtual bool Draining => true;
 
     protected virtual void OnPress() { }
     protected virtual void OnRelease() => Deactivate();

@@ -62,11 +62,11 @@ public class FreeForAllMode : GameMode
     private void EndMatch()
     {
         PhotonPlayer leader = null;
-        float best = float.MinValue;
         foreach (var p in PhotonNetwork.PlayerList)
         {
-            float points = Get(p, PlayerKeys.Score);
-            if (points > best) { best = points; leader = p; }
+            if (leader == null) { leader = p; continue; }
+            int byPoints = Get(p, PlayerKeys.Score).CompareTo(Get(leader, PlayerKeys.Score));
+            if (byPoints > 0 || (byPoints == 0 && CompareForScoreboard(p, leader) < 0)) leader = p;
         }
         Manager.SetPhase(MatchPhase.MatchEnd, MatchEndSeconds,
             new Hashtable { [RoomKeys.Winner] = leader != null ? leader.ActorNumber : -1 });

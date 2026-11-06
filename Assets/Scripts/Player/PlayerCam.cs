@@ -66,6 +66,7 @@ public class PlayerCam : MonoBehaviour
     private float   bobTimer;
     private Vector3 bobOffset;
     private float   bumpOffset;
+    private float   shake;       // Screen shake (0–1 trauma), decays each frame
     private float   currentTilt;
 
     private bool       caughtMode;
@@ -169,6 +170,8 @@ public class PlayerCam : MonoBehaviour
         }
 
         if (!paused) ReadMouse();
+        ApplyLure();
+        float adminRoll = ApplyAdminEffects();
 
         float size = player.Size;
         transform.localPosition = Vector3.SmoothDamp(
@@ -178,11 +181,14 @@ public class PlayerCam : MonoBehaviour
         UpdateWallTilt();
         bumpOffset = Mathf.Lerp(bumpOffset, 0f, Time.deltaTime * bumpRecoverSpeed);
 
+        shake = Mathf.MoveTowards(shake, 0f, Time.deltaTime * 1.8f);
+        Vector3 shakeOffset = shake > 0f ? Random.insideUnitSphere * (shake * shake * 0.22f * size) : Vector3.zero;
         if (cam != null)
-            cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size);
+            cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size) + shakeOffset;
 
         // Free Spin (hold the Free Spin key, default 4): the mouse turns the whole body on every axis (backflips, barrel turns)
-        bool spinHeld = !paused && player.CanMove && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
+        bool spinHeld = !paused && player.CanMove && !IsLured && !player.IsMagnetized && player.SurfaceFrame == Quaternion.identity
+                     && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
         if (spinHeld)
         {
             if (!spinning) BeginSpin();
@@ -191,12 +197,17 @@ public class PlayerCam : MonoBehaviour
         }
         if (spinning) EndSpin();
 
-        Quaternion targetRotation = Quaternion.Euler(xRotation, yRotation, currentTilt);
+        Quaternion frame = UpdateSurfaceFrame();
+        Quaternion targetRotation = frame * Quaternion.Euler(xRotation, yRotation, currentTilt + adminRoll);
         transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation,
             1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
 
-        Quaternion upright = Quaternion.Euler(0f, yRotation, 0f);
-        if (recoveringFromSpin)
+        Quaternion upright = frame * Quaternion.Euler(0f, yRotation, 0f);
+        if (frame != Quaternion.identity)
+        {
+            RotateBodyAroundCenter(upright); // Standing on a wall or ceiling (Wall Magnet), or turning back upright
+        }
+        else if (recoveringFromSpin)
         {
             // Swing back upright around the body's middle, quickly but not in one frame
             Quaternion next = Quaternion.Slerp(player.Body.rotation, upright, 1f - Mathf.Exp(-spinRecoverSpeed * Time.deltaTime));
@@ -207,6 +218,90 @@ public class PlayerCam : MonoBehaviour
         {
             playerTransform.rotation = upright;
         }
+    }
+
+    // ─── Lure (Fish Bait) ─────────────────────────────────────────────────────
+
+    private Vector3 lurePoint;
+    private float   lureUntil;
+
+    /// <summary>True while something (Fish Bait) holds this player's gaze.</summary>
+    public bool IsLured => Time.time < lureUntil;
+
+    /// <summary>
+    /// Locks the view onto <paramref name="point"/> for a moment; call it every frame to keep it locked. The mouse
+    /// can't turn away, but movement still works (and "forward" is toward the point).
+    /// </summary>
+    public void Lure(Vector3 point)
+    {
+        lurePoint = point;
+        lureUntil = Time.time + 0.15f;
+    }
+
+    private void ApplyLure()
+    {
+        if (!IsLured) return;
+        Vector3 dir = lurePoint - transform.position;
+        if (dir.sqrMagnitude < 0.01f) return;
+
+        // In the frame of the surface being stood on (normally the world)
+        dir = Quaternion.Inverse(player.SurfaceFrame) * dir.normalized;
+        float yaw   = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+        float pitch = Mathf.Clamp(-Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg, -90f, 90f);
+        float k     = 1f - Mathf.Exp(-14f * Time.deltaTime);
+        yRotation = Mathf.LerpAngle(yRotation, yaw, k);
+        xRotation = Mathf.Lerp(xRotation, pitch, k);
+    }
+
+    // ─── Admin teases (AdminCommands) ─────────────────────────────────────────
+
+    private float dizzyUntil, spinUntil;
+
+    /// <summary>A wobbly, drifting, tilting view for <paramref name="seconds"/> (admin "dizzy").</summary>
+    public void Dizzy(float seconds) => dizzyUntil = Time.time + Mathf.Clamp(seconds, 0f, 120f);
+
+    /// <summary>The view spins round for <paramref name="seconds"/> (admin "spin").</summary>
+    public void SpinAround(float seconds) => spinUntil = Time.time + Mathf.Clamp(seconds, 0f, 60f);
+
+    public void StopAdminEffects() => dizzyUntil = spinUntil = 0f;
+
+    // Returns the extra camera roll (degrees)
+    private float ApplyAdminEffects()
+    {
+        float now = Time.time;
+        if (now < spinUntil) yRotation += 540f * Time.deltaTime;
+        if (now >= dizzyUntil) return 0f;
+
+        float fade = Mathf.Clamp01((dizzyUntil - now) / 1.5f); // Sobers up over the last moment
+        yRotation += Mathf.Sin(now * 1.3f) * 35f * fade * Time.deltaTime;
+        xRotation  = Mathf.Clamp(xRotation + Mathf.Cos(now * 1.7f) * 18f * fade * Time.deltaTime, -90f, 90f);
+        return Mathf.Sin(now * 0.9f) * 22f * fade;
+    }
+
+    // ─── Wall Magnet surface frame ────────────────────────────────────────────
+
+    // Turns the view's "up" toward the surface being walked on (Wall Magnet) by the smallest turn each frame,
+    // so the heading carries over smoothly. Back on normal gravity, the leftover turn around the vertical is
+    // folded into the yaw and the frame resets to identity.
+    private Quaternion UpdateSurfaceFrame()
+    {
+        Quaternion frame = player.SurfaceFrame;
+        if (!player.IsMagnetized && frame == Quaternion.identity) return frame;
+
+        Vector3    goalUp  = player.MagnetUp ?? Vector3.up;
+        Vector3    frameUp = frame * Vector3.up;
+        Quaternion goal    = Quaternion.FromToRotation(frameUp, goalUp) * frame;
+        frame = Quaternion.Slerp(frame, goal, 1f - Mathf.Exp(-12f * Time.deltaTime));
+
+        if (!player.IsMagnetized && Vector3.Angle(frame * Vector3.up, Vector3.up) < 0.5f)
+        {
+            Vector3 frameForward = Vector3.ProjectOnPlane(frame * Vector3.forward, Vector3.up);
+            if (frameForward.sqrMagnitude > 0.0001f)
+                yRotation += Vector3.SignedAngle(Vector3.forward, frameForward, Vector3.up);
+            frame = Quaternion.identity;
+        }
+        player.SurfaceFrame = frame;
+        return frame;
     }
 
     // ─── View override ────────────────────────────────────────────────────────
@@ -225,6 +320,9 @@ public class PlayerCam : MonoBehaviour
         if (viewPoint == null && cam != null && !caughtMode)
             cam.transform.SetLocalPositionAndRotation(bobOffset, Quaternion.identity);
     }
+
+    /// <summary>Shakes the view (explosions, hard hits): 0–1, adds up, fades in about half a second.</summary>
+    public void AddShake(float amount) => shake = Mathf.Clamp01(Mathf.Max(shake, 0f) + amount);
 
     /// <summary>Kicks the view up by <paramref name="degrees"/> (gun recoil).</summary>
     public void AddRecoil(float degrees) => xRotation = Mathf.Clamp(xRotation - degrees, -90f, 90f);

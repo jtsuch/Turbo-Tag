@@ -126,6 +126,16 @@ public class PlayerMovement : MonoBehaviourPun
     private void FixedUpdate()
     {
         if (!photonView.IsMine) return;
+
+        // Wall Magnet: walking on whatever surface is under the feet, walls and ceilings included
+        if (player.IsMagnetized && !player.IsAnchored && !player.IsHeld)
+        {
+            UpdateGravity();
+            MagnetMove();
+            return;
+        }
+        magnetGrounded = false;
+
         SurfaceCheck();
         UpdateGravity();
         jumpedThisStep = false;
@@ -155,7 +165,7 @@ public class PlayerMovement : MonoBehaviourPun
     // One writer means no system can leave gravity off (or on) after another one ends.
     private void UpdateGravity()
     {
-        bool off = player.IsDashing || player.IsAnchored
+        bool off = player.IsDashing || player.IsAnchored || player.IsMagnetized
                 || State == Player.MovementState.WallRun || State == Player.MovementState.Hang;
         if (rb.useGravity == off) rb.useGravity = !off;
 
@@ -163,6 +173,105 @@ public class PlayerMovement : MonoBehaviourPun
         float scale = player.Modifiers.Get(Stat.Gravity);
         if (!off && !Mathf.Approximately(scale, 1f))
             rb.AddForce(Physics.gravity * (scale - 1f), ForceMode.Acceleration);
+    }
+
+    // ─── Wall Magnet ──────────────────────────────────────────────────────────
+    // While magnetised, "down" is toward the surface under the feet. Walking into a wall climbs onto it
+    // (its normal becomes up); walking off an edge wraps around onto the face below. Jumps go away from the
+    // surface and fall back to it. With no surface for a moment, up returns to the sky (a normal fall).
+
+    private const float MagnetStick     = 40f;   // Pull toward the surface (m/s², like gravity)
+    private const float MagnetProbe     = 0.45f; // How far past the feet still counts as standing (m)
+    private const float MagnetWallReach = 0.9f;  // Walls this close ahead (from the body) are climbed onto (m)
+    private const float MagnetLetGo     = 1.2f;  // Seconds with no surface before up returns to the sky
+
+    private bool    magnetGrounded;
+    private float   lastMagnetTouch;
+    private Vector3 lastMagnetMove;
+
+    /// <summary>On a surface with Wall Magnet (any angle). Wall Magnet's meter rests while standing still on one.</summary>
+    public bool MagnetGrounded => player.IsMagnetized && magnetGrounded;
+
+    private void MagnetMove()
+    {
+        Vector3 up     = player.MagnetUp.Value;
+        Vector3 bodyUp = rb.rotation * Vector3.up;
+        float   half   = player.Height * 0.5f;
+        float   radius = body != null ? body.radius * 0.9f : 0.35f;
+        Vector3 center = rb.position + bodyUp * half;
+
+        // Wanted direction along the surface, from the camera
+        Vector2   move    = player.CanMove ? input.MoveInput : Vector2.zero;
+        Transform view    = cam != null ? cam.transform : transform;
+        Vector3   forward = Vector3.ProjectOnPlane(view.forward, up);
+        if (forward.sqrMagnitude < 0.01f) forward = Vector3.ProjectOnPlane(view.up, up);
+        forward.Normalize();
+        Vector3 right = Vector3.Cross(up, forward);
+        Vector3 wish  = Vector3.ClampMagnitude(forward * move.y + right * move.x, 1f);
+        if (wish.sqrMagnitude > 0.01f) lastMagnetMove = wish.normalized;
+
+        // The surface under the feet
+        bool justJumped = Time.time - lastJumpTime < 0.2f;
+        RaycastHit ground = default;
+        bool grounded = !justJumped && Physics.SphereCast(center, radius, -up, out ground,
+            half - radius + MagnetProbe, structureLayer, QueryTriggerInteraction.Ignore);
+        if (grounded)
+        {
+            lastMagnetTouch = Time.time;
+            if (Vector3.Angle(ground.normal, up) < 60f) up = ground.normal; // Follow curves and slopes
+        }
+
+        // A wall ahead: walk up onto it
+        if (wish.sqrMagnitude > 0.01f
+            && Physics.SphereCast(center, radius, wish.normalized, out RaycastHit wall, MagnetWallReach, structureLayer, QueryTriggerInteraction.Ignore)
+            && Vector3.Angle(wall.normal, up) > 35f)
+        {
+            up = wall.normal;
+            lastMagnetTouch = Time.time;
+        }
+        // Just walked off an edge: wrap around onto the face below it
+        else if (!grounded && !justJumped && magnetGrounded && lastMagnetMove != Vector3.zero)
+        {
+            Vector3 below = center - up * (half + 0.7f);
+            if (Physics.SphereCast(below, 0.3f, -lastMagnetMove, out RaycastHit edge, 2f, structureLayer, QueryTriggerInteraction.Ignore)
+                && Vector3.Angle(edge.normal, up) > 35f)
+            {
+                up = edge.normal;
+                grounded = true;
+                lastMagnetTouch = Time.time;
+            }
+        }
+
+        // Too long without a surface: back to the sky's up (a normal fall, still magnetised for the next wall)
+        if (!grounded && Time.time - lastMagnetTouch > MagnetLetGo) up = Vector3.up;
+
+        player.MagnetUp = up.normalized;
+        bool wasGrounded = magnetGrounded;
+        magnetGrounded = grounded;
+        OnGround = grounded;
+        if (grounded && !wasGrounded) player.NotifyLanded();
+
+        // Steer along the surface, keep (or set) speed across it
+        Vector3 v      = rb.linearVelocity;
+        Vector3 across = Vector3.Project(v, up);
+        Vector3 along  = v - across;
+        Vector3 target = wish * player.TargetSpeed;
+        float   accel  = grounded ? 90f : 40f;
+        if (grounded || wish.sqrMagnitude > 0.01f) along = Vector3.MoveTowards(along, target, accel * Time.fixedDeltaTime);
+        if (grounded && Vector3.Dot(across, up) > 0f) across = Vector3.zero; // Stay on it
+
+        if (grounded && Time.time - jumpPressedAt <= 0.15f && player.CanMove)
+        {
+            across = up * (player.Stats.jumpStrength * player.Modifiers.Get(Stat.Jump));
+            jumpPressedAt  = float.NegativeInfinity;
+            lastJumpTime   = Time.time;
+            magnetGrounded = false;
+            OnGround       = false;
+            player.NotifyJumped();
+        }
+
+        rb.linearVelocity = along + across;
+        rb.AddForce(-up * MagnetStick, ForceMode.Acceleration);
     }
 
     private void OnPlayerStateChanged(Player.MovementState newState)
@@ -713,34 +822,65 @@ public class PlayerMovement : MonoBehaviourPun
 
     // ─── Ledges ───────────────────────────────────────────────────────────────
 
+    // Ledge detection is deliberately forgiving: a fat sphere cast (not a thin ray) at three heights and three
+    // angles either side of where you face, reaching a little further, up to LedgeReach above the feet.
+    private const float LedgeProbeRadius = 0.45f;
+    private const float LedgeProbeReach  = 3.5f;
+    private const float LedgeReach       = 6.8f;   // Highest ledge top above the feet that can be grabbed
+    private const float LedgeHalfWidth   = 0.4f;   // Ledge needed either side of the hands
+    private static readonly float[] LedgeProbeHeights = { 0.6f, 1.6f, 2.6f };
+    private static readonly float[] LedgeProbeAngles  = { 0f, -30f, 30f };
+
     private void TryGrabLedge()
     {
-        if (!Physics.Raycast(transform.position, transform.forward, out RaycastHit wallHit, 3f, structureLayer))
-            return;
+        foreach (float angle in LedgeProbeAngles)
+        {
+            Vector3 dir = Quaternion.AngleAxis(angle, Vector3.up) * transform.forward;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.01f) continue;
+            dir.Normalize();
 
-        Vector3 ledgeCheckOrigin = wallHit.point + Vector3.up * 6.2f + transform.forward * 0.1f;
-        if (!Physics.Raycast(ledgeCheckOrigin, Vector3.down, out RaycastHit ledgeHit, 6.4f, structureLayer)) return;
-        if (Vector3.Dot(ledgeHit.normal, Vector3.up) < 0.7f) return;
+            foreach (float height in LedgeProbeHeights)
+            {
+                Vector3 origin = transform.position + Vector3.up * height;
+                if (!Physics.SphereCast(origin, LedgeProbeRadius, dir, out RaycastHit wallHit, LedgeProbeReach, structureLayer, QueryTriggerInteraction.Ignore))
+                    continue;
+                if (Mathf.Abs(wallHit.normal.y) > 0.5f) continue; // A floor or ceiling, not a wall
+                if (TryLedgeAt(wallHit)) return;
+            }
+        }
+    }
+
+    private bool TryLedgeAt(RaycastHit wallHit)
+    {
+        Vector3 into = -new Vector3(wallHit.normal.x, 0f, wallHit.normal.z).normalized;
+        float   feet = transform.position.y;
+        Vector3 top  = new(wallHit.point.x, feet + LedgeReach, wallHit.point.z);
+        top += into * 0.25f;
+
+        if (!Physics.Raycast(top, Vector3.down, out RaycastHit ledgeHit, LedgeReach - 0.3f, structureLayer, QueryTriggerInteraction.Ignore)) return false;
+        if (Vector3.Dot(ledgeHit.normal, Vector3.up) < 0.7f) return false;
 
         // Needs headroom above the ledge and enough width either side
-        if (Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.5f, structureLayer)) return;
-        if (!HasLedgeWidth(ledgeHit.point, wallHit.normal)) return;
+        if (Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.5f, structureLayer)) return false;
+        if (!HasLedgeWidth(ledgeHit.point, wallHit.normal)) return false;
 
         ledgePosition = ledgeHit.point;
-        ledgeNormal   = wallHit.normal;
+        ledgeNormal   = new Vector3(wallHit.normal.x, 0f, wallHit.normal.z).normalized;
 
         player.SetState(Player.MovementState.Hang);
         rb.linearVelocity = Vector3.zero;
         rb.position       = HangPosition;
+        return true;
     }
 
     private bool HasLedgeWidth(Vector3 ledgePoint, Vector3 wallNormal)
     {
-        Vector3 right = Vector3.Cross(Vector3.up, wallNormal);
+        Vector3 right = Vector3.Cross(Vector3.up, wallNormal).normalized;
         Vector3 above = ledgePoint + Vector3.up * 0.5f;
 
-        return Physics.Raycast(above - right * 0.6f, Vector3.down, 1f, structureLayer)
-            && Physics.Raycast(above + right * 0.6f, Vector3.down, 1f, structureLayer);
+        return Physics.Raycast(above - right * LedgeHalfWidth, Vector3.down, 1f, structureLayer)
+            && Physics.Raycast(above + right * LedgeHalfWidth, Vector3.down, 1f, structureLayer);
     }
 
     private Vector3 HangPosition => ledgePosition - ledgeNormal * LedgeOffset - Vector3.up * 1.8f;

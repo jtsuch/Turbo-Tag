@@ -12,6 +12,8 @@ public class BouncePad : MonoBehaviour
     [Tooltip("Optional label showing the bounce strength.")]
     [SerializeField] private TextMeshPro strengthText;
 
+    private float nextFxAt;
+
     private void Start()
     {
         if (strengthText != null) strengthText.text = bounceForce.ToString("F0");
@@ -20,7 +22,15 @@ public class BouncePad : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         Rigidbody rb = other.attachedRigidbody;
-        if (rb == null || !WorldFx.HasAuthority(rb)) return;
+        if (rb == null) return;
+
+        // Every screen sees the bounce (remote copies hit the trigger too); only the owner pushes
+        if (Time.time >= nextFxAt && rb.GetComponent<Player>() != null)
+        {
+            nextFxAt = Time.time + 0.3f;
+            Fx.Bounce(transform.position);
+        }
+        if (!WorldFx.HasAuthority(rb)) return;
 
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
         rb.AddForce(transform.forward * bounceForce, ForceMode.Impulse);

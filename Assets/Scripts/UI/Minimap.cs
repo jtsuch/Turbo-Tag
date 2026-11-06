@@ -151,6 +151,9 @@ public class Minimap : MonoBehaviour
         var local = Player.Local;
         if (local == null) return;
 
+        // The map is a second render of the whole scene: the corner map only needs ~20 updates a second
+        cam.enabled = big || Time.frameCount % 3 == 0;
+
         // Follow the player, north up; the near plane sits just above head height
         Vector3 eye = local.transform.position + Vector3.up * local.EyeHeight;
         cam.transform.SetPositionAndRotation(eye + Vector3.up * AboveEyes, Quaternion.Euler(90f, 0f, 0f));

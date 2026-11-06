@@ -45,7 +45,7 @@ public class PlayerHealth : MonoBehaviourPun
     [PunRPC]
     private void RPC_Damage(float amount, int attacker, string weapon, bool headshot)
     {
-        if (!photonView.IsMine || dead || player.IsCaught) return;
+        if (!photonView.IsMine || dead || player.IsCaught || player.AdminGod) return;
         var combat  = CombatManager.Instance;
         var manager = GameModeManager.Instance;
         // Only while the match is live: not once the clock has run out (the winner screen follows)

@@ -101,6 +101,9 @@ public class SemtexObject : NetworkedProjectile
         anchor = view != null ? view.transform : !string.IsNullOrEmpty(path) ? GameObject.Find(path)?.transform : null;
         anchorPosition = localPos;
         anchorRotation = localRot;
+        // Found by scene path, the name may belong to another object here (levels have many "Cube"s): only
+        // trust the anchor if it puts the charge where the thrower saw it stick, else stay put in the world
+        if (anchor != null && view == null && Vector3.Distance(anchor.TransformPoint(localPos), position) > 0.25f) anchor = null;
         if (anchor == null) transform.SetPositionAndRotation(position, rotation);
         else                FollowAnchor();
 
@@ -162,6 +165,7 @@ public class SemtexObject : NetworkedProjectile
 
         WorldFx.SpawnVfx(explosionVFX, position, vfxScale);
         WorldFx.PlayClip(explosionSFX, position, audioRadius, audioVolume);
-        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers);
+        Fx.Explosion(position, explosionRadius * Mathf.Sqrt(Power));
+        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr);
     }
 }

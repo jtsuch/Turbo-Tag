@@ -55,10 +55,13 @@ public class FlashbangObject : NetworkedProjectile
     private void RPC_Pop(Vector3 flashPos)
     {
         WorldFx.SpawnVfx(popVFX, flashPos);
+        Sfx.At(SfxKind.Pop, flashPos, 1f, 50f);
+        Vfx.Burst(flashPos, Color.white, 40, 9f, 0.5f, 0.4f);
         WorldFx.PlayClip(popSFX, flashPos, audioRadius, audioVolume);
 
         Camera cam = PlayerCam.Local != null ? PlayerCam.Local.Camera : Camera.main;
         if (cam == null) return;
+        if (Player.Local != null && !Player.Local.AffectedBy(photonView.OwnerActorNr)) return; // Shielded
 
         float   range   = maxBlindRange * Mathf.Sqrt(Power);
         float   full    = fullBlindRange * Mathf.Sqrt(Power);

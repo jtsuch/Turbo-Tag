@@ -59,8 +59,17 @@ public class Spawner : MonoBehaviour
     {
         var local = Player.Local;
         if (local == null || local.IsCaught || local.transform.position.y >= killHeight) return;
+        LocalPlayerFell();
+    }
 
-        // Gun modes: falling off is a death (a self destruction), not a free trip back
+    /// <summary>
+    /// The local player fell out of the level (below the kill height, or onto a <see cref="DeathZone"/>):
+    /// in gun modes that's a death (a self destruction), otherwise a free trip back to a spawn.
+    /// </summary>
+    public void LocalPlayerFell()
+    {
+        var local = Player.Local;
+        if (local == null || local.IsCaught) return;
         if (CombatManager.Instance != null) CombatManager.Instance.ReportFall();
         else RespawnLocalPlayer();
     }
@@ -127,9 +136,13 @@ public class Spawner : MonoBehaviour
         rotation = Quaternion.LookRotation(dir, Vector3.up);
     }
 
+    private static SpawnPoint lastSpawnPoint;
+
     /// <summary>
-    /// Before the match runs (Waiting, Countdown) everyone takes a different point, spread through the list.
-    /// Mid-match: a random one of the three points furthest from the nearest other living player.
+    /// Before the match runs (Waiting, Countdown) everyone takes a different point: the list is shuffled with a
+    /// seed every client shares (the phase start time, so each match differs), then dealt out by player index.
+    /// Mid-match: any point at least <see cref="SafeSpawnDistance"/> from every other living player (never the
+    /// one you last used) is equally likely; if none is that safe, a random one of the safer half.
     /// </summary>
     private static SpawnPoint PickSpawnPoint()
     {
@@ -139,9 +152,15 @@ public class Spawner : MonoBehaviour
         var phase = GameModeManager.Instance != null ? GameModeManager.Instance.Phase : MatchPhase.Waiting;
         if (phase == MatchPhase.Waiting || phase == MatchPhase.Countdown)
         {
-            int index = LocalPlayerIndex(out int total);
-            int step  = Mathf.Max(1, points.Count / Mathf.Max(1, total));
-            return points[(index * step) % points.Count];
+            double start = NetProps.Room(RoomKeys.PhaseStart, 0.0);
+            var shuffle = new System.Random((int)(start * 1000.0 % int.MaxValue));
+            for (int i = points.Count - 1; i > 0; i--)
+            {
+                int j = shuffle.Next(i + 1);
+                (points[i], points[j]) = (points[j], points[i]);
+            }
+            int index = LocalPlayerIndex(out _);
+            return lastSpawnPoint = points[index % points.Count];
         }
 
         var others = new List<Vector3>();
@@ -155,9 +174,17 @@ public class Spawner : MonoBehaviour
             return nearest;
         }
 
-        points.Sort((a, b) => Safety(b).CompareTo(Safety(a)));
-        return points[Random.Range(0, Mathf.Min(3, points.Count))];
+        if (points.Count > 1) points.Remove(lastSpawnPoint);
+        var safe = points.FindAll(point => Safety(point) >= SafeSpawnDistance);
+        if (safe.Count == 0)
+        {
+            points.Sort((a, b) => Safety(b).CompareTo(Safety(a)));
+            safe = points.GetRange(0, Mathf.Max(1, (points.Count + 1) / 2));
+        }
+        return lastSpawnPoint = safe[Random.Range(0, safe.Count)];
     }
+
+    private const float SafeSpawnDistance = 20f; // Metres from the nearest other living player
 
     // Stable 0-based index of the local player among everyone in the room
     private static int LocalPlayerIndex(out int total)
