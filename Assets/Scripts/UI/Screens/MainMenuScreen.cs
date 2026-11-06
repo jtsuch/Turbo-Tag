@@ -21,6 +21,7 @@ public class MainMenuScreen : MenuScreen
     private readonly List<Button> playButtons = new();
     private TMP_Text nameText, statusText;
     private PenguinPreview preview;
+    private CosmeticWardrobe wardrobe;
     private readonly List<(Image ring, string skin)> swatches = new();
     private UIModal settings;
     private bool busy, creating;
@@ -46,6 +47,9 @@ public class MainMenuScreen : MenuScreen
         settings = UIKit.Modal(Root, "Settings", new Vector2(1280f, 860f));
         settings.NoFooter();
         SettingsPanel.Create(settings.Body);
+
+        wardrobe = CosmeticWardrobe.Create(Root);
+        wardrobe.Changed += RefreshPlayer;
 
         BuildLogin();
     }
@@ -74,11 +78,11 @@ public class MainMenuScreen : MenuScreen
     private void BuildPlayerCard()
     {
         var card = UIKit.Card(Root, Theme.panel, 32f, 0.5f, "Player Card");
-        UIKit.Place(card, new Vector2(1f, 0.5f), new Vector2(-100f, -10f), new Vector2(560f, 960f));
+        UIKit.Place(card, new Vector2(1f, 0.5f), new Vector2(-100f, -10f), new Vector2(560f, 900f));
         UIKit.VStack(card, 14f, UIKit.Pad(40, 36), TextAnchor.UpperCenter);
 
         UIKit.Text(card, "PLAYING AS", 20f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
-        preview = PenguinPreview.Create(card, 300f);
+        preview = PenguinPreview.Create(card, 320f);
         nameText = UIKit.Text(card, "", 52f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Center);
         nameText.textWrappingMode = TextWrappingModes.NoWrap;
         nameText.enableAutoSizing = true;
@@ -89,12 +93,8 @@ public class MainMenuScreen : MenuScreen
         UIKit.Text(card, "Penguin Colour", 22f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
         BuildSwatches(card);
 
-        UIKit.Text(card, "Cosmetics", 22f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
-        CosmeticPickers.Build(card, slot =>
-        {
-            preview.SetCosmetics(null);
-            if (slot == Cosmetics.Slot.Back) preview.ShowBack(); // Turn round so the back item can be seen
-        });
+        var wardrobeButton = UIKit.Button(card, "Wardrobe", UIKit.Style.Secondary, () => wardrobe.Open(), 60f, 26f);
+        UIKit.Size(wardrobeButton, 280f, 60f);
 
         UIKit.Spacer(card);
         UIKit.LinkButton(card, "Log out", LogOut, 22f);

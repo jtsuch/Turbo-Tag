@@ -57,6 +57,7 @@ public static class CosmeticPrefabBuilder
         }
         AssetDatabase.SaveAssets();
         CosmeticMaker.Build(); // Claude's own cosmetics, built from shapes
+        CosmeticIcons.Build(); // Their pictures for the Wardrobe
     }
 
     private static Bounds Bounds(GameObject go)

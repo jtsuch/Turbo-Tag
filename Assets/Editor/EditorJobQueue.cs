@@ -41,6 +41,7 @@ public static class EditorJobQueue
         ["BuildMapThumbnails"] = MapThumbnails.Build,
         ["BuildWindows"] = BuildTools.BuildWindows,
         ["BuildCosmetics"] = CosmeticPrefabBuilder.Build,
+        ["FixSkinEyes"] = SkinEyeFix.Run,
         ["RecordAbilityClips"] = AbilityClipTools.Record,
         ["RecordClipsSample"] = () => AbilityClipTools.Record("ZipGrapple,Honk,Snowball,MouseTrap"),
         ["RecordThrowClips"] = () => AbilityClipTools.Record("BoomBomb,BoomStick,FishBait,Flashbang,GravBall,Rock,Semtex,Snowball"),

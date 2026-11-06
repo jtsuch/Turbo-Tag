@@ -28,6 +28,7 @@ public class LobbyScreen : MenuScreen
     private RectTransform mapGrid;
     private readonly List<(string map, Image bg)> mapCards = new();
     private RulesEditor rules;
+    private RectTransform youCard;
     private bool starting;
 
     private static bool IsHost => PhotonNetwork.IsMasterClient;
@@ -53,6 +54,10 @@ public class LobbyScreen : MenuScreen
 
         // Study the abilities while waiting: the full list, each with its clip
         var browser = AbilityBrowser.Create(Root);
+
+        // Cosmetics: a Wardrobe button under the colours (the window is made last, so it draws on top)
+        var wardrobe = CosmeticWardrobe.Create(Root);
+        wardrobe.MakeButton(youCard, 56f, 240f);
         var abilities = UIKit.Button(Root, "Abilities", UIKit.Style.Secondary, browser.OpenList, 64f, 26f);
         UIKit.Place((RectTransform)abilities.transform, new Vector2(1f, 1f), new Vector2(-300f, -60f), new Vector2(220f, 64f));
     }
@@ -94,7 +99,7 @@ public class LobbyScreen : MenuScreen
 
         // Your penguin
         var you = UIKit.Card(side, Theme.panel, 28f, 0.45f, "You");
-        UIKit.Size(you, height: 250f);
+        UIKit.Size(you, height: 240f);
         UIKit.VStack(you, 10f, UIKit.Pad(28, 20), TextAnchor.UpperLeft);
         UIKit.Text(you, "YOUR PENGUIN", 20f, UIKit.Font.Bold, Theme.textMuted);
         var row = UIKit.Rect("Swatches", you);
@@ -116,7 +121,7 @@ public class LobbyScreen : MenuScreen
             swatch.GetComponent<Button>().onClick.AddListener(() => { PenguinSkins.SetLocal(name); RefreshSwatches(); });
             swatches.Add((ring, name));
         }
-        CosmeticPickers.Build(you, null, compact: true);
+        youCard = you;
 
         // The match
         var match = UIKit.Card(side, Theme.panel, 28f, 0.45f, "Match");
