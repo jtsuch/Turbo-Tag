@@ -208,7 +208,7 @@ public abstract class TrapAbility : Ability
         if (!canPlace) return;
 
         var placed = PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
-            SpawnData.Create(Vector3.zero, power, Owner.photonView.ViewID, ObjectTunableOverrides()));
+            SpawnData.Create(Vector3.zero, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
         Cancel();
         StartCooldown();

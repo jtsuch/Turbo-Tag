@@ -78,6 +78,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         AdminConsole.Create(); // ` for admins (AdminConsole.Admins)
         if (!TryGetComponent(out AdminCommands _)) gameObject.AddComponent<AdminCommands>(); // Shares this scene PhotonView
         if (!TryGetComponent(out DonutManager _)) gameObject.AddComponent<DonutManager>();   // Random-effect donuts
+        if (!TryGetComponent(out TrailHistory _)) gameObject.AddComponent<TrailHistory>();   // Bloodhound's footprints
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
@@ -206,6 +207,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.WinningTeam]    = "",
             [RoomKeys.ServedAsHunter] = new int[0],
             [RoomKeys.PausedAt]       = -1d,
+            [RoomKeys.DiscHolder]     = -1,
         });
 
         foreach (var player in PhotonNetwork.PlayerList)

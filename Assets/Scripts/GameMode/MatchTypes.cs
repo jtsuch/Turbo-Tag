@@ -23,6 +23,9 @@ public enum PlayerRole
     Hider     = 1,  // Tag: hides. Protect the President: a defender
     Hunter    = 2,
     President = 3,  // Protect the President: the only player who can be tagged
+    TeamRed   = 4,  // Team modes (Team Deathmatch, Keep Away)
+    TeamBlue  = 5,
+    Ghost     = 6,  // Hunter: a hider who died; translucent, no hitbox, still uses abilities
 }
 
 /// <summary>
@@ -48,6 +51,23 @@ public static class PlayerRoles
             if (Get(player) == role) result.Add(player);
         return result;
     }
+
+    /// <summary>True for the two team roles.</summary>
+    public static bool IsTeam(PlayerRole role) => role == PlayerRole.TeamRed || role == PlayerRole.TeamBlue;
+
+    /// <summary>The other team (team roles only).</summary>
+    public static PlayerRole Opponent(PlayerRole team) => team == PlayerRole.TeamRed ? PlayerRole.TeamBlue : PlayerRole.TeamRed;
+
+    /// <summary>A role's colour on the HUD, minimap and kill feed.</summary>
+    public static UnityEngine.Color Color(PlayerRole role) => role switch
+    {
+        PlayerRole.Hunter    => new UnityEngine.Color(1f, 0.3f, 0.43f),
+        PlayerRole.TeamRed   => new UnityEngine.Color(1f, 0.3f, 0.43f),
+        PlayerRole.TeamBlue  => new UnityEngine.Color(0.2f, 0.65f, 1f),
+        PlayerRole.President => new UnityEngine.Color(1f, 0.79f, 0.24f),
+        PlayerRole.Ghost     => new UnityEngine.Color(0.75f, 0.85f, 1f),
+        _                    => new UnityEngine.Color(0.13f, 0.83f, 0.93f),
+    };
 
     public static int Count(PlayerRole role)
     {

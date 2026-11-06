@@ -20,6 +20,14 @@ public class PlayerGun : MonoBehaviourPun
     /// <summary>Owner: shots don't use ammo (the Bottomless Mag donut).</summary>
     public bool InfiniteAmmo { get; set; }
 
+    // Owner: donut modifiers
+    public float DamageMultiplier   { get; set; } = 1f; // Big Bullets, One Shot
+    public float FireRateMultiplier { get; set; } = 1f; // Minigun
+    public bool  ForceAutomatic     { get; set; }       // Minigun
+    public bool  Ricochet           { get; set; }       // Bullets bounce once off walls
+    public bool  Wallbang           { get; set; }       // Bullets go through walls
+    public bool  ExplosiveRounds    { get; set; }       // Each shot blasts where it lands
+
     /// <summary>The gun in hand (owner: set by Equip; other copies: the synced property). Null when none.</summary>
     public GunInfo Current { get; private set; }
 
@@ -38,6 +46,7 @@ public class PlayerGun : MonoBehaviourPun
     private readonly RaycastHit[] hits = new RaycastHit[32];
     private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
     private bool lastTraceHit; // The last Trace stopped on something (for impact sparks)
+    private Vector3 lastTraceNormal = Vector3.up;
     private readonly Dictionary<Player, (float damage, bool head, Vector3 point)> pending = new();
 
     // Visuals: first-person (owner) and third-person (others) models per gun id
@@ -112,7 +121,7 @@ public class PlayerGun : MonoBehaviourPun
             StartReload();
 
         KeyCode fire = Keybinds.Get(InputAction.Action);
-        bool wantsShot = Current.Automatic ? Input.GetKey(fire) : Input.GetKeyDown(fire);
+        bool wantsShot = Current.Automatic || ForceAutomatic ? Input.GetKey(fire) : Input.GetKeyDown(fire);
         if (wantsShot && !IsReloading && Time.time >= nextShotAt && GunPicker.ClosedFrame != Time.frameCount)
         {
             if (Ammo > 0) Shoot();
@@ -163,13 +172,14 @@ public class PlayerGun : MonoBehaviourPun
     {
         var gun = Current;
         if (!InfiniteAmmo) Ammo--;
-        nextShotAt = Time.time + gun.FireInterval;
+        nextShotAt = Time.time + gun.FireInterval / Mathf.Max(0.1f, FireRateMultiplier);
 
         Transform view   = PlayerCam.Local.Camera.transform;
         // Perfect on the first shot; spraying blooms; air/moving error only with the Movement Inaccuracy rule
         float     spread = gun.Spread + bloom + (MatchRules.MovementSpread && !player.IsGrounded ? gun.AirSpread : 0f);
         bloom = Mathf.Min(gun.MaxBloom, bloom + gun.Bloom);
-        float     damage = gun.Damage * MatchRules.DamageScale;
+        float     damage = gun.Damage * MatchRules.DamageScale * DamageMultiplier;
+        bool      firstLanded = false;
 
         pending.Clear();
         bool anyHit = false, anyHead = false;
@@ -180,9 +190,20 @@ public class PlayerGun : MonoBehaviourPun
         {
             Vector3 dir = Spread(view, spread);
             Vector3 end = Trace(view.position, dir, gun.Range, out Player target, out bool head);
-            if (p == 0) firstEnd = end;
+            if (p == 0) { firstEnd = end; firstLanded = lastTraceHit; }
             GunFx.Tracer(muzzle, end);
             if (lastTraceHit) Fx.Impact(end, view.position, target != null);
+
+            // Ricochet: off the wall once, on toward whoever is there
+            if (Ricochet && target == null && lastTraceHit)
+            {
+                Vector3 bounce = Vector3.Reflect(dir, lastTraceNormal);
+                Vector3 from = end + lastTraceNormal * 0.05f;
+                Vector3 end2 = Trace(from, bounce, gun.Range * 0.6f, out target, out head);
+                GunFx.Tracer(from, end2);
+                if (lastTraceHit) Fx.Impact(end2, from, target != null);
+                end = end2;
+            }
 
             if (target == null) continue;
             anyHit = true;
@@ -190,6 +211,18 @@ public class PlayerGun : MonoBehaviourPun
             float amount = damage * (head ? gun.HeadshotMultiplier : 1f);
             pending.TryGetValue(target, out var sum);
             pending[target] = (sum.damage + amount, sum.head || head, end);
+        }
+
+        // Explosive Rounds: a small blast where the shot landed (pushes on every screen, splash damage from here)
+        if (ExplosiveRounds && firstLanded)
+        {
+            photonView.RPC(nameof(RPC_Boom), RpcTarget.All, firstEnd);
+            foreach (var other in Player.All)
+            {
+                if (other == null || other == player || pending.ContainsKey(other) || !CanHurt(other)) continue;
+                if (Vector3.Distance(other.transform.position + Vector3.up, firstEnd) > 3.5f) continue;
+                other.Health.RequestDamage(25f * MatchRules.DamageScale, gun.Id, false, (other.transform.position - firstEnd).normalized);
+            }
         }
 
         foreach (var pair in pending)
@@ -230,12 +263,16 @@ public class PlayerGun : MonoBehaviourPun
         for (int i = 0; i < count; i++)
         {
             if (hits[i].distance >= best) continue;
-            if (hits[i].collider.GetComponentInParent<Player>() == player) continue;
+            var hitPlayer = hits[i].collider.GetComponentInParent<Player>();
+            if (hitPlayer == player) continue;
+            if (hitPlayer != null && !CanHurt(hitPlayer)) continue; // Ghosts and teammates: the shot passes through
+            if (Wallbang && hitPlayer == null) continue;            // Wallbang: straight through the level
             best = hits[i].distance;
             hitIndex = i;
         }
         lastTraceHit = hitIndex >= 0;
         if (hitIndex < 0) return origin + dir * range;
+        lastTraceNormal = hits[hitIndex].normal;
 
         var hit = hits[hitIndex];
         var other = hit.collider.GetComponentInParent<Player>();
@@ -246,6 +283,21 @@ public class PlayerGun : MonoBehaviourPun
             head = hit.point.y >= other.TopY - (other.TopY - feet) * HeadFraction;
         }
         return hit.point;
+    }
+
+    [PunRPC]
+    private void RPC_Boom(Vector3 at)
+    {
+        Fx.Explosion(at, 2.5f);
+        WorldFx.Explode(at, 3.5f, 14f, default, 1f, sourceActor: photonView.OwnerActorNr);
+    }
+
+    // Ghosts have no hitbox; the mode decides friendly fire
+    private bool CanHurt(Player target)
+    {
+        if (target.Role == PlayerRole.Ghost) return false;
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        return mode == null || mode.CanDamage(player.Role, target.Role);
     }
 
     // ─── Effects on other screens ─────────────────────────────────────────────

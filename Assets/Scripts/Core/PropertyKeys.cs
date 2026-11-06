@@ -21,6 +21,7 @@ public static class RoomKeys
     public const string Winner        = "Match_Winner";
     /// <summary>Team modes: which side won ("Hunters" / "Defenders"), for the scoreboard.</summary>
     public const string WinningTeam   = "Match_WinningTeam";
+    public const string DiscHolder    = "Match_DiscHolder";    // Keep Away: actor holding the disc (-1: loose)
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
 
@@ -105,6 +106,8 @@ public static class PlayerKeys
     public const string StatDeaths         = "Stat_Deaths";         // Master: every death, falls included
     public const string StatSelfDestructs  = "Stat_SelfDestructs";  // Master: fell off the map
     public const string StatHeadshots      = "Stat_Headshots";      // Master: kills by a headshot
+    public const string StatSteals         = "Stat_Steals";         // Master: Keep Away discs taken from an enemy
+    public const string StatCatches        = "Stat_Catches";        // Master: Keep Away loose discs grabbed
 
     /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
     public const string Gun = "Gun";

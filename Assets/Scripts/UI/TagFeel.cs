@@ -118,7 +118,7 @@ public class TagFeel : MonoBehaviour
         float closeness = 0f; // 0 = no hunter within range, 1 = right on you
         var local = Player.Local;
         if (manager != null && manager.Mode != null && manager.Mode.UsesRoles && local != null && !local.IsCaught
-            && local.Role != PlayerRole.Hunter && manager.Phase == MatchPhase.Active)
+            && local.Role != PlayerRole.Hunter && local.Role != PlayerRole.Ghost && manager.Phase == MatchPhase.Active)
         {
             float nearest = float.MaxValue;
             foreach (var p in Player.All)

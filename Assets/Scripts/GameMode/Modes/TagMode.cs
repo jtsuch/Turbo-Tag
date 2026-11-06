@@ -32,6 +32,7 @@ public class TagMode : GameMode
     public override string DisplayName => "Tag";
     public override bool   UsesRoles   => true;
     public override bool   ShowsScores => true;
+    public override bool   HasRounds   => true;
 
     // ─── Master: match flow ───────────────────────────────────────────────────
 

@@ -131,10 +131,15 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
         UpdateSkin();
 
+        bool isGhost = (player.Role == PlayerRole.Ghost || player.Has(PlayerFlag.Phantom)) && !player.IsDownAfterTag;
+        goldAmount = Mathf.MoveTowards(goldAmount, player.Has(PlayerFlag.Golden) ? 1f : 0f, 4f * dt);
+        ghostAmount = Mathf.MoveTowards(ghostAmount, isGhost ? 1f : 0f, 2f * dt);
+
         // Your own body is hidden from you (PlayerInitializer); you get a screen-edge glow instead
         if (photonView.IsMine)
         {
-            ScreenVignette.Set(CloakAmount, cloakVignette);
+            if (ghostAmount > CloakAmount) ScreenVignette.Set(ghostAmount * 0.7f, ghostVignette);
+            else ScreenVignette.Set(CloakAmount, cloakVignette);
             return;
         }
         var  manager    = GameModeManager.Instance;
@@ -145,13 +150,15 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         camoAmount  = Mathf.MoveTowards(camoAmount, Camouflage.HasValue ? 1f : 0f, camouflageFadeSpeed * dt);
         if (Camouflage.HasValue) camoColor = Camouflage.Value;
 
-        bool clear   = CloakAmount > 0.001f;
-        bool outline = !clear && !silhouette && manager != null && manager.Mode != null
-                       && manager.Mode.UsesRoles && player.Role == PlayerRole.Hunter;
+        bool clear   = CloakAmount > 0.001f || ghostAmount > 0.001f;
+        int  kind    = !clear && !silhouette && manager != null && manager.Mode != null && Player.Local != null
+                       ? manager.Mode.OutlineFor(Player.Local.Role, player.Role) : 0;
+        Material outline = OutlineMaterial(kind);
         Material xray = (XRay || player.IsBeacon) && !player.IsDownAfterTag ? XRayMaterial(IsTeammateOfLocal()) : null;
         if (clear != showingClear || outline != showingOutline || xray != showingXRay) SetMaterials(clear, outline, xray);
 
-        float alpha = Mathf.Lerp(1f, cloakedAlpha, CloakAmount);
+        // Ghosts (Hunter mode) are pale and see-through on every screen
+        float alpha = Mathf.Min(Mathf.Lerp(1f, cloakedAlpha, CloakAmount), Mathf.Lerp(1f, GhostAlpha, ghostAmount));
         for (int i = 0; i < bodyRenderers.Length; i++)
         {
             var r = bodyRenderers[i];
@@ -159,6 +166,8 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
             Color color = baseColors[i] * Color.Lerp(Color.white, iceTint, iceAmount);
             color = Color.Lerp(color, camoColor, camoAmount);
+            color = Color.Lerp(color, GhostTint, ghostAmount * 0.65f);
+            color = Color.Lerp(color, new Color(1f, 0.82f, 0.25f), goldAmount * (0.6f + 0.25f * Mathf.Sin(Time.time * 8f))); // Invulnerable
             if (silhouette) color = silhouetteColor;
             color.a = alpha;
 
@@ -233,9 +242,29 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
     // ─── Cloak materials ──────────────────────────────────────────────────────
 
-    private static Material outlineMaterial;
+    private static Material redOutline, blueOutline;
     private static Material xrayAlly, xrayEnemy;
-    private Material showingXRay;
+    private Material showingXRay, showingOutline;
+    private float ghostAmount, goldAmount;
+
+    private const float GhostAlpha = 0.32f;
+    private static readonly Color GhostTint     = new(0.75f, 0.88f, 1f, 1f);
+    private static readonly Color ghostVignette = new(0.6f, 0.8f, 1f, 0.45f);
+
+    // 1: red (enemies, hunters; Resources/Cosmetics/HunterOutline), 2: blue (allies; a recoloured copy)
+    private static Material OutlineMaterial(int kind)
+    {
+        if (kind == 0) return null;
+        if (redOutline == null) redOutline = Resources.Load<Material>("Cosmetics/HunterOutline");
+        if (redOutline == null) return null;
+        if (kind == 1) return redOutline;
+        if (blueOutline == null)
+        {
+            blueOutline = new Material(redOutline) { name = "AllyOutline" };
+            blueOutline.SetColor("_OutlineColor", new Color(0.15f, 0.55f, 1f, 1f));
+        }
+        return blueOutline;
+    }
 
     // Resources/Cosmetics/XRay (TurboTag/XRay shader): one copy per colour
     private static Material XRayMaterial(bool ally)
@@ -257,26 +286,24 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     {
         var local   = Player.Local;
         var manager = GameModeManager.Instance;
-        if (local == null || manager == null || manager.Mode == null || !manager.Mode.UsesRoles) return false;
-        return (local.Role == PlayerRole.Hunter) == (player.Role == PlayerRole.Hunter);
+        return local != null && manager != null && manager.Mode != null && manager.Mode.SameTeam(local.Role, player.Role);
     }
-    private bool showingOutline;
 
     // The body's materials: see-through copies while cloaked, plus the outline pass on hunters.
     // An extra material on a single-mesh renderer draws that mesh again, which is how the outline works.
-    private void SetMaterials(bool clear, bool outline, Material xray = null)
+    private void SetMaterials(bool clear, Material outlineMaterial, Material xray = null)
     {
         showingClear   = clear;
-        showingOutline = outline;
+        showingOutline = outlineMaterial;
         showingXRay    = xray;
+        bool outline   = outlineMaterial != null;
         if (clear && clearMaterials == null) BuildClearMaterials();
-        if (outline && outlineMaterial == null) outlineMaterial = Resources.Load<Material>("Cosmetics/HunterOutline");
 
         for (int i = 0; i < bodyRenderers.Length; i++)
         {
             if (bodyRenderers[i] == null) continue;
             var set = clear ? clearMaterials[i] : opaqueMaterials[i];
-            if (outline && outlineMaterial != null)
+            if (outline)
             {
                 var withOutline = new Material[set.Length + 1];
                 set.CopyTo(withOutline, 0);

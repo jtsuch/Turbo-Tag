@@ -9,59 +9,128 @@ using UnityEngine;
 /// </summary>
 public class Donut : MonoBehaviour
 {
+    /// <summary>Whether a donut effect is a boon, a curse or chaos (Lucky Streak and Golden Donut only roll boons).</summary>
+    public enum Kind { Good, Bad, Chaos }
+
+    /// <summary>Where an effect can roll.</summary>
+    public enum Where
+    {
+        Any,
+        Guns,     // The player holds a gun in this mode (Free for All, Team Deathmatch, the Hunter)
+        Escape,   // Tag, Hunter, Protect the President, and not the hunter
+        Chaser,   // The hunter in those modes, or anyone in Keep Away
+        KeepAway, // Keep Away only
+    }
+
     /// <summary>One thing a donut can do.</summary>
     public readonly struct Entry
     {
         public readonly Type  Effect;
         public readonly float Seconds;
         public readonly float Weight;   // Relative chance
-        public readonly bool  GunsOnly; // Only in gun modes (ammo, healing on hits)
+        public readonly Kind  Type;
+        public readonly Where Mode;
         public readonly bool  Everyone; // Every player gets it, not just the one who ate the donut
 
-        public Entry(Type effect, float seconds, float weight = 1f, bool gunsOnly = false, bool everyone = false)
+        public Entry(Type effect, float seconds, float weight, Kind kind, Where where = Where.Any, bool everyone = false)
         {
-            Effect = effect; Seconds = seconds; Weight = weight; GunsOnly = gunsOnly; Everyone = everyone;
+            Effect = effect; Seconds = seconds; Weight = weight; Type = kind; Mode = where; Everyone = everyone;
         }
     }
 
     /// <summary>
     /// What a donut can do. Add an effect: a PlayerEffect subclass and a line here.
-    /// Balance: a donut should be worth the detour, so boons are a little likelier than curses (weights 1 vs 0.8,
-    /// chaos 0.6), curses that take control away (frame rate, flipped or spinning view, scrambled keys) are short,
-    /// and the strongest boons (no cooldowns, bubble, x-ray) are brief or rarer.
+    /// Balance: a donut should be worth the detour, so boons are likelier than curses (most boons 1, curses 0.8,
+    /// chaos 0.6), curses that take control away are short, and the broken boons (one shot, aimbot, invulnerable,
+    /// time warp, freeze) are brief and rarer. Mode-specific boons only roll where they make sense.
     /// </summary>
     public static readonly Entry[] Pool =
     {
-        // Boons
-        new(typeof(DoubleJumpEffect),      20f),
-        new(typeof(NoCooldownEffect),      10f, 0.6f),  // Ten seconds of spam is plenty (Nukes included)
-        new(typeof(AirControlEffect),      15f),
-        new(typeof(XRayEffect),             6f, 0.8f),  // Finds every hider: brief
-        new(typeof(SpeedEffect),           15f),
-        new(typeof(MoonBootsEffect),       15f),
-        new(typeof(GhostEffect),            8f),
-        new(typeof(BottomlessMagEffect),   15f, gunsOnly: true),
-        new(typeof(VampireEffect),         20f, gunsOnly: true),
-        new(typeof(RocketJumpEffect),      15f),
-        new(typeof(BubbleEffect),           8f, 0.8f),  // Immune to every ability: shorter
-        new(typeof(RadarEffect),           15f),
-        new(typeof(RefillEffect),           3f, 0.7f),
+        // Boons, anywhere
+        new(typeof(DoubleJumpEffect),      20f, 1f,   Kind.Good),
+        new(typeof(NoCooldownEffect),      10f, 0.6f, Kind.Good),
+        new(typeof(AirControlEffect),      15f, 1f,   Kind.Good),
+        new(typeof(XRayEffect),             6f, 0.8f, Kind.Good),
+        new(typeof(SpeedEffect),           15f, 1f,   Kind.Good),
+        new(typeof(MoonBootsEffect),       15f, 1f,   Kind.Good),
+        new(typeof(GhostEffect),            8f, 1f,   Kind.Good),
+        new(typeof(RocketJumpEffect),      15f, 1f,   Kind.Good),
+        new(typeof(BubbleEffect),           8f, 0.8f, Kind.Good),
+        new(typeof(RadarEffect),           15f, 1f,   Kind.Good),
+        new(typeof(RefillEffect),           3f, 0.7f, Kind.Good),
+        new(typeof(JetpackEffect),          6f, 0.9f, Kind.Good),
+        new(typeof(TeleportGunEffect),     30f, 0.8f, Kind.Good),
+        new(typeof(GiantSlayerEffect),     10f, 0.8f, Kind.Good),
+        new(typeof(TimeWarpEffect),         5f, 0.4f, Kind.Good),
+        new(typeof(OverdriveEffect),       15f, 0.9f, Kind.Good),
+        new(typeof(LuckyStreakEffect),      3f, 0.6f, Kind.Good),
+        new(typeof(GoldenDonutEffect),      3f, 0.25f, Kind.Good),
+        // Boons with a gun
+        new(typeof(BottomlessMagEffect),   15f, 1f,   Kind.Good, Where.Guns),
+        new(typeof(VampireEffect),         20f, 1f,   Kind.Good, Where.Guns),
+        new(typeof(AimbotEffect),           5f, 0.5f, Kind.Good, Where.Guns),
+        new(typeof(BigBulletsEffect),      12f, 1f,   Kind.Good, Where.Guns),
+        new(typeof(ExplosiveRoundsEffect), 10f, 0.8f, Kind.Good, Where.Guns),
+        new(typeof(RicochetEffect),        15f, 0.9f, Kind.Good, Where.Guns),
+        new(typeof(WallbangEffect),        10f, 0.7f, Kind.Good, Where.Guns),
+        new(typeof(MinigunEffect),          8f, 0.8f, Kind.Good, Where.Guns),
+        new(typeof(OneShotEffect),          6f, 0.4f, Kind.Good, Where.Guns),
+        new(typeof(OverhealEffect),         3f, 1f,   Kind.Good, Where.Guns),
+        new(typeof(InvulnerableEffect),     6f, 0.5f, Kind.Good, Where.Guns),
+        new(typeof(SecondLifeEffect),      90f, 0.8f, Kind.Good, Where.Guns),
+        // Boons for getting away
+        new(typeof(PhantomEffect),          6f, 0.8f, Kind.Good, Where.Escape),
+        new(typeof(DecoysEffect),           3f, 1f,   Kind.Good, Where.Escape),
+        new(typeof(SmokeBombEffect),        3f, 1f,   Kind.Good, Where.Escape),
+        new(typeof(SuperSpeedEffect),       5f, 1f,   Kind.Good, Where.Escape),
+        new(typeof(RepelFieldEffect),      10f, 0.8f, Kind.Good, Where.Escape),
+        new(typeof(FreezeOthersEffect),     3f, 0.4f, Kind.Good, Where.Escape),
+        // Boons for chasing
+        new(typeof(BloodhoundEffect),      10f, 1f,   Kind.Good, Where.Chaser),
+        new(typeof(LongArmsEffect),        10f, 1f,   Kind.Good, Where.Chaser),
+        new(typeof(MagnetEffect),           8f, 0.8f, Kind.Good, Where.Chaser),
+        // Boons for Keep Away
+        new(typeof(ButterHandsEffect),     15f, 1f,   Kind.Good, Where.KeepAway),
+        new(typeof(HomingThrowEffect),     15f, 1f,   Kind.Good, Where.KeepAway),
+        new(typeof(RocketDiscEffect),      10f, 1f,   Kind.Good, Where.KeepAway),
+        new(typeof(PointFrenzyEffect),     10f, 0.8f, Kind.Good, Where.KeepAway),
         // Curses
-        new(typeof(ShrinkFOVEffect),       15f, 0.8f),
-        new(typeof(KeybindSwitchEffect),   12f, 0.8f),
-        new(typeof(DropFrameRateEffect),    8f, 0.8f),
-        new(typeof(ButterfingersEffect),   10f, 0.8f),
-        new(typeof(GiantEffect),           15f, 0.8f),
-        new(typeof(BeaconEffect),          10f, 0.8f),
-        new(typeof(UpsideDownEffect),       8f, 0.8f),
-        new(typeof(DrunkEffect),           12f, 0.8f),
-        new(typeof(StickyFeetEffect),       8f, 0.8f),
-        new(typeof(SpinCycleEffect),       12f, 0.8f),
+        new(typeof(ShrinkFOVEffect),       15f, 0.8f, Kind.Bad),
+        new(typeof(KeybindSwitchEffect),   12f, 0.8f, Kind.Bad),
+        new(typeof(DropFrameRateEffect),    8f, 0.8f, Kind.Bad),
+        new(typeof(ButterfingersEffect),   10f, 0.8f, Kind.Bad),
+        new(typeof(GiantEffect),           15f, 0.8f, Kind.Bad),
+        new(typeof(BeaconEffect),          10f, 0.8f, Kind.Bad),
+        new(typeof(UpsideDownEffect),       8f, 0.8f, Kind.Bad),
+        new(typeof(DrunkEffect),           12f, 0.8f, Kind.Bad),
+        new(typeof(StickyFeetEffect),       8f, 0.8f, Kind.Bad),
+        new(typeof(SpinCycleEffect),       12f, 0.8f, Kind.Bad),
         // Chaos
-        new(typeof(LowGravityPartyEffect), 15f, 0.6f, everyone: true),
-        new(typeof(SwapEffect),             3f, 0.6f),
-        new(typeof(FishRainEffect),         5f, 0.6f),
+        new(typeof(LowGravityPartyEffect), 15f, 0.6f, Kind.Chaos, everyone: true),
+        new(typeof(SwapEffect),             3f, 0.6f, Kind.Chaos),
+        new(typeof(FishRainEffect),         5f, 0.6f, Kind.Chaos),
     };
+
+    /// <summary>Lucky Streak: this many more rolls on this screen are boons only.</summary>
+    public static int LuckyRolls { get; set; }
+
+    /// <summary>Whether <paramref name="entry"/> can roll for the local player right now.</summary>
+    public static bool Fits(Entry entry)
+    {
+        var manager = GameModeManager.Instance;
+        var mode = manager != null ? manager.Mode : null;
+        var local = Player.Local;
+        var role = local != null ? local.Role : PlayerRole.None;
+        bool chase = mode != null && mode.UsesRoles && mode is not TeamMode;
+        return entry.Mode switch
+        {
+            Where.Guns     => mode != null && mode.UsesGuns && mode.FixedGun(role) != "",
+            Where.Escape   => chase && role != PlayerRole.Hunter && role != PlayerRole.Ghost,
+            Where.Chaser   => (chase && role == PlayerRole.Hunter) || mode is KeepAwayMode,
+            Where.KeepAway => mode is KeepAwayMode,
+            _              => true,
+        };
+    }
 
     public const float HoverHeight = 1f;   // Above the ground it sits over
     public const float TouchRadius = 0.9f; // From the donut to the nearest point of a body
@@ -161,18 +230,26 @@ public class Donut : MonoBehaviour
         Destroy(gameObject);
     }
 
-    /// <summary>A random entry from <see cref="Pool"/> that fits this mode, by weight.</summary>
-    public static Entry Roll()
+    /// <summary>
+    /// A random entry from <see cref="Pool"/> that fits this mode and role, by weight. <paramref name="boonsOnly"/>
+    /// (or a Lucky Streak) limits it to boons; <paramref name="extra"/> also skips Golden Donut and Lucky Streak.
+    /// </summary>
+    public static Entry Roll(bool boonsOnly = false, bool extra = false)
     {
-        var manager = GameModeManager.Instance;
-        bool guns = manager != null && manager.Mode != null && manager.Mode.UsesGuns;
+        bool lucky = !extra && LuckyRolls > 0;
+        if (lucky) LuckyRolls--;
+        boonsOnly |= lucky;
+
+        bool Allowed(Entry e) => Fits(e)
+            && (!boonsOnly || e.Type == Kind.Good)
+            && (!extra || (e.Effect != typeof(GoldenDonutEffect) && e.Effect != typeof(LuckyStreakEffect)));
 
         float total = 0f;
-        foreach (var e in Pool) if (guns || !e.GunsOnly) total += e.Weight;
+        foreach (var e in Pool) if (Allowed(e)) total += e.Weight;
         float roll = UnityEngine.Random.value * total;
         foreach (var e in Pool)
         {
-            if (!guns && e.GunsOnly) continue;
+            if (!Allowed(e)) continue;
             roll -= e.Weight;
             if (roll <= 0f) return e;
         }

@@ -93,6 +93,19 @@ public class PenguinPreview : MonoBehaviour
         light.cullingMask = 1 << PreviewLayer;
         light.shadows = LightShadows.None;
 
+        // A point light by the camera as well: with several previews (the scoreboard podium) Unity picks one
+        // directional light as the "main" one, and a penguin whose own light lost out rendered pitch black
+        var fillGo = new GameObject("Fill");
+        fillGo.transform.SetParent(holder.transform, false);
+        fillGo.transform.localPosition = new Vector3(1.5f, Height * 0.9f, 5f);
+        var fill = fillGo.AddComponent<Light>();
+        fill.type = LightType.Point;
+        fill.range = 20f;
+        fill.intensity = 3f;
+        fill.cullingMask = 1 << PreviewLayer;
+        fill.shadows = LightShadows.None;
+        fill.renderMode = LightRenderMode.ForcePixel;
+
         holder.SetActive(true);
         if (animator != null)
         {

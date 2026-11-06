@@ -152,12 +152,30 @@ public class Player : MonoBehaviourPun, IPunObservable
     public bool AbilitiesLockedByEffect { get; set; }
 
     private bool beacon, remoteBeacon, remoteShielded;
+    private int  localFlags, remoteFlags;
+
+    /// <summary>A synced donut flag (golden, phantom, repel…): the owner's own value, or the last one received.</summary>
+    public bool Has(PlayerFlag flag) => ((IsLocal ? localFlags : remoteFlags) & (int)flag) != 0;
+
+    /// <summary>Owner: turns a synced donut flag on or off (other screens see it within a moment).</summary>
+    public void SetFlag(PlayerFlag flag, bool on)
+    {
+        if (on) localFlags |= (int)flag;
+        else    localFlags &= ~(int)flag;
+    }
+
+    /// <summary>Owner: the next fatal hit leaves you on 50 health instead (Second Life donut).</summary>
+    public bool SecondLife { get; set; }
+
+    /// <summary>Owner: multiplier on ability strength (Ability Overdrive donut): throws, traps, dash, launch, blower, honk, ground pound.</summary>
+    public float AbilityPower { get; set; } = 1f;
 
     /// <summary>
     /// True when an ability from <paramref name="sourceActor"/> may affect this player: always, unless shielded
     /// (then only their own). Actor 0 means the world (fans, pads), which shields don't block.
     /// </summary>
-    public bool AffectedBy(int sourceActor) => !IsShielded || sourceActor == 0 || sourceActor == ActorNumber;
+    public bool AffectedBy(int sourceActor) =>
+        Role != PlayerRole.Ghost && (!IsShielded || sourceActor == 0 || sourceActor == ActorNumber);
 
     /// <summary>Climb speed that never runs out while above 0 (Infinite Climb); 0 = normal climbing.</summary>
     public float SteadyClimbSpeed { get; set; }
@@ -305,6 +323,8 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (!TryGetComponent(out ShieldBubble _)) gameObject.AddComponent<ShieldBubble>(); // Shield / Bubble, every screen
         if (!TryGetComponent(out HitFlinch _)) gameObject.AddComponent<HitFlinch>();       // Shot reactions on the body
         if (!TryGetComponent(out PlayerEmotes _)) gameObject.AddComponent<PlayerEmotes>(); // Emote bubbles and moves
+        if (!TryGetComponent(out GhostBody _)) gameObject.AddComponent<GhostBody>();       // Hunter: ghosts pass through players
+        if (!TryGetComponent(out DonutNet _)) gameObject.AddComponent<DonutNet>();         // Donut effects others see
 
         // Model roots are often imported with a non-unit scale; stance/size multiply it
         baseVisualScales    = new Vector3[visualRoots.Length];
@@ -618,16 +638,17 @@ public class Player : MonoBehaviourPun, IPunObservable
             stream.SendNext((byte)State);
             stream.SendNext(Size);
             stream.SendNext(IsOnIce);
-            stream.SendNext((byte)((IsShielded ? 1 : 0) | (IsBeacon ? 2 : 0)));
+            stream.SendNext((IsShielded ? 1 : 0) | (IsBeacon ? 2 : 0) | localFlags);
         }
         else
         {
             var   state = (MovementState)(byte)stream.ReceiveNext();
             float size  = (float)stream.ReceiveNext();
             remoteOnIce = (bool)stream.ReceiveNext();
-            byte flags     = (byte)stream.ReceiveNext();
+            int flags      = (int)stream.ReceiveNext();
             remoteShielded = (flags & 1) != 0;
             remoteBeacon   = (flags & 2) != 0;
+            remoteFlags    = flags & ~3;
 
             bool sizeChanged = !Mathf.Approximately(size, remoteSize);
             remoteSize = size;
@@ -636,4 +657,18 @@ public class Player : MonoBehaviourPun, IPunObservable
             else if (sizeChanged) ApplyBodyScale();
         }
     }
+}
+
+/// <summary>Synced donut flags (bits above the shield and beacon bits in Player's sync).</summary>
+[System.Flags]
+public enum PlayerFlag
+{
+    None        = 0,
+    Golden      = 1 << 2, // Invulnerable: glows gold on every screen
+    Phantom     = 1 << 3, // Passes through players, can't be tagged
+    Repel       = 1 << 4, // Pushes away anyone who comes close
+    Magnet      = 1 << 5, // Pulls everyone nearby in
+    Unstealable = 1 << 6, // Keep Away: the disc can't be stolen from you
+    DoubleScore = 1 << 7, // Keep Away: your team scores double while you hold the disc
+    Jetpack     = 1 << 8, // Flames under your feet while flying
 }

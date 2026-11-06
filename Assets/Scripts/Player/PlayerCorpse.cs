@@ -114,7 +114,16 @@ public static class PlayerCorpse
 
         var skin = meshObject.AddComponent<SkinnedMeshRenderer>();
         skin.sharedMesh      = source.sharedMesh;
-        skin.sharedMaterials = source.sharedMaterials;
+        // Only the body's own materials: not the extra passes PlayerAppearance adds (hunter/team outline, X-ray),
+        // so corpses and killcam stand-ins never glow red
+        var materials = new List<Material>();
+        foreach (var m in source.sharedMaterials)
+        {
+            if (m == null || materials.Count >= Mathf.Max(1, source.sharedMesh != null ? source.sharedMesh.subMeshCount : 1)) continue;
+            if (m.shader != null && m.shader.name.StartsWith("TurboTag/")) continue;
+            materials.Add(m);
+        }
+        skin.sharedMaterials = materials.ToArray();
         skin.localBounds     = source.localBounds;
         skin.updateWhenOffscreen = true;
 

@@ -112,7 +112,7 @@ public abstract class ThrowAbility : Ability
         PutAway();
 
         PhotonNetwork.Instantiate(ResourcePath, throwOrigin.position, throwOrigin.rotation, 0,
-            SpawnData.Create(impulse, power, Owner.photonView.ViewID, ObjectTunableOverrides()));
+            SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
         StartCooldown();
     }

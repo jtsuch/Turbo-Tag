@@ -45,6 +45,9 @@ public abstract class GameMode
     /// <summary>True if the HUD should show a running score.</summary>
     public virtual bool ShowsScores => false;
 
+    /// <summary>True if the match is several rounds (the HUD shows "ROUND n" under the clock).</summary>
+    public virtual bool HasRounds => false;
+
     /// <summary>True if the HUD should show the match clock.</summary>
     public virtual bool ShowsTimer => true;
 
@@ -60,11 +63,37 @@ public abstract class GameMode
     /// </summary>
     public virtual float RespawnDelayAfter(PhotonPlayer tagger, PhotonPlayer victim) => MatchRules.RespawnDelay;
 
-    /// <summary>True for gun modes: health, guns, the gun picker, kill feed, health drops and killcam (CombatManager).</summary>
     /// <summary>The player strictly in the lead wears a crown (Free for All).</summary>
     public virtual bool CrownsLeader => false;
 
+    /// <summary>True for gun modes: health, guns, the gun picker, kill feed, health drops and killcam (CombatManager).</summary>
     public virtual bool UsesGuns => false;
+
+    /// <summary>
+    /// Gun modes: the gun a role gets on every spawn instead of the picker. Null = the picker (every gun),
+    /// "" = no gun at all (Hunter: only the hunter is armed, with a pistol).
+    /// </summary>
+    public virtual string FixedGun(PlayerRole role) => null;
+
+    /// <summary>Gun modes: whether <paramref name="attacker"/>'s bullets hurt <paramref name="target"/> (no friendly fire; bullets pass through).</summary>
+    public virtual bool CanDamage(PlayerRole attacker, PlayerRole target) => true;
+
+    /// <summary>Gun modes: shot players drop a health pack (with the Health Drops rule).</summary>
+    public virtual bool AllowsHealthDrops => true;
+
+    /// <summary>
+    /// Same side: teammates are never outlined as enemies, read each other's names, show blue in X-ray.
+    /// Default: both hunters or both not, in modes with roles; nobody in modes without.
+    /// </summary>
+    public virtual bool SameTeam(PlayerRole a, PlayerRole b) =>
+        UsesRoles && a != PlayerRole.None && b != PlayerRole.None && (a == PlayerRole.Hunter) == (b == PlayerRole.Hunter);
+
+    /// <summary>Outline a <paramref name="viewer"/> sees on <paramref name="target"/>: 0 none, 1 red (enemy/hunter), 2 blue (ally).</summary>
+    public virtual int OutlineFor(PlayerRole viewer, PlayerRole target) =>
+        UsesRoles && target == PlayerRole.Hunter ? 1 : 0;
+
+    /// <summary>Team modes: the HUD's score card text (both teams' scores); null shows the player's own score.</summary>
+    public virtual string TeamScoreText => null;
 
     /// <summary>True to spawn on the level's SpawnPoints (random, away from others) instead of the Spawner's ring.</summary>
     public virtual bool UsesSpawnPoints => false;

@@ -19,6 +19,9 @@ public static class GameModeRegistry
         ["Freeroam"] = () => new FreeplayMode(), // Legacy key
         ["President"] = () => new PresidentMode(),
         ["FFA"]       = () => new FreeForAllMode(),
+        ["TDM"]       = () => new TeamDeathmatchMode(),
+        ["Hunter"]    = () => new HunterMode(),
+        ["KeepAway"]  = () => new KeepAwayMode(),
     };
 
     private static GameModeDefinition[] definitions;

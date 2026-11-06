@@ -146,6 +146,7 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     public void Use(Ability ability, AbilityInputEvent inputEvent)
     {
         if (ability == null || !ability.enabled) return;
+        if (ability.Slot == AbilitySlot.Throw && KeepAwayDisc.LocalHolding) return; // Hands full: the disc takes the throw
 
         // Starting a new aim/place ability cancels the one already in progress
         if (inputEvent == AbilityInputEvent.Down && ability.UsesActionKey

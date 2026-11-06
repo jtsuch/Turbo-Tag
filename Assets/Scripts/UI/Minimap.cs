@@ -183,18 +183,17 @@ public class Minimap : MonoBehaviour
                 if (donut != null) Mark(ref used, donut.transform.position, local, new Color(1f, 0.45f, 0.8f), pulse);
         }
 
+        // Keep Away: the disc, always (it's the whole game)
+        if (KeepAwayDisc.Instance != null)
+            Mark(ref used, KeepAwayDisc.Instance.transform.position, local, new Color(1f, 0.85f, 0.3f), 16f + Mathf.PingPong(Time.unscaledTime * 12f, 5f));
+
         foreach (var p in Player.All)
         {
             if (p == null || p == local || p.IsDownAfterTag) continue;
             if (!ShowEveryone && (mode == null || !mode.ShowsOnMap(local.Role, p.Role))) continue;
             if (manager.HidesIdentityFromLocal(p)) continue;
 
-            Color color = p.Role switch
-            {
-                PlayerRole.Hunter    => UITheme.Current.danger,
-                PlayerRole.President => UITheme.Current.primary,
-                _                    => UITheme.Current.cyan,
-            };
+            Color color = PlayerRoles.Color(p.Role);
             Mark(ref used, p.transform.position, local, color, 14f);
         }
         for (int i = used; i < dots.Count; i++) dots[i].gameObject.SetActive(false);

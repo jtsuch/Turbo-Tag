@@ -464,6 +464,7 @@ public class HUDManager : MonoBehaviour
         {
             PlayerRole.Hunter    => Theme.danger,
             PlayerRole.President => Theme.primary,
+            PlayerRole.TeamRed or PlayerRole.TeamBlue or PlayerRole.Ghost => PlayerRoles.Color(player.Role),
             _                    => Theme.cyan,
         };
         roleCard.gameObject.SetActive(!string.IsNullOrEmpty(title));
@@ -505,7 +506,7 @@ public class HUDManager : MonoBehaviour
         else if (AudioManager.Instance != null) AudioManager.Instance.SetTempo(1f);
         bool paused = showClock && clock.IsPaused;
         pausedChip.SetActive(paused);
-        roundText.text = showClock && !paused && mode.UsesRoles && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
+        roundText.text = showClock && !paused && mode.HasRounds && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
 
         // Score
         bool showScore = mode != null && mode.ShowsScores && player != null;
@@ -523,7 +524,7 @@ public class HUDManager : MonoBehaviour
     private void UpdateScore(GameMode mode, GameModeManager manager)
     {
         float score = manager.Scores.GetLive(player.Owner);
-        scoreText.text = mode.FormatScore(score);
+        scoreText.text = mode.TeamScoreText ?? mode.FormatScore(score); // Team modes: both teams' totals
 
         // A real jump (a kill, a tag), not a timer ticking up: the card bumps and "+1" floats off it
         if (!float.IsNaN(lastScore) && Mathf.Abs(score - lastScore) >= 0.99f && manager.Phase == MatchPhase.Active)

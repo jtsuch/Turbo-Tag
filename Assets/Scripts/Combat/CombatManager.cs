@@ -66,13 +66,21 @@ public class CombatManager : MonoBehaviourPun
     private void OnEnable()
     {
         Player.LocalPlayerSpawned += HandleLocalSpawned;
-        if (GameModeManager.Instance != null) GameModeManager.Instance.PhaseChanged += HandlePhaseChanged;
+        if (GameModeManager.Instance != null)
+        {
+            GameModeManager.Instance.PhaseChanged += HandlePhaseChanged;
+            GameModeManager.Instance.RoleChanged  += HandleRoleChanged;
+        }
     }
 
     private void OnDisable()
     {
         Player.LocalPlayerSpawned -= HandleLocalSpawned;
-        if (GameModeManager.Instance != null) GameModeManager.Instance.PhaseChanged -= HandlePhaseChanged;
+        if (GameModeManager.Instance != null)
+        {
+            GameModeManager.Instance.PhaseChanged -= HandlePhaseChanged;
+            GameModeManager.Instance.RoleChanged  -= HandleRoleChanged;
+        }
         if (subscribed != null)
         {
             subscribed.Respawned -= HandleLocalRespawned;
@@ -106,6 +114,14 @@ public class CombatManager : MonoBehaviourPun
         local.Caught    += HandleLocalCaught;
         local.Health.Refill();
         GunPicker.Open();
+    }
+
+    // A role change can change the gun (Hunter: a hider turned ghost, a new hunter)
+    private void HandleRoleChanged(Photon.Realtime.Player who, PlayerRole role)
+    {
+        if (who == null || !who.IsLocal || Player.Local == null || Player.Local.IsCaught) return;
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && mode.FixedGun(role) != null) GunPicker.Open();
     }
 
     private void HandleLocalCaught()
@@ -199,7 +215,7 @@ public class CombatManager : MonoBehaviourPun
         photonView.RPC(nameof(RPC_Killed), RpcTarget.All,
             selfDestruct ? victim.ActorNumber : killer.ActorNumber, victim.ActorNumber, weapon, headshot, selfDestruct);
 
-        if (live && !selfDestruct && MatchRules.HealthDrops) DropHealth(position);
+        if (live && !selfDestruct && MatchRules.HealthDrops && manager.Mode.AllowsHealthDrops) DropHealth(position);
 
         manager.BroadcastTag(selfDestruct ? victim : killer, victim);
     }

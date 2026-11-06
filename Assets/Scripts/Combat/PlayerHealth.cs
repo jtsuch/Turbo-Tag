@@ -36,6 +36,18 @@ public class PlayerHealth : MonoBehaviourPun
         dead    = false;
     }
 
+    /// <summary>Owner: health to double the maximum, draining back down (Overheal donut).</summary>
+    public void Overheal()
+    {
+        if (dead) return;
+        Current = Max * 2f;
+    }
+
+    private void Update()
+    {
+        if (photonView.IsMine && Current > Max) Current = Mathf.Max(Max, Current - 6f * Time.deltaTime);
+    }
+
     /// <summary>Owner: adds health, up to the maximum (the Vampire donut). Nothing once dead.</summary>
     public void Heal(float amount)
     {
@@ -52,7 +64,8 @@ public class PlayerHealth : MonoBehaviourPun
     [PunRPC]
     private void RPC_Damage(float amount, int attacker, string weapon, bool headshot, Vector3 direction)
     {
-        if (!photonView.IsMine || dead || player.IsCaught || player.AdminGod) return;
+        if (!photonView.IsMine || dead || player.IsCaught || player.AdminGod || player.Role == PlayerRole.Ghost) return;
+        if (player.Has(PlayerFlag.Golden)) { Fx.Shake(0.05f); return; } // Invulnerable donut
         var combat  = CombatManager.Instance;
         var manager = GameModeManager.Instance;
         // Only while the match is live: not once the clock has run out (the winner screen follows)
@@ -66,6 +79,15 @@ public class PlayerHealth : MonoBehaviourPun
         Damaged?.Invoke(amount, attacker);
 
         bool fatal = Current <= 0f;
+        if (fatal && player.SecondLife)
+        {
+            // Second Life: back up on 50 instead of dying
+            player.SecondLife = false;
+            Current = Mathf.Min(Max, 50f);
+            fatal = false;
+            Fx.Heal(player.transform.position + Vector3.up, true);
+            if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner("Second Life!", 1.5f);
+        }
         // Everyone sees the hit land: a flinch, feathers, a thud; the corpse is thrown along the shot
         photonView.RPC(nameof(RPC_HitReact), RpcTarget.All, direction, amount, headshot, fatal);
         KnockBack(direction, amount, fatal);

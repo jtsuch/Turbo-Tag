@@ -80,7 +80,7 @@ public class DebugSceneBootstrapper : MonoBehaviour, IConnectionCallbacks, IMatc
             MaxPlayers = RoomFactory.MaxPlayers,
             CustomRoomProperties = new Hashtable
             {
-                [RoomKeys.GameMode]      = gameModeKey,
+                [RoomKeys.GameMode]      = ModeKey,
                 [RoomKeys.Map]           = gameObject.scene.name,
                 [RuleKeys.CheatsEnabled] = enableCheats,
             },
@@ -90,6 +90,19 @@ public class DebugSceneBootstrapper : MonoBehaviour, IConnectionCallbacks, IMatc
             PhotonNetwork.CreateRoom("DebugRoom", options);
         else
             PhotonNetwork.JoinOrCreateRoom(TestRoomName, options, TypedLobby.Default);
+    }
+
+    // Editor tests can pick the mode for the next play session (SessionState "TT_DebugMode")
+    private string ModeKey
+    {
+        get
+        {
+#if UNITY_EDITOR
+            string forced = UnityEditor.SessionState.GetString("TT_DebugMode", "");
+            if (!string.IsNullOrEmpty(forced)) return forced;
+#endif
+            return gameModeKey;
+        }
     }
 
     // One room per machine and level, so all local editor instances meet

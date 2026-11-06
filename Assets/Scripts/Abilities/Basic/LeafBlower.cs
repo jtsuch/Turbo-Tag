@@ -68,7 +68,7 @@ public class LeafBlower : BasicAbility, IPunObservable
             if (blowing && cam != null)
             {
                 Owner.NotePushed(); // An outside force: movement mustn't brake it away
-                Body.AddForce(-cam.forward * thrust, ForceMode.Acceleration);
+                Body.AddForce(-cam.forward * thrust * Mathf.Sqrt(Owner.AbilityPower), ForceMode.Acceleration);
             }
         }
 

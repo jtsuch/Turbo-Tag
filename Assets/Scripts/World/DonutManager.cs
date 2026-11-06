@@ -241,6 +241,28 @@ public class DonutManager : MonoBehaviourPunCallbacks
         donuts[id] = Donut.Create(id, ground);
     }
 
+    /// <summary>Lucky Streak: asks the host for a donut near <paramref name="position"/>.</summary>
+    public void RequestNear(Vector3 position) => photonView.RPC(nameof(RPC_SpawnNear), RpcTarget.MasterClient, position);
+
+    [PunRPC]
+    private void RPC_SpawnNear(Vector3 position)
+    {
+        if (!PhotonNetwork.IsMasterClient) return;
+        int mask = 1 << StructureLayer;
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            Vector2 offset = Random.insideUnitCircle * Mathf.Lerp(4f, 14f, attempt / 40f);
+            Vector3 top = position + new Vector3(offset.x, 8f, offset.y);
+            if (!Physics.Raycast(top, Vector3.down, out RaycastHit hit, 20f, mask, QueryTriggerInteraction.Ignore)) continue;
+            if (hit.normal.y < 0.8f || hit.collider.GetComponentInParent<DeathZone>() != null || !FloorAround(hit.point, mask)) continue;
+            if (Vector3.Distance(hit.point, position) < 3f) continue; // Not right on top of them
+            int id = nextId++;
+            expiry[id] = Time.time + Lifetime;
+            photonView.RPC(nameof(RPC_SpawnDonut), RpcTarget.All, id, hit.point);
+            return;
+        }
+    }
+
     /// <summary>The donuts out right now (the minimap marks them).</summary>
     public IEnumerable<Donut> Donuts => donuts.Values;
 
@@ -270,6 +292,15 @@ public class DonutManager : MonoBehaviourPunCallbacks
         }
         var applied = PlayerEffect.Apply(entry.Effect, Player.Local, entry.Seconds);
         if (applied != null) Sfx.Here(applied.IsChaos ? SfxKind.Horn : applied.IsGood ? SfxKind.Heal : SfxKind.ZapDown, 0.8f);
+
+        // Golden Donut: three more boons on top
+        if (entry.Effect == typeof(GoldenDonutEffect))
+            for (int i = 0; i < 3; i++)
+            {
+                var extra = Donut.Roll(boonsOnly: true, extra: true);
+                if (extra.Everyone) photonView.RPC(nameof(RPC_EveryoneEffect), RpcTarget.All, extra.Effect.Name, extra.Seconds);
+                else PlayerEffect.Apply(extra.Effect, Player.Local, extra.Seconds);
+            }
     }
 
     // ─── Chaos effects that reach other players ───────────────────────────────

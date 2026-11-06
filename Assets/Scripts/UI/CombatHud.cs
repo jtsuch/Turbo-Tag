@@ -32,6 +32,16 @@ public static class GunPicker
     {
         var local = Player.Local;
         if (local == null || local.IsCaught) return;
+
+        // Modes can hand a role a set gun (or none) instead of the choice
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        string fixedGun = mode != null ? mode.FixedGun(local.Role) : null;
+        if (fixedGun != null)
+        {
+            local.Gun.Equip(fixedGun == "" ? null : fixedGun);
+            IsOpen = false;
+            return;
+        }
         local.Gun.Equip(null);
         Selected = Mathf.Max(0, GunCatalog.IndexOf(LastGun));
         EndsAt   = Time.time + MatchRules.GunPickTime;
@@ -71,6 +81,7 @@ public class CombatHud : MonoBehaviour
     private Image         healthFillImage;
     private TMP_Text      ammoText;
     private TMP_Text      gunText;
+    private GameObject    ammoCard, healthCard;
 
     // Feedback
     private Image      damageFlash;
@@ -159,6 +170,7 @@ public class CombatHud : MonoBehaviour
         UIKit.Stretch((RectTransform)vitals.transform);
 
         var health = UIKit.Card(vitals.transform, Panel, 22f, 0.4f, "Health");
+        healthCard = health.gameObject;
         UIKit.Place(health, new Vector2(0f, 0f), new Vector2(32f, 28f), new Vector2(400f, 108f));
         var hLabel = UIKit.Text(health, "HEALTH", 18f, UIKit.Font.Bold, Theme.textMuted);
         UIKit.Place(hLabel.rectTransform, new Vector2(0f, 1f), new Vector2(24f, -12f), new Vector2(200f, 26f));
@@ -177,6 +189,7 @@ public class CombatHud : MonoBehaviour
         healthFill.sizeDelta = Vector2.zero;
 
         var ammo = UIKit.Card(vitals.transform, Panel, 22f, 0.4f, "Ammo");
+        ammoCard = ammo.gameObject;
         UIKit.Place(ammo, new Vector2(1f, 0f), new Vector2(-32f, 28f), new Vector2(360f, 108f));
         gunText = UIKit.OneLine(UIKit.Text(ammo, "", 18f, UIKit.Font.Bold, Theme.primary, TextAlignmentOptions.Right));
         UIKit.Place(gunText.rectTransform, new Vector2(1f, 1f), new Vector2(-22f, -12f), new Vector2(320f, 26f));
@@ -351,6 +364,12 @@ public class CombatHud : MonoBehaviour
         if (vitals.activeSelf != show) vitals.SetActive(show);
         if (!show) return;
 
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        bool unarmed = mode != null && mode.FixedGun(local.Role) == "";
+        if (ammoCard.activeSelf == unarmed) ammoCard.SetActive(!unarmed);
+        bool ghost = local.Role == PlayerRole.Ghost;
+        if (healthCard.activeSelf == ghost) healthCard.SetActive(!ghost);
+
         var health = local.Health;
         healthText.text = Mathf.CeilToInt(health.Current).ToString();
         healthFill.anchorMax = new Vector2(health.Fraction, 1f);
@@ -468,7 +487,10 @@ public class CombatHud : MonoBehaviour
     {
         var p = PhotonNetwork.CurrentRoom?.GetPlayer(actor);
         string name = p == null ? "Someone" : string.IsNullOrEmpty(p.NickName) ? $"Player {actor}" : p.NickName;
-        return actor == PhotonNetwork.LocalPlayer.ActorNumber ? $"<color=#FFC93C>{name}</color>" : name;
+        if (actor == PhotonNetwork.LocalPlayer.ActorNumber) return $"<color=#FFC93C>{name}</color>";
+        // Team modes: names in their team's colour
+        var role = p != null ? PlayerRoles.Get(p) : PlayerRole.None;
+        return PlayerRoles.IsTeam(role) ? $"<color=#{ColorUtility.ToHtmlStringRGB(PlayerRoles.Color(role))}>{name}</color>" : name;
     }
 
     // ─── Building helpers ─────────────────────────────────────────────────────

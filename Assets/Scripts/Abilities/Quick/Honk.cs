@@ -73,7 +73,7 @@ public class Honk : QuickAbility
             {
                 if (target.IsCaught || !target.AffectedBy(Owner.ActorNumber)) continue;
                 Vector3 flat = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
-                Vector3 kick = (Vector3.Lerp(direction, flat, 0.5f).normalized * push + Vector3.up * lift) * falloff;
+                Vector3 kick = (Vector3.Lerp(direction, flat, 0.5f).normalized * push + Vector3.up * lift) * falloff * PowerOf(Owner);
                 WorldFx.Push(rb, kick, ForceMode.VelocityChange, Owner.ActorNumber);
                 Fx.Shake(0.25f);
             }
@@ -83,6 +83,9 @@ public class Honk : QuickAbility
             }
         }
     }
+
+    // The honker's Ability Overdrive is known only on their own screen; others honk at normal strength
+    private static float PowerOf(Player p) => p != null && p.IsLocal ? Mathf.Sqrt(p.AbilityPower) : 1f;
 
     // ─── Horn (every client) ──────────────────────────────────────────────────
 

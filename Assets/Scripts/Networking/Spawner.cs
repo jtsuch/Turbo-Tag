@@ -111,7 +111,7 @@ public class Spawner : MonoBehaviour
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         if (mode != null && mode.UsesSpawnPoints && SpawnPoint.All.Count > 0)
         {
-            SpawnPoint point = PickSpawnPoint();
+            SpawnPoint point = PickSpawnPoint(role);
             position = point.transform.position;
             rotation = Quaternion.Euler(0f, point.transform.eulerAngles.y, 0f);
             return;
@@ -141,17 +141,22 @@ public class Spawner : MonoBehaviour
     /// <summary>
     /// Before the match runs (Waiting, Countdown) everyone takes a different point: the list is shuffled with a
     /// seed every client shares (the phase start time, so each match differs), then dealt out by player index.
-    /// Mid-match: any point at least <see cref="SafeSpawnDistance"/> from every other living player (never the
-    /// one you last used) is equally likely; if none is that safe, a random one of the safer half.
+    /// Teams start on opposite halves of the map (the points split along the level's longer side, red one end,
+    /// blue the other), dealt out among teammates.
+    /// Mid-match: any point at least <see cref="SafeSpawnDistance"/> from every other living player (only enemies
+    /// count in team modes; never the one you last used) is equally likely; if none is that safe, a random one of
+    /// the safer half.
     /// </summary>
-    private static SpawnPoint PickSpawnPoint()
+    private static SpawnPoint PickSpawnPoint(PlayerRole role)
     {
         var points = new List<SpawnPoint>(SpawnPoint.All);
         points.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+        bool team = PlayerRoles.IsTeam(role);
 
         var phase = GameModeManager.Instance != null ? GameModeManager.Instance.Phase : MatchPhase.Waiting;
         if (phase == MatchPhase.Waiting || phase == MatchPhase.Countdown)
         {
+            if (team && points.Count >= 2) points = TeamHalf(points, role);
             double start = NetProps.Room(RoomKeys.PhaseStart, 0.0);
             var shuffle = new System.Random((int)(start * 1000.0 % int.MaxValue));
             for (int i = points.Count - 1; i > 0; i--)
@@ -159,13 +164,13 @@ public class Spawner : MonoBehaviour
                 int j = shuffle.Next(i + 1);
                 (points[i], points[j]) = (points[j], points[i]);
             }
-            int index = LocalPlayerIndex(out _);
+            int index = team ? TeammateIndex(role) : LocalPlayerIndex(out _);
             return lastSpawnPoint = points[index % points.Count];
         }
 
         var others = new List<Vector3>();
         foreach (var p in Player.All)
-            if (!p.IsLocal && !p.IsDownAfterTag) others.Add(p.transform.position);
+            if (!p.IsLocal && !p.IsDownAfterTag && !(team && p.Role == role)) others.Add(p.transform.position);
 
         float Safety(SpawnPoint point)
         {
@@ -185,6 +190,31 @@ public class Spawner : MonoBehaviour
     }
 
     private const float SafeSpawnDistance = 20f; // Metres from the nearest other living player
+
+    // The half of the spawn points on this team's end: sorted along the axis the points spread out on most
+    private static List<SpawnPoint> TeamHalf(List<SpawnPoint> points, PlayerRole role)
+    {
+        Bounds b = new(points[0].transform.position, Vector3.zero);
+        foreach (var p in points) b.Encapsulate(p.transform.position);
+        bool alongX = b.size.x >= b.size.z;
+        var sorted = new List<SpawnPoint>(points);
+        sorted.Sort((a, c) => (alongX ? a.transform.position.x : a.transform.position.z)
+                             .CompareTo(alongX ? c.transform.position.x : c.transform.position.z));
+        int half = Mathf.Max(1, sorted.Count / 2);
+        return role == PlayerRole.TeamRed ? sorted.GetRange(0, half) : sorted.GetRange(sorted.Count - half, half);
+    }
+
+    // The local player's place among their teammates (by actor number), so teammates take different points
+    private static int TeammateIndex(PlayerRole role)
+    {
+        int index = 0;
+        foreach (var p in PhotonNetwork.PlayerList) // Sorted by actor number
+        {
+            if (p.IsLocal) return index;
+            if (PlayerRoles.Get(p) == role) index++;
+        }
+        return index;
+    }
 
     // Stable 0-based index of the local player among everyone in the room
     private static int LocalPlayerIndex(out int total)

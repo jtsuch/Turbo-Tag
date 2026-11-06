@@ -40,7 +40,7 @@ public class Dash : QuickAbility
         Body.linearVelocity = Vector3.zero;
         Body.useGravity     = false;
         Owner.IsDashing     = true;
-        Body.AddForce(direction * (dashStrength * scale), ForceMode.Impulse);
+        Body.AddForce(direction * (dashStrength * scale * Mathf.Sqrt(Owner.AbilityPower)), ForceMode.Impulse);
 
         if (PlayerCam.Local != null) PlayerCam.Local.ChangeFov(PlayerCam.Local.DefaultFov + dashFovBoost);
 
