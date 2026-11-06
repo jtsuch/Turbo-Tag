@@ -95,6 +95,18 @@ public abstract class Ability : MonoBehaviour
         CountUse();
     }
 
+    /// <summary>
+    /// Gives a spent charge back <paramref name="delay"/> seconds from now (Spy Camera picked back up), or sooner
+    /// if the normal recharge would bring it back first.
+    /// </summary>
+    protected void RefundCharge(float delay)
+    {
+        Recharge();
+        if (charges >= MaxCharges) return;
+        if (delay <= 0f || CooldownDuration <= 0f) { charges++; return; }
+        rechargeStart = Mathf.Min(rechargeStart, Time.time + delay - CooldownDuration);
+    }
+
     /// <summary>Owner: one more use of an ability, for the scoreboard's "Abilities Used".</summary>
     protected void CountUse()
     {

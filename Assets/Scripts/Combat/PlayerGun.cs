@@ -284,7 +284,9 @@ public class PlayerGun : MonoBehaviourPun
     // Owner: the gun under the camera (the killer's gun during their killcam)
     private void UpdateFirstPerson()
     {
-        bool alive = GunsActive && Current != null && !player.IsCaught;
+        // Watching a Spy Camera moves the main camera onto it: the first-person gun mustn't come along
+        bool watchingCamera = killcamGun == null && PlayerCam.Local != null && PlayerCam.Local.HasViewOverride;
+        bool alive = GunsActive && Current != null && !player.IsCaught && !watchingCamera;
         string id  = killcamGun ?? (alive ? Current.Id : null);
         var gun    = GunCatalog.Find(id);
 

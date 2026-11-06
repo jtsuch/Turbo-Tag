@@ -303,7 +303,9 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 
     private void ShowGun(bool show)
     {
-        bool firstPerson = show || ForceFirstPersonGun;
+        // Looking through a placed Spy Camera, the main camera sits on it: no first-person pistol floating in that view
+        bool watchingCamera = !ForceFirstPersonGun && PlayerCam.Local != null && PlayerCam.Local.HasViewOverride && !Killcam.IsPlaying;
+        bool firstPerson = (show || ForceFirstPersonGun) && !watchingCamera;
         if (firstPersonGun != null && firstPersonGun.activeSelf != firstPerson) firstPersonGun.SetActive(firstPerson);
         if (thirdPersonGun != null && thirdPersonGun.activeSelf != show) thirdPersonGun.SetActive(show);
     }

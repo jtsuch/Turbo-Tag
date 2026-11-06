@@ -120,6 +120,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Owner: the turn from world up to the surface the body stands on, smoothed by PlayerCam (identity normally).</summary>
     public Quaternion SurfaceFrame { get; set; } = Quaternion.identity;
 
+    /// <summary>Zero Gravity (owner): no gravity while set. PlayerMovement switches it (it owns gravity).</summary>
+    public bool ZeroGravity { get; set; }
+
     /// <summary>Owner: an admin turned this player's abilities off ("name ability 0" in the admin console).</summary>
     public bool AdminAbilitiesOff { get; set; }
 
@@ -548,6 +551,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     {
         Abilities.CancelAll();
         MagnetUp     = null;                 // Arrive upright, not still turned to a wall (Wall Magnet)
+        ZeroGravity  = false;
         SurfaceFrame = Quaternion.identity;
         Body.linearVelocity  = Vector3.zero;
         Body.angularVelocity = Vector3.zero;

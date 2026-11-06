@@ -165,7 +165,7 @@ public class PlayerMovement : MonoBehaviourPun
     // One writer means no system can leave gravity off (or on) after another one ends.
     private void UpdateGravity()
     {
-        bool off = player.IsDashing || player.IsAnchored || player.IsMagnetized
+        bool off = player.IsDashing || player.IsAnchored || player.IsMagnetized || player.ZeroGravity
                 || State == Player.MovementState.WallRun || State == Player.MovementState.Hang;
         if (rb.useGravity == off) rb.useGravity = !off;
 

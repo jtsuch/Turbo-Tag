@@ -6,11 +6,19 @@ using UnityEngine;
 ///   - Sprite sheets (Sprite Mode: Multiple): each slice named "{AbilityId}Icon" in the Sprite Editor. Any number of
 ///     sheets; if two sheets have the same name, the one whose file name sorts last wins (newer pages).
 ///   - Single images named "{AbilityId}Icon" (used only when no sheet has that ability).
-/// Names match ignoring case and anything that isn't a letter or digit ("GravballIcon" finds GravBall).
+/// Names match ignoring case and anything that isn't a letter or digit ("GravballIcon" finds GravBall), and a few
+/// abilities also answer to another name (<see cref="Aliases"/>: "JumpPadIcon" is the BouncePadTrap icon).
 /// </summary>
 public static class AbilityIcons
 {
     private const string Folder = "AbilityIcons";
+
+    // Ability key → other icon names it may be drawn under
+    private static readonly Dictionary<string, string[]> Aliases = new()
+    {
+        ["bouncepadtrap"] = new[] { "jumppad", "bouncepad" },
+        ["infiniteclimb"] = new[] { "infiniteclimbing" },
+    };
 
     private static Dictionary<string, Sprite> sheet;
     private static readonly Dictionary<string, Sprite> singles = new();
@@ -22,6 +30,9 @@ public static class AbilityIcons
         string key = Key(abilityId);
         LoadSheets();
         if (sheet.TryGetValue(key, out var sprite)) return sprite;
+        if (Aliases.TryGetValue(key, out var others))
+            foreach (string other in others)
+                if (sheet.TryGetValue(other, out sprite)) return sprite;
 
         if (singles.TryGetValue(key, out sprite)) return sprite;
         var tex = Resources.Load<Texture2D>($"{Folder}/{abilityId}Icon");

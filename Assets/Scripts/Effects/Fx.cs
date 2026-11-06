@@ -22,6 +22,7 @@ public static class Fx
     {
         nameof(BoomBomb) => false, // Its use is counted at the blast, which has its own effect
         nameof(Honk)     => false, // Plays its own (RPC_Honk: horn, sound and push)
+        nameof(GroundPound) => true,
         _                => true,
     };
 
@@ -62,6 +63,10 @@ public static class Fx
                 Sfx.At(SfxKind.Shimmer, chest, 0.9f);
                 Vfx.Burst(chest, Cyan, 24, 4f, 0.3f, 0.6f);
                 break;
+            case nameof(ZeroGravity):
+                Sfx.At(SfxKind.Shimmer, chest, 0.7f, 45f, 0.7f);
+                Vfx.Burst(chest, Violet, 20, 2f, 0.3f, 1f);
+                break;
             case nameof(InfiniteClimb):
                 Sfx.At(SfxKind.ZapUp, chest, 0.6f);
                 Vfx.Burst(chest, Yellow, 10, 2f, 0.2f, 0.5f, direction: Vector3.up, spread: 0.6f);
@@ -94,6 +99,10 @@ public static class Fx
             case nameof(Cloak):
                 Sfx.At(SfxKind.Shimmer, chest, 0.9f);
                 Vfx.Burst(chest, new Color(1f, 1f, 1f, 0.6f), 24, 2.5f, 0.3f, 0.8f);
+                break;
+            case nameof(GroundPound):
+                Sfx.At(SfxKind.Whoosh, chest, 1f, 45f, 0.7f);
+                Vfx.Burst(chest, Color.white, 12, 4f, 0.25f, 0.4f, direction: Vector3.up, spread: 0.4f);
                 break;
             case nameof(Adrenaline):
                 Sfx.At(SfxKind.Heartbeat, chest, 1f);

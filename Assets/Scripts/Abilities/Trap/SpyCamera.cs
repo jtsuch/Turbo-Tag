@@ -6,6 +6,8 @@ using UnityEngine;
 /// mouse turns the camera head (everyone sees it turn). No cooldown between looks. If the camera is
 /// gone (destroyed, or the owner left), the key places a new one. Pausing or being trapped only cancels
 /// placing (Cancel); watching continues until the key is pressed again.
+/// Standing next to your camera shows "F  Withdraw camera" (the Grab key): it comes back to you, usable again
+/// after <see cref="withdrawCooldown"/>.
 /// </summary>
 [AbilityInfo("Place a camera on a wall. Press again to watch through it (you can't move while watching), and again to stop.",
              DisplayName = "Camera")]
@@ -14,6 +16,10 @@ public class SpyCamera : TrapAbility
     [Header("Camera")]
     [Tooltip("How far from vertical a surface may be and still take a camera (0 = only perfectly vertical walls).")]
     [SerializeField, Range(0f, 1f)] private float maxSurfaceTilt = 0.35f;
+    [Tooltip("How close (m) you must be to pick your camera back up.")]
+    [SerializeField] private float withdrawRange = 3f;
+    [Tooltip("Seconds before a withdrawn camera can be placed again.")]
+    [SerializeField] private float withdrawCooldown = 2f;
 
     private SpyCameraObject placed;
     private bool            viewing;
@@ -58,6 +64,30 @@ public class SpyCamera : TrapAbility
     private void LateUpdate()
     {
         if (viewing && (placed == null || Owner.IsCaught)) SetViewing(false);
+        UpdateWithdraw();
+    }
+
+    // ─── Withdraw (pick it back up) ───────────────────────────────────────────
+
+    private void UpdateWithdraw()
+    {
+        if (!IsLocal || placed == null || viewing || Owner.IsCaught) return;
+        Vector3 chest = Owner.transform.position + Vector3.up * 1.2f;
+        if (Vector3.Distance(chest, placed.transform.position) > withdrawRange) return;
+
+        KeyCode key = Keybinds.Get(InputAction.Grab);
+        HUDManager.Prompt(key, "Withdraw camera");
+        if (!PauseMenuManager.IsPaused && Input.GetKeyDown(key)) Withdraw();
+    }
+
+    private void Withdraw()
+    {
+        Vector3 at = placed.transform.position;
+        Photon.Pun.PhotonNetwork.Destroy(placed.gameObject);
+        placed = null;
+        RefundCharge(withdrawCooldown);
+        Sfx.At(SfxKind.Pop, at, 0.8f, 20f);
+        Vfx.Burst(at, new Color(0.13f, 0.83f, 0.93f), 12, 3f, 0.2f, 0.4f);
     }
 
     protected override void OnDisable()

@@ -128,6 +128,7 @@ public class HUDManager : MonoBehaviour
         UpdateTop();
         UpdateCountdown();
         UpdateBanner();
+        UpdatePrompt();
         if (player == null) return;
         UpdateAbilities();
         if (showDebug) UpdateDebug();
@@ -154,6 +155,50 @@ public class HUDManager : MonoBehaviour
         debugText = UIKit.Text(root, "", 20f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.TopLeft, "Debug");
         UIKit.Place(debugText.rectTransform, new Vector2(0f, 1f), new Vector2(32f, -170f), new Vector2(420f, 220f));
         debugText.gameObject.SetActive(false);
+    }
+
+    // ─── Key prompt ("F  Withdraw camera") ────────────────────────────────────
+
+    private RectTransform promptCard;
+    private TMP_Text      promptKey, promptText;
+    private int           promptFrame = -1;
+
+    /// <summary>
+    /// Shows "[key]  text" under the crosshair for this frame; call it every frame while the prompt applies
+    /// (it hides itself the frame nobody asks).
+    /// </summary>
+    public static void Prompt(KeyCode key, string text)
+    {
+        var hud = Instance;
+        if (hud == null) return;
+        if (hud.promptCard == null) hud.BuildPrompt();
+        hud.promptFrame = Time.frameCount;
+        hud.promptKey.text  = Keybinds.Label(key);
+        hud.promptText.text = text;
+    }
+
+    private void BuildPrompt()
+    {
+        promptCard = UIKit.Card(root, UIKit.WithAlpha(Theme.panel, 0.9f), 18f, 0.4f, "Prompt");
+        UIKit.Place(promptCard, new Vector2(0.5f, 0.5f), new Vector2(0f, -150f), new Vector2(380f, 56f));
+        promptCard.pivot = new Vector2(0.5f, 0.5f);
+        var chip = UIKit.Panel(promptCard, Theme.primary, 10f, "Key");
+        UIKit.Place(chip.rectTransform, new Vector2(0f, 0.5f), new Vector2(12f, 0f), new Vector2(48f, 40f));
+        chip.rectTransform.pivot = new Vector2(0f, 0.5f);
+        chip.rectTransform.anchoredPosition = new Vector2(12f, 0f);
+        promptKey = UIKit.Text(chip.transform, "", 24f, UIKit.Font.Display, Theme.textDark, TextAlignmentOptions.Center);
+        UIKit.Stretch(promptKey.rectTransform);
+        promptText = UIKit.OneLine(UIKit.Text(promptCard, "", 24f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.MidlineLeft));
+        UIKit.Stretch(promptText.rectTransform, 74f, 16f, 0f, 0f);
+        foreach (var g in promptCard.GetComponentsInChildren<Graphic>()) g.raycastTarget = false;
+    }
+
+    private void UpdatePrompt()
+    {
+        if (promptCard == null) return;
+        bool show = promptFrame >= Time.frameCount - 1 && !PauseMenuManager.IsPaused;
+        if (promptCard.gameObject.activeSelf != show) promptCard.gameObject.SetActive(show);
+        if (show) promptCard.localScale = Vector3.one * (1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.025f);
     }
 
     private void BuildCrosshair()
