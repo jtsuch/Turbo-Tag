@@ -37,6 +37,7 @@ public static class EditorJobQueue
         ["BuildImprovementExpansion"] = ImprovementExpansion.Build,
         ["BuildUITheme"] = UIThemeBuilder.Build,
         ["BuildGunPrefabs"] = GunPrefabBuilder.Build,
+        ["BuildPinnacle"] = PinnacleBuilder.Build,
     };
 
     private static double nextPoll;
