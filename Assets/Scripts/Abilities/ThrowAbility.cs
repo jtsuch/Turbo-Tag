@@ -107,15 +107,56 @@ public abstract class ThrowAbility : Ability
 
     private void Release()
     {
-        Vector3 impulse = throwOrigin.forward * CurrentForce;
+        Launch(out Vector3 start, out Vector3 direction);
+        Vector3 impulse = direction * CurrentForce;
         state = ThrowState.Idle;
         PutAway();
 
-        PhotonNetwork.Instantiate(ResourcePath, throwOrigin.position, throwOrigin.rotation, 0,
+        PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(direction, throwOrigin.up), 0,
             SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
 
         StartCooldown();
     }
+
+    /// <summary>
+    /// Where a throw starts and which way it goes. The hand (throwOrigin) sits low and to the side of the eyes, so
+    /// a throw straight along its forward missed the crosshair by half a metre and clipped door frames, and next
+    /// to a wall the hand could be inside or behind it. Now the throw aims at what's under the crosshair (keeping
+    /// the hand's own tilt), and starts just in front of anything between the eyes and the hand.
+    /// </summary>
+    protected void Launch(out Vector3 start, out Vector3 direction)
+    {
+        Transform eye = throwOrigin.parent != null ? throwOrigin.parent : throwOrigin;
+        Vector3 eyePos = eye.position, forward = eye.forward;
+        start = throwOrigin.position;
+
+        Vector3 toHand = start - eyePos;
+        if (toHand.sqrMagnitude > 0.0001f && FirstHit(eyePos, toHand.normalized, toHand.magnitude + 0.2f, out RaycastHit wall))
+            start = eyePos + toHand.normalized * Mathf.Max(0f, wall.distance - 0.25f);
+
+        Vector3 aim = FirstHit(eyePos, forward, 150f, out RaycastHit target) ? target.point : eyePos + forward * 150f;
+        Vector3 toAim = aim - start;
+        Quaternion tilt = Quaternion.FromToRotation(forward, throwOrigin.forward); // Lobs keep their lift
+        direction = toAim.magnitude > 2f && Vector3.Dot(toAim, forward) > 0f ? tilt * toAim.normalized : throwOrigin.forward;
+    }
+
+    // The nearest solid thing along a ray, ignoring the thrower's own colliders and triggers
+    private bool FirstHit(Vector3 origin, Vector3 direction, float distance, out RaycastHit nearest)
+    {
+        nearest = default;
+        float best = float.MaxValue;
+        int count = Physics.RaycastNonAlloc(origin, direction, hitBuffer, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            var hit = hitBuffer[i];
+            if (hit.distance >= best || hit.collider.transform.IsChildOf(Owner.transform)) continue;
+            best = hit.distance;
+            nearest = hit;
+        }
+        return best < float.MaxValue;
+    }
+
+    private static readonly RaycastHit[] hitBuffer = new RaycastHit[16];
 
     private void PutAway()
     {
@@ -164,9 +205,10 @@ public abstract class ThrowAbility : Ability
 
         trajectoryBuffer ??= new Vector3[trajectorySteps];
         if (projectilePrefab == null) projectilePrefab = Resources.Load<GameObject>(ResourcePath)?.GetComponent<NetworkedProjectile>();
-        Vector3 launch = throwOrigin.forward * CurrentForce;
+        Launch(out Vector3 start, out Vector3 direction);
+        Vector3 launch = direction * CurrentForce;
         if (projectilePrefab != null) launch = projectilePrefab.LaunchVelocity(launch);
-        int count = SimulateArc(throwOrigin.position, launch);
+        int count = SimulateArc(start, launch);
 
         trajectoryLine.positionCount = count;
         trajectoryLine.SetPositions(trajectoryBuffer);

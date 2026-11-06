@@ -49,6 +49,12 @@ public class HunterMode : GameMode
 
     public override void MasterUpdate()
     {
+        // Someone who joins once the hunt is on comes in as a ghost (no free hider, no second hunter)
+        if (Phase == MatchPhase.Hiding || Phase == MatchPhase.Active)
+            foreach (var p in PhotonNetwork.PlayerList)
+                if (PlayerRoles.Get(p) == PlayerRole.None && ghosted.Add(p.ActorNumber))
+                    PlayerRoles.Set(p, PlayerRole.Ghost);
+
         switch (Phase)
         {
             case MatchPhase.Countdown:

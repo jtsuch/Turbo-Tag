@@ -43,6 +43,6 @@ public class BoomStickObject : NetworkedProjectile
 
         WorldFx.PlayClip(explosionSFX, position, audioRadius, audioVolume);
         Fx.Explosion(position, explosionRadius * Mathf.Sqrt(Power));
-        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr);
+        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr, cause: "BoomStick");
     }
 }

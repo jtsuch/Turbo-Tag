@@ -97,11 +97,11 @@ public class GroundPound : QuickAbility
             if (rb.TryGetComponent(out Player target))
             {
                 if (target.IsCaught) continue;
-                WorldFx.Push(rb, kick, ForceMode.VelocityChange, Owner.ActorNumber);
+                WorldFx.Push(rb, kick, ForceMode.VelocityChange, Owner.ActorNumber, "GroundPound");
             }
             else
             {
-                WorldFx.Push(rb, kick * rb.mass * 0.6f, ForceMode.Impulse, Owner.ActorNumber);
+                WorldFx.Push(rb, kick * rb.mass * 0.6f, ForceMode.Impulse, Owner.ActorNumber, "GroundPound");
             }
         }
     }

@@ -91,7 +91,7 @@ public class GravBallObject : NetworkedProjectile
 
             // An acceleration, so it pulls a player as hard as a crate, and through movement braking
             float t = dist / radius;
-            WorldFx.Push(rb, toOrb.normalized * (pullForce * Power * (1f - t * t)), ForceMode.Acceleration, photonView.OwnerActorNr);
+            WorldFx.Push(rb, toOrb.normalized * (pullForce * Power * (1f - t * t)), ForceMode.Acceleration, photonView.OwnerActorNr, "GravBall");
         }
     }
 

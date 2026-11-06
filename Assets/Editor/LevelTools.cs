@@ -17,7 +17,6 @@ public class LevelTools : AssetPostprocessor
 {
     private const string LevelFolder    = "Assets/Scenes/Levels";
     private const string TemplateScene  = LevelFolder + "/_LevelTemplate.unity";
-    private const string GreyboxScene   = LevelFolder + "/Greybox.unity";
     private const string SystemsPrefab  = "Assets/Prefabs/Level/LevelSystems.prefab";
     private const string GeometryRoot   = "Geometry";
 
@@ -274,44 +273,6 @@ public class LevelTools : AssetPostprocessor
             }
         }
         return count;
-    }
-
-    // ─── Greybox ──────────────────────────────────────────────────────────────
-
-    [MenuItem("Turbo Tag/Levels/Rebuild Greybox")]
-    private static void RebuildGreyboxMenu()
-    {
-        if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
-        if (File.Exists(GreyboxScene) &&
-            !EditorUtility.DisplayDialog("Turbo Tag", "Rebuild Greybox.unity from scratch? Manual edits to it will be lost.", "Rebuild", "Cancel"))
-            return;
-        RebuildGreybox();
-    }
-
-    /// <summary>Unattended version (no prompts) — also run by <see cref="EditorJobQueue"/>.</summary>
-    public static void RebuildGreybox()
-    {
-        if (!RequireAsset(TemplateScene)) return;
-
-        AssetDatabase.DeleteAsset(GreyboxScene);
-        AssetDatabase.CopyAsset(TemplateScene, GreyboxScene);
-        var scene = EditorSceneManager.OpenScene(GreyboxScene, OpenSceneMode.Single);
-
-        var geometry = scene.GetRootGameObjects().First(go => go.name == GeometryRoot).transform;
-        GreyboxBuilder.Build(geometry);
-
-        var spawner = Object.FindFirstObjectByType<Spawner>(FindObjectsInactive.Include);
-        if (spawner != null)
-        {
-            spawner.transform.position = GreyboxBuilder.SpawnCenter;
-            var so = new SerializedObject(spawner);
-            so.FindProperty("killHeight").floatValue = GreyboxBuilder.KillHeight;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        EditorSceneManager.MarkSceneDirty(scene);
-        EditorSceneManager.SaveScene(scene);
-        Debug.Log("[LevelTools] Greybox rebuilt. Press Play to test it offline in Freeplay.");
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

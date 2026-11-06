@@ -118,6 +118,7 @@ public class ScoreboardManager : MenuScreen
         var columns = mode.ScoreboardColumns;
 
         BuildPodium(ranked, columns);
+        BuildAwards(ranked);
 
         for (int i = tableList.childCount - 1; i >= 0; i--) Destroy(tableList.GetChild(i).gameObject);
         var header = new List<string> { "#", "PLAYER" };
@@ -184,6 +185,7 @@ public class ScoreboardManager : MenuScreen
             var preview = PenguinPreview.Create(holder, size);
             UIKit.Stretch((RectTransform)preview.transform);
             preview.SetSkin(PenguinSkins.Of(p));
+            preview.SetCosmetics(p);
             preview.Dance = true;
             previews.Add(preview);
 
@@ -192,6 +194,69 @@ public class ScoreboardManager : MenuScreen
             UIKit.Place(name.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f), new Vector2(300f, 38f));
             name.rectTransform.pivot = new Vector2(0.5f, 0f);
             name.rectTransform.anchoredPosition = Vector2.zero;
+        }
+    }
+
+    // ─── Awards ───────────────────────────────────────────────────────────────
+
+    // Title, stat, how the number reads, and whether the most or the fewest wins; shown when one player leads alone
+    private static readonly (string title, string key, System.Func<float, string> format, string color)[] AwardList =
+    {
+        ("Knock-off King",  PlayerKeys.StatKnockOffs,     v => $"{v:0} knock-offs",      "#FF8A3D"),
+        ("Sharpshooter",    PlayerKeys.StatHeadshots,     v => $"{v:0} headshots",       "#FF4D6D"),
+        ("Ability Addict",  PlayerKeys.StatAbilitiesUsed, v => $"{v:0} abilities used",  "#3DE0FF"),
+        ("Master Hider",    PlayerKeys.StatLongestHide,   v => $"{MatchStats.FormatTime(v)} in one hide", "#9BFF5A"),
+        ("Tag Machine",     PlayerKeys.StatTags,          v => $"{v:0} tags",            "#FF4D6D"),
+        ("Pickpocket",      PlayerKeys.StatSteals,        v => $"{v:0} steals",          "#FFD23F"),
+        ("Disc Magnet",     PlayerKeys.StatCatches,       v => $"{v:0} grabs",           "#FFD23F"),
+        ("Sweet Tooth",     PlayerKeys.StatDonuts,        v => $"{v:0} donuts",          "#FF6FB5"),
+        ("Gravity's Victim", PlayerKeys.StatSelfDestructs, v => $"fell off {v:0} times", "#B9B2E0"),
+    };
+
+    private RectTransform awardsLeft, awardsRight;
+
+    // Up to four awards beside the podium, from the stats this mode tracked
+    private void BuildAwards(List<PhotonPlayer> ranked)
+    {
+        if (awardsLeft == null)
+        {
+            awardsLeft = UIKit.Rect("Awards Left", Root);
+            UIKit.Place(awardsLeft, new Vector2(0f, 1f), new Vector2(60f, -190f), new Vector2(340f, 360f));
+            awardsLeft.pivot = new Vector2(0f, 1f);
+            UIKit.VStack(awardsLeft, 14f, null, TextAnchor.UpperLeft);
+            awardsRight = UIKit.Rect("Awards Right", Root);
+            UIKit.Place(awardsRight, new Vector2(1f, 1f), new Vector2(-60f, -190f), new Vector2(340f, 360f));
+            awardsRight.pivot = new Vector2(1f, 1f);
+            UIKit.VStack(awardsRight, 14f, null, TextAnchor.UpperRight);
+        }
+        for (int i = awardsLeft.childCount - 1; i >= 0; i--) Destroy(awardsLeft.GetChild(i).gameObject);
+        for (int i = awardsRight.childCount - 1; i >= 0; i--) Destroy(awardsRight.GetChild(i).gameObject);
+        if (ranked.Count < 2) return;
+
+        int shown = 0;
+        foreach (var (title, key, format, color) in AwardList)
+        {
+            if (shown >= 4) break;
+            PhotonPlayer best = null;
+            float top = 0f;
+            bool tie = false;
+            foreach (var p in ranked)
+            {
+                float v = MatchStats.Get(p, key);
+                if (v > top) { top = v; best = p; tie = false; }
+                else if (v > 0f && Mathf.Approximately(v, top)) tie = true;
+            }
+            if (best == null || tie) continue;
+
+            var parent = shown % 2 == 0 ? awardsLeft : awardsRight;
+            ColorUtility.TryParseHtmlString(color, out Color accent);
+            var card = UIKit.Card(parent, UIKit.WithAlpha(Theme.panel, 0.94f), 20f, 0.4f, title);
+            UIKit.Size(card, 340f, 96f);
+            UIKit.VStack(card, 2f, UIKit.Pad(18, 12), TextAnchor.UpperLeft);
+            UIKit.OneLine(UIKit.Text(card, title.ToUpperInvariant(), 20f, UIKit.Font.Display, accent));
+            UIKit.OneLine(UIKit.Text(card, Name(best), 28f, UIKit.Font.Display, Theme.text));
+            UIKit.OneLine(UIKit.Text(card, format(top), 18f, UIKit.Font.Body, Theme.textMuted));
+            shown++;
         }
     }
 

@@ -79,7 +79,7 @@ public class GravityWellObject : MonoBehaviourPun
         float vy      = rb.linearVelocity.y;
         if (vy <= targetY) return;
         float change = Mathf.Max(targetY - vy, -yankAcceleration * power * Time.fixedDeltaTime);
-        WorldFx.Push(rb, Vector3.up * change, ForceMode.VelocityChange, photonView.OwnerActorNr);
+        WorldFx.Push(rb, Vector3.up * change, ForceMode.VelocityChange, photonView.OwnerActorNr, "GravityWell");
     }
 
     // ─── Cylinder check ──────────────────────────────────────────────────────

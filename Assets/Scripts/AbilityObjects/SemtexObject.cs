@@ -48,6 +48,8 @@ public class SemtexObject : NetworkedProjectile
     private Vector3     anchorPosition;  // Pose in the anchor's space
     private Quaternion  anchorRotation;
     private Material    glowMaterial;
+    private Material[]  instanced;
+    private int         glowIndex;
     private Coroutine   glowRoutine;
     private AudioSource beepSource;
 
@@ -55,9 +57,27 @@ public class SemtexObject : NetworkedProjectile
     {
         base.Awake();
 
+        // Only the red band glows: the reddest material on the model (instanced, so only this charge lights up)
+        float best = -1f;
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+        {
+            var shared = r.sharedMaterials;
+            for (int i = 0; i < shared.Length; i++)
+            {
+                var m = shared[i];
+                if (m == null || !m.HasProperty("_BaseColor")) continue;
+                Color c = m.GetColor("_BaseColor");
+                float red = c.r - Mathf.Max(c.g, c.b);
+                if (red <= best) continue;
+                best = red;
+                glowRenderer = r;
+                glowIndex = i;
+            }
+        }
         if (glowRenderer != null)
         {
-            glowMaterial = glowRenderer.material; // Instanced so only this charge glows
+            instanced = glowRenderer.materials;
+            glowMaterial = instanced[Mathf.Clamp(glowIndex, 0, instanced.Length - 1)];
             glowMaterial.EnableKeyword("_EMISSION");
             glowMaterial.SetColor(EmissionColor, Color.black);
         }
@@ -68,7 +88,7 @@ public class SemtexObject : NetworkedProjectile
 
     private void OnDestroy()
     {
-        if (glowMaterial != null) Destroy(glowMaterial);
+        if (instanced != null) foreach (var m in instanced) if (m != null) Destroy(m);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -122,12 +142,14 @@ public class SemtexObject : NetworkedProjectile
 
     private IEnumerator Fuse()
     {
-        yield return new WaitForSeconds(preFuseDuration);
-
-        for (int i = 0; i < beepCount; i++)
+        // Beeps the whole way, quicker and higher as it gets close, so everyone can hear when it'll go
+        float total = preFuseDuration + beepCount * beepInterval;
+        for (float t = 0f; t < total;)
         {
-            photonView.RPC(nameof(RPC_Beep), RpcTarget.All);
-            yield return new WaitForSeconds(beepInterval);
+            photonView.RPC(nameof(RPC_Beep), RpcTarget.All, t / total);
+            float gap = Mathf.Lerp(0.5f, 0.12f, t / total);
+            yield return new WaitForSeconds(gap);
+            t += gap;
         }
 
         HideAndFreeze();
@@ -136,9 +158,10 @@ public class SemtexObject : NetworkedProjectile
     }
 
     [PunRPC]
-    private void RPC_Beep()
+    private void RPC_Beep(float progress)
     {
         if (beepSFX != null) beepSource.PlayOneShot(beepSFX);
+        else Sfx.At(SfxKind.Tick, transform.position, 0.35f, 18f, Mathf.Lerp(1.4f, 2.2f, progress)); // Quiet, rising
 
         if (glowMaterial == null) return;
         if (glowRoutine != null) StopCoroutine(glowRoutine);
@@ -166,6 +189,6 @@ public class SemtexObject : NetworkedProjectile
         WorldFx.SpawnVfx(explosionVFX, position, vfxScale);
         WorldFx.PlayClip(explosionSFX, position, audioRadius, audioVolume);
         Fx.Explosion(position, explosionRadius * Mathf.Sqrt(Power));
-        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr);
+        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr, cause: "Semtex");
     }
 }

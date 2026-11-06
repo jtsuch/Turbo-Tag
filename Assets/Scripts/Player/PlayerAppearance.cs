@@ -144,7 +144,12 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         }
         var  manager    = GameModeManager.Instance;
         bool silhouette = manager != null && manager.HidesIdentityFromLocal(player);
-        UpdateCrown(manager != null && manager.ShowsCrown(player));
+        bool crowned = manager != null && manager.ShowsCrown(player);
+        UpdateCrown(crowned);
+        // Cosmetics: hidden whenever the body is disguised, hidden or see-through (they'd give the player away)
+        bool plain = !silhouette && CloakAmount < 0.05f && !Camouflage.HasValue && ghostAmount < 0.05f && !player.IsDownAfterTag;
+        UpdateCosmetic(Cosmetics.Slot.Hat, plain && !crowned);
+        UpdateCosmetic(Cosmetics.Slot.Back, plain && player.State != Player.MovementState.Prone);
 
         iceAmount   = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * dt);
         camoAmount  = Mathf.MoveTowards(camoAmount, Camouflage.HasValue ? 1f : 0f, camouflageFadeSpeed * dt);
@@ -238,6 +243,31 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         Vector3 top  = new(head.x, player.TopY - crownSink * size, head.z);
         crown.transform.SetPositionAndRotation(top, Quaternion.LookRotation(transform.forward, Vector3.up));
         crown.transform.localScale = Vector3.one * size;
+    }
+
+    // ─── Cosmetics ────────────────────────────────────────────────────────────
+
+    private readonly GameObject[] cosmetic = new GameObject[2];
+    private readonly string[] cosmeticId = new string[2];
+    private Transform cosmeticHead, cosmeticChest;
+    private bool cosmeticBones;
+
+    // The player's pick for a slot, worn (a child of the body, so the minimap hides it too)
+    private void UpdateCosmetic(Cosmetics.Slot slot, bool show)
+    {
+        int i = (int)slot;
+        string id = show ? Cosmetics.Of(photonView.Owner, slot) : Cosmetics.None;
+        if (id != cosmeticId[i])
+        {
+            if (cosmetic[i] != null) Destroy(cosmetic[i]);
+            cosmetic[i] = null;
+            cosmeticId[i] = id;
+            var prefab = Cosmetics.Prefab(id);
+            if (prefab != null) cosmetic[i] = Instantiate(prefab, transform);
+        }
+        if (cosmetic[i] == null) return;
+        if (!cosmeticBones) { Cosmetics.FindBones(transform, out cosmeticHead, out cosmeticChest); cosmeticBones = true; }
+        Cosmetics.Place(cosmetic[i].transform, slot, transform, cosmeticHead, cosmeticChest, player.TopY, player.Size);
     }
 
     // ─── Cloak materials ──────────────────────────────────────────────────────

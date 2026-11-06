@@ -74,12 +74,12 @@ public class Honk : QuickAbility
                 if (target.IsCaught || !target.AffectedBy(Owner.ActorNumber)) continue;
                 Vector3 flat = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
                 Vector3 kick = (Vector3.Lerp(direction, flat, 0.5f).normalized * push + Vector3.up * lift) * falloff * PowerOf(Owner);
-                WorldFx.Push(rb, kick, ForceMode.VelocityChange, Owner.ActorNumber);
+                WorldFx.Push(rb, kick, ForceMode.VelocityChange, Owner.ActorNumber, "Honk");
                 Fx.Shake(0.25f);
             }
             else
             {
-                WorldFx.Push(rb, (direction * objectPush + Vector3.up * lift * 0.5f) * falloff, ForceMode.Impulse, Owner.ActorNumber);
+                WorldFx.Push(rb, (direction * objectPush + Vector3.up * lift * 0.5f) * falloff, ForceMode.Impulse, Owner.ActorNumber, "Honk");
             }
         }
     }

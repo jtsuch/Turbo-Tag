@@ -429,26 +429,87 @@ public class CombatHud : MonoBehaviour
         return n >= 3 ? $" <color=#FF8A3D>×{n}</color>" : "";
     }
 
-    private void HandleKilled(KillInfo kill)
+    /// <summary>
+    /// A line in the kill feed on this screen (golden donuts, ability kills): or, in modes without the gun HUD,
+    /// a banner.
+    /// </summary>
+    public static void Post(string line, float seconds = 6f)
     {
-        string victim = Name(kill.Victim);
-        string line = kill.SelfDestruct
-            ? $"{victim} <color=#B9B2E0>fell off</color>"
-            : $"{Name(kill.Killer)}{StreakTag(kill.Killer)}  <color=#B9B2E0>{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? "  <color=#FF4D6D>HEADSHOT</color>" : "")}</color>  {victim}";
+        if (instance == null)
+        {
+            var hud = HUDManager.Instance;
+            if (hud != null) hud.ShowBanner(line, Mathf.Min(seconds, 3f));
+            return;
+        }
+        instance.AddFeedLine(line, seconds);
+    }
 
-        var bg = UIKit.Panel(feed, Panel, 14f, "Kill");
+    // One feed line: text, or (with an icon) "before [icon] after"
+    private void AddFeedLine(string line, float seconds, Sprite icon = null, string after = null)
+    {
+        var bg = UIKit.Panel(feed, Panel, 14f, "Feed");
         bg.raycastTarget = false;
         bg.gameObject.AddComponent<LayoutElement>().minHeight = 42f;
-        var text = UIKit.OneLine(UIKit.Text(bg.transform, line, 22f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Right));
-        UIKit.Stretch(text.rectTransform, 16f, 16f, 0f, 0f);
-        text.alignment = TextAlignmentOptions.MidlineRight;
-        feedLines.Add((bg.gameObject, Time.time + 6f));
-
+        if (icon == null)
+        {
+            var text = UIKit.OneLine(UIKit.Text(bg.transform, line + (after != null ? "  " + after : ""), 22f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Right));
+            UIKit.Stretch(text.rectTransform, 16f, 16f, 0f, 0f);
+            text.alignment = TextAlignmentOptions.MidlineRight;
+        }
+        else
+        {
+            var row = UIKit.HStack(bg.transform, 8f, UIKit.Pad(16, 0), TextAnchor.MiddleRight, expandHeight: false);
+            row.childControlWidth = true;
+            row.childForceExpandWidth = false;
+            var before = UIKit.OneLine(UIKit.Text(bg.transform, line, 22f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Right));
+            var img = UIKit.Rect("Icon", bg.transform).gameObject.AddComponent<Image>();
+            img.sprite = icon;
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            UIKit.Size(img, 32f, 32f);
+            var rest = UIKit.OneLine(UIKit.Text(bg.transform, after ?? "", 22f, UIKit.Font.Bold, Theme.text, TextAlignmentOptions.Right));
+        }
+        feedLines.Add((bg.gameObject, Time.time + seconds));
         while (feedLines.Count > 6)
         {
             Destroy(feedLines[0].line);
             feedLines.RemoveAt(0);
         }
+    }
+
+    // The local player's own notices for a knock-off (what the kill-feed path below does for other kills)
+    private void KnockOffNotices(KillInfo kill, string victim)
+    {
+        if (kill.Victim == PhotonNetwork.LocalPlayer.ActorNumber && !Killcam.IsPlaying)
+        {
+            string with = string.IsNullOrEmpty(kill.KnockedWith) ? "" : $" with {AbilityCatalog.DisplayName(kill.KnockedWith)}";
+            deathNotice.text = $"<color=#FF4D6D>KNOCKED OFF</color>\n<size=50%>by {Name(kill.Killer)}{with}</size>";
+            deathCard.SetActive(true);
+        }
+        if (kill.Killer == PhotonNetwork.LocalPlayer.ActorNumber)
+        {
+            var hud = HUDManager.Instance;
+            if (hud != null) hud.ShowBanner($"Knocked off {victim}!", 1.5f);
+        }
+    }
+
+    private void HandleKilled(KillInfo kill)
+    {
+        string victim = Name(kill.Victim);
+        if (kill.IsKnockOff)
+        {
+            // "Bob [Honk] knocked off Sam"
+            AddFeedLine($"{Name(kill.Killer)}{StreakTag(kill.Killer)}", 6f,
+                        string.IsNullOrEmpty(kill.KnockedWith) ? null : AbilityIcons.Get(kill.KnockedWith),
+                        $"<color=#B9B2E0>knocked off</color>  {victim}");
+            KnockOffNotices(kill, victim);
+            return;
+        }
+        string line = kill.SelfDestruct
+            ? $"{victim} <color=#B9B2E0>fell off</color>"
+            : $"{Name(kill.Killer)}{StreakTag(kill.Killer)}  <color=#B9B2E0>{GunCatalog.Find(kill.Weapon)?.Name ?? "?"}{(kill.Headshot ? "  <color=#FF4D6D>HEADSHOT</color>" : "")}</color>  {victim}";
+
+        AddFeedLine(line, 6f);
 
         // Local death without a killcam: say what happened until the respawn
         bool mine = kill.Victim == PhotonNetwork.LocalPlayer.ActorNumber;

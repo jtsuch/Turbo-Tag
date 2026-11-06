@@ -7,14 +7,13 @@ using UnityEngine.UI;
 /// <summary>
 /// Pregame ability selection: four colour-coded columns (Basic, Quick, Throw, Trap), each a list of ability cards
 /// (icon, name, description and stats from the player prefab). Click a card to equip it; the choice is written to
-/// the player's properties at once and remembered for next time. A countdown ring shows the shared timer; the host
-/// can start early. When time runs out the host loads the map and everyone follows.
+/// the player's properties at once and remembered for next time. Everyone presses Ready (the <see cref="PlayerKeys.Ready"/>
+/// property); when every player is ready the host loads the map and everyone follows. The host can Force Start
+/// without waiting for the rest.
 /// Attach to one GameObject in the Pregame scene.
 /// </summary>
 public class PregameScreen : MenuScreen
 {
-    [SerializeField] private float selectionSeconds = 20f;
-
     private sealed class Card
     {
         public AbilitySlot Slot;
@@ -25,12 +24,12 @@ public class PregameScreen : MenuScreen
     }
 
     private readonly List<Card> cards = new();
+    private AbilityBrowser browser;
     private readonly Dictionary<AbilitySlot, TMP_Text> picked = new();
-    private Image ring;
-    private TMP_Text seconds;
-    private Button startButton;
+    private Button readyButton, unreadyButton, startButton;
+    private TMP_Text readyCount, waitingFor;
     private bool loading;
-    private double? masterDeadline; // The master's own copy, so it never acts on a stale property
+    private bool localReady; // Our own state, ahead of Photon's echo
 
     private Color SlotColor(AbilitySlot slot) => slot switch
     {
@@ -64,24 +63,19 @@ public class PregameScreen : MenuScreen
         string modeName = mode != null ? mode.gameModeName : MatchRules.GameModeKey;
         Header("Choose Your Abilities", $"{modeName}  ·  {Nicify(MatchRules.Map)}  ·  One from each category");
 
-        // Timer ring (top right) and Start Now for the host
-        var timer = UIKit.Place(UIKit.Rect("Timer", Root), new Vector2(1f, 1f), new Vector2(-80f, -40f), new Vector2(140f, 140f));
-        var back = timer.gameObject.AddComponent<Image>();
-        back.sprite = UISprites.Circle;
-        back.color = Theme.panel;
-        ring = UIKit.Rect("Ring", timer).gameObject.AddComponent<Image>();
-        UIKit.Stretch(ring.rectTransform, 8f, 8f, 8f, 8f);
-        ring.sprite = UISprites.Ring;
-        ring.type = Image.Type.Filled;
-        ring.fillMethod = Image.FillMethod.Radial360;
-        ring.fillOrigin = (int)Image.Origin360.Top;
-        ring.fillClockwise = false;
-        ring.color = Theme.primary;
-        seconds = UIKit.Text(timer, "", 54f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Center);
-        UIKit.Stretch(seconds.rectTransform);
-
-        startButton = UIKit.Button(Root, "Start Now", UIKit.Style.Primary, StartMatch, 72f, 30f);
-        UIKit.Place((RectTransform)startButton.transform, new Vector2(1f, 1f), new Vector2(-250f, -74f), new Vector2(260f, 72f));
+        // Top right: Ready / Not Ready, how many are ready and who is still choosing; Force Start for the host
+        readyButton = UIKit.Button(Root, "Ready!", UIKit.Style.Primary, () => SetReady(true), 76f, 34f);
+        UIKit.Place((RectTransform)readyButton.transform, new Vector2(1f, 1f), new Vector2(-180f, -78f), new Vector2(260f, 76f));
+        unreadyButton = UIKit.Button(Root, "Not Ready", UIKit.Style.Secondary, () => SetReady(false), 76f, 30f);
+        UIKit.Place((RectTransform)unreadyButton.transform, new Vector2(1f, 1f), new Vector2(-180f, -78f), new Vector2(260f, 76f));
+        startButton = UIKit.Button(Root, "Force Start", UIKit.Style.Danger, StartMatch, 64f, 24f);
+        UIKit.Place((RectTransform)startButton.transform, new Vector2(1f, 1f), new Vector2(-460f, -84f), new Vector2(220f, 64f));
+        readyCount = UIKit.Text(Root, "", 26f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Right);
+        UIKit.Place(readyCount.rectTransform, new Vector2(1f, 1f), new Vector2(-180f, -150f), new Vector2(520f, 34f));
+        waitingFor = UIKit.Text(Root, "", 18f, UIKit.Font.Body, Theme.textMuted, TextAlignmentOptions.Right);
+        UIKit.Place(waitingFor.rectTransform, new Vector2(1f, 1f), new Vector2(-180f, -182f), new Vector2(700f, 28f));
+        waitingFor.textWrappingMode = TextWrappingModes.NoWrap;
+        waitingFor.overflowMode = TextOverflowModes.Ellipsis;
 
         // Columns
         var columns = UIKit.Rect("Columns", Root);
@@ -91,6 +85,8 @@ public class PregameScreen : MenuScreen
 
         foreach (AbilitySlot slot in System.Enum.GetValues(typeof(AbilitySlot)))
             BuildColumn(columns, slot);
+
+        browser = AbilityBrowser.Create(Root); // Last, so its pop-ups draw over the columns
     }
 
     private void BuildColumn(Transform parent, AbilitySlot slot)
@@ -154,6 +150,10 @@ public class PregameScreen : MenuScreen
         name.fontSizeMax = 28f;
         UIKit.Size(name, flexWidth: 1f);
 
+        // ▶ watches the clip (the button takes the click, so the card isn't picked)
+        var watch = UIKit.RoundButton(top, "\u25B6", () => browser.ShowClip(id), 40f, UIKit.Style.Ghost);
+        watch.gameObject.SetActive(AbilityClipPlayer.Has(id));
+
         var check = UIKit.Rect("Check", top).gameObject.AddComponent<Image>();
         check.sprite = UISprites.Circle;
         check.color = accent;
@@ -180,17 +180,21 @@ public class PregameScreen : MenuScreen
 
     private void Start()
     {
-        // Start everyone on their last picks (written now, so leaving the timer alone still equips them)
+        // Start everyone on their last picks (written now, so a forced start still equips them)
         foreach (AbilitySlot slot in System.Enum.GetValues(typeof(AbilitySlot)))
             AbilityLoadout.SetLocal(slot, AbilityLoadout.LastChoice(slot));
         RefreshCards();
-
+        SetReady(false);
         startButton.gameObject.SetActive(PhotonNetwork.IsMasterClient);
-        if (PhotonNetwork.IsMasterClient)
-        {
-            masterDeadline = PhotonNetwork.Time + selectionSeconds;
-            NetProps.SetRoom(RoomKeys.PregameEndsAt, masterDeadline.Value);
-        }
+    }
+
+    private void SetReady(bool ready)
+    {
+        if (ready && !localReady) UISound.Play(UISound.Kind.Confirm);
+        localReady = ready;
+        NetProps.SetLocal(PlayerKeys.Ready, ready);
+        readyButton.gameObject.SetActive(!ready);
+        unreadyButton.gameObject.SetActive(ready);
     }
 
     private void Choose(Card card)
@@ -211,27 +215,32 @@ public class PregameScreen : MenuScreen
         }
     }
 
-    // ─── Timer and start ──────────────────────────────────────────────────────
+    // ─── Ready and start ──────────────────────────────────────────────────────
 
-    private float SecondsLeft =>
-        (float)((masterDeadline ?? NetProps.Room(RoomKeys.PregameEndsAt, PhotonNetwork.Time + selectionSeconds)) - PhotonNetwork.Time);
+    private bool IsReady(Photon.Realtime.Player p) =>
+        p.IsLocal ? localReady : NetProps.Of(p, PlayerKeys.Ready, false);
+
+    private readonly List<string> waiting = new();
 
     private void Update()
     {
-        float left = Mathf.Max(0f, SecondsLeft);
-        seconds.text = Mathf.CeilToInt(left).ToString();
-        ring.fillAmount = Mathf.Clamp01(left / selectionSeconds);
-        ring.color = left <= 5f ? Color.Lerp(Theme.danger, Theme.primary, Mathf.PingPong(Time.unscaledTime * 3f, 1f)) : Theme.primary;
+        var players = PhotonNetwork.PlayerList;
+        int ready = 0;
+        waiting.Clear();
+        foreach (var p in players)
+        {
+            if (IsReady(p)) ready++;
+            else waiting.Add(string.IsNullOrEmpty(p.NickName) ? $"Player {p.ActorNumber}" : p.NickName);
+        }
+        readyCount.text = $"{ready} / {players.Length} ready";
+        waitingFor.text = waiting.Count > 0 ? "Waiting for " + string.Join(", ", waiting) : "Starting!";
 
-        if (masterDeadline.HasValue && left <= 0f) StartMatch();
+        // (a moment's grace after opening, so a ready flag left over from the last Pregame never starts it at once)
+        if (PhotonNetwork.IsMasterClient && Time.timeSinceLevelLoad > 1.5f && players.Length > 0 && ready == players.Length) StartMatch();
     }
 
-    public override void OnMasterClientSwitched(Photon.Realtime.Player newMaster)
-    {
+    public override void OnMasterClientSwitched(Photon.Realtime.Player newMaster) =>
         startButton.gameObject.SetActive(PhotonNetwork.IsMasterClient);
-        if (PhotonNetwork.IsMasterClient)
-            masterDeadline = NetProps.Room(RoomKeys.PregameEndsAt, PhotonNetwork.Time + selectionSeconds);
-    }
 
     private void StartMatch()
     {
@@ -246,8 +255,7 @@ public class PregameScreen : MenuScreen
             map = SceneNames.DefaultMap;
         }
 
-        // Clear the timer so returning to Pregame later starts a fresh countdown
-        NetProps.SetRoom(RoomKeys.PregameEndsAt, null);
+        foreach (var p in PhotonNetwork.PlayerList) NetProps.SetPlayer(p, PlayerKeys.Ready, false); // Fresh next time
         PhotonNetwork.LoadLevel(map);
     }
 }

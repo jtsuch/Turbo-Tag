@@ -30,7 +30,6 @@ public class DonutManager : MonoBehaviourPunCallbacks
     private int   nextId = 1;
     private float nextSpawnAt = -1f;
     private bool  wasMaster;
-    private Bounds? levelBounds;
 
     // Local
     private float lastRequest;
@@ -65,6 +64,9 @@ public class DonutManager : MonoBehaviourPunCallbacks
         }
     }
 
+    /// <summary>Chance a placed donut is golden.</summary>
+    public const float GoldenChance = 0.06f;
+
     private void MasterUpdate()
     {
         // Out of play (countdown, round over, rule off): no donuts on the map
@@ -76,7 +78,8 @@ public class DonutManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        float interval = Mathf.Max(10f, MatchRules.EffectsRespawn);
+        bool party = RoundModifiers.Current?.Id == "DonutParty"; // Round modifier: four times as often, more at once
+        float interval = Mathf.Max(10f, MatchRules.EffectsRespawn) * (party ? 0.25f : 1f);
         if (nextSpawnAt < 0f) nextSpawnAt = Time.time + interval * 0.5f; // The first one comes sooner
 
         // Old ones go stale
@@ -92,14 +95,14 @@ public class DonutManager : MonoBehaviourPunCallbacks
 
         if (Time.time < nextSpawnAt) return;
 
-        int max = 2 + PhotonNetwork.CurrentRoom.PlayerCount / 4; // 2 for up to 3 players … 5 for 12
+        int max = 2 + PhotonNetwork.CurrentRoom.PlayerCount / 4 + (party ? 4 : 0); // 2 for up to 3 players … 5 for 12
         if (expiry.Count >= max) { nextSpawnAt = Time.time + 3f; return; } // Full: check again soon
         if (!TryFindSpot(out Vector3 ground)) { nextSpawnAt = Time.time + 2f; return; } // Unlucky: try again shortly
         nextSpawnAt = Time.time + interval * Random.Range(0.8f, 1.2f);
 
         int newId = nextId++;
         expiry[newId] = Time.time + Lifetime;
-        photonView.RPC(nameof(RPC_SpawnDonut), RpcTarget.All, newId, ground);
+        photonView.RPC(nameof(RPC_SpawnDonut), RpcTarget.All, newId, ground, Random.value < GoldenChance);
     }
 
     // A new host takes over the donuts still out (fresh lifetimes)
@@ -120,7 +123,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
         if (!PhotonNetwork.IsMasterClient) return;
         foreach (var pair in donuts)
             if (pair.Value != null)
-                photonView.RPC(nameof(RPC_SpawnDonut), newPlayer, pair.Key, pair.Value.transform.position - Vector3.up * Donut.HoverHeight);
+                photonView.RPC(nameof(RPC_SpawnDonut), newPlayer, pair.Key, pair.Value.transform.position - Vector3.up * Donut.HoverHeight, pair.Value.Golden);
     }
 
     // ─── Where ────────────────────────────────────────────────────────────────
@@ -129,7 +132,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
     private bool TryFindSpot(out Vector3 ground)
     {
         ground = default;
-        var bounds = LevelBounds();
+        var bounds = LevelInfo.Bounds;
         if (!bounds.HasValue) return false;
         var b = bounds.Value;
         int mask = 1 << StructureLayer;
@@ -155,6 +158,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
             }
             if (!Physics.Raycast(top, Vector3.down, out RaycastHit hit, drop, mask, QueryTriggerInteraction.Ignore)) continue;
             if (hit.normal.y < 0.8f || hit.collider.GetComponentInParent<DeathZone>() != null) continue;
+            if (IsBoundary(hit.collider)) continue; // Never on top of the boundary walls
 
             // Room to stand: nothing just above, and floor all round (not the top of a thin wall or a post)
             if (Physics.SphereCast(hit.point + Vector3.up * 0.5f, 0.4f, Vector3.up, out _, 2.2f, mask, QueryTriggerInteraction.Ignore)) continue;
@@ -188,6 +192,12 @@ public class DonutManager : MonoBehaviourPunCallbacks
         return true;
     }
 
+    private static bool IsBoundary(Collider col)
+    {
+        string n = col.name.ToLowerInvariant();
+        return n.Contains("border") || n.Contains("boundary");
+    }
+
     private bool TooClose(Vector3 point)
     {
         foreach (var donut in donuts.Values)
@@ -197,21 +207,6 @@ public class DonutManager : MonoBehaviourPunCallbacks
         return false;
     }
 
-    // Everything walkable in the level (the structure layer), minus death planes
-    private Bounds? LevelBounds()
-    {
-        if (levelBounds.HasValue) return levelBounds;
-        Bounds? total = null;
-        foreach (var col in FindObjectsByType<Collider>(FindObjectsSortMode.None))
-        {
-            if (col.gameObject.layer != StructureLayer || col.isTrigger || !col.enabled) continue;
-            if (col.GetComponentInParent<DeathZone>() != null) continue;
-            if (total.HasValue) { var t = total.Value; t.Encapsulate(col.bounds); total = t; }
-            else total = col.bounds;
-        }
-        levelBounds = total;
-        return total;
-    }
 
     // ─── Touching (each client, its own player) ───────────────────────────────
 
@@ -235,10 +230,11 @@ public class DonutManager : MonoBehaviourPunCallbacks
     // ─── RPCs ─────────────────────────────────────────────────────────────────
 
     [PunRPC]
-    private void RPC_SpawnDonut(int id, Vector3 ground)
+    private void RPC_SpawnDonut(int id, Vector3 ground, bool golden)
     {
         if (donuts.ContainsKey(id)) return;
-        donuts[id] = Donut.Create(id, ground);
+        donuts[id] = Donut.Create(id, ground, golden);
+        if (golden) Sfx.At(SfxKind.Horn, ground, 0.5f, 120f, 1.4f); // A golden donut announces itself
     }
 
     /// <summary>Lucky Streak: asks the host for a donut near <paramref name="position"/>.</summary>
@@ -258,7 +254,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
             if (Vector3.Distance(hit.point, position) < 3f) continue; // Not right on top of them
             int id = nextId++;
             expiry[id] = Time.time + Lifetime;
-            photonView.RPC(nameof(RPC_SpawnDonut), RpcTarget.All, id, hit.point);
+            photonView.RPC(nameof(RPC_SpawnDonut), RpcTarget.All, id, hit.point, false);
             return;
         }
     }
@@ -270,6 +266,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
     private void RPC_RequestDonut(int id, PhotonMessageInfo info)
     {
         if (!PhotonNetwork.IsMasterClient || info.Sender == null || !expiry.Remove(id)) return;
+        MatchStats.Add(info.Sender, PlayerKeys.StatDonuts);
         photonView.RPC(nameof(RPC_TakeDonut), RpcTarget.All, id, info.Sender.ActorNumber);
     }
 
@@ -277,14 +274,25 @@ public class DonutManager : MonoBehaviourPunCallbacks
     [PunRPC]
     private void RPC_TakeDonut(int id, int takenBy)
     {
+        bool golden = false;
         if (donuts.TryGetValue(id, out var donut))
         {
-            if (donut != null) donut.Pop(takenBy > 0);
+            if (donut != null)
+            {
+                golden = donut.Golden;
+                donut.Pop(takenBy > 0);
+            }
             donuts.Remove(id);
+        }
+        if (golden && takenBy > 0)
+        {
+            var taker = PhotonNetwork.CurrentRoom?.GetPlayer(takenBy);
+            string name = taker == null ? "Someone" : string.IsNullOrEmpty(taker.NickName) ? $"Player {takenBy}" : taker.NickName;
+            CombatHud.Post($"<color=#FFD23F>\u2605 {name} grabbed a GOLDEN DONUT!</color>");
         }
         if (takenBy <= 0 || takenBy != PhotonNetwork.LocalPlayer.ActorNumber || Player.Local == null) return;
 
-        var entry = Donut.Roll();
+        var entry = golden ? new Donut.Entry(typeof(GoldenDonutEffect), 3f, 0f, Donut.Kind.Good) : Donut.Roll();
         if (entry.Everyone)
         {
             photonView.RPC(nameof(RPC_EveryoneEffect), RpcTarget.All, entry.Effect.Name, entry.Seconds);

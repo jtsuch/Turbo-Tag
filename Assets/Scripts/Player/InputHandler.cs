@@ -66,7 +66,7 @@ public class InputHandler : MonoBehaviourPun
     {
         // Raw keys: the input is exactly what's held this frame. (GetAxis smoothed keys over ~0.3 s, so the
         // player kept walking after letting go and quick taps barely moved them.) PlayerMovement accelerates.
-        Vector2 keys = new(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        Vector2 keys = SimInput.MoveAxes; // The real axes, or the clip recorder's
         if (MoveRemap != null) keys = MoveRemap(keys);
         MoveInput = Vector2.ClampMagnitude(keys, 1f) * player.Modifiers.Get(Stat.ControlDirection);
 
@@ -93,8 +93,8 @@ public class InputHandler : MonoBehaviourPun
         abilitiesBlocked = false;
 
         KeyCode action = Keybinds.Get(InputAction.Action);
-        if (Input.GetKeyDown(action)) abilities.ConfirmDown();
-        if (Input.GetKeyUp(action))   abilities.ConfirmUp();
+        if (SimInput.KeyDown(action)) abilities.ConfirmDown();
+        if (SimInput.KeyUp(action))   abilities.ConfirmUp();
 
         foreach (var slot in Slots)
         {
@@ -113,13 +113,13 @@ public class InputHandler : MonoBehaviourPun
     {
         if (key == KeyCode.None) return;
 
-        if      (Input.GetKeyDown(key)) abilities.Use(ability, AbilityInputEvent.Down);
-        else if (Input.GetKeyUp(key))   abilities.Use(ability, AbilityInputEvent.Up);
-        else if (Input.GetKey(key))     abilities.Use(ability, AbilityInputEvent.Held);
+        if      (SimInput.KeyDown(key)) abilities.Use(ability, AbilityInputEvent.Down);
+        else if (SimInput.KeyUp(key))   abilities.Use(ability, AbilityInputEvent.Up);
+        else if (SimInput.Key(key))     abilities.Use(ability, AbilityInputEvent.Held);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private static bool Pressed(InputAction action) => Input.GetKeyDown(Keybinds.Get(action));
-    private static bool Held(InputAction action)    => Input.GetKey(Keybinds.Get(action));
+    private static bool Pressed(InputAction action) => SimInput.KeyDown(Keybinds.Get(action));
+    private static bool Held(InputAction action)    => SimInput.Key(Keybinds.Get(action));
 }

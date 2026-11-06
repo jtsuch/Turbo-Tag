@@ -8,9 +8,6 @@ public static class RoomKeys
     public const string Map      = "Map";
     public const string GameMode = "GameMode";
 
-    // ─── Pregame ──────────────────────────────────────────────────────────────
-    /// <summary>PhotonNetwork.Time at which ability selection closes.</summary>
-    public const string PregameEndsAt = "Pregame_EndsAt";
 
     // ─── Match state (written by the master client only) ──────────────────────
     public const string Phase         = "Match_Phase";
@@ -22,6 +19,7 @@ public static class RoomKeys
     /// <summary>Team modes: which side won ("Hunters" / "Defenders"), for the scoreboard.</summary>
     public const string WinningTeam   = "Match_WinningTeam";
     public const string DiscHolder    = "Match_DiscHolder";    // Keep Away: actor holding the disc (-1: loose)
+    public const string Modifier      = "Match_Modifier";      // This round's RoundModifiers id ("" none)
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
 
@@ -48,6 +46,7 @@ public static class RuleKeys
     public const string Gravity           = "Rule_Gravity";
     public const string EffectsRespawn    = "Rule_EffectsRespawn"; // Seconds between donuts
     public const string Donuts            = "Rule_Donuts";
+    public const string Modifiers         = "Rule_Modifiers";      // Round Modifiers: a random modifier each round
     public const string GlobalCooldown    = "Rule_GlobalCooldown";
     public const string TagBonus          = "Rule_HuntedBonus";
     public const string ScoreLimit        = "Rule_ScoreLimit";
@@ -90,6 +89,13 @@ public static class PlayerKeys
     /// <summary>Current <see cref="PlayerRole"/> (int). Written by the master client.</summary>
     public const string Role = "Role";
 
+    /// <summary>Cosmetics worn (Cosmetics item ids, "" for none). Written by the player themself.</summary>
+    public const string CosmeticHat  = "CosHat";
+    public const string CosmeticBack = "CosBack";
+
+    /// <summary>Ready in Pregame (bool). Written by the player themself; cleared when Pregame opens.</summary>
+    public const string Ready = "Ready";
+
     /// <summary>Penguin colour (<see cref="PenguinSkins"/> name). Written by the player themself.</summary>
     public const string Skin = "Skin";
 
@@ -108,6 +114,8 @@ public static class PlayerKeys
     public const string StatHeadshots      = "Stat_Headshots";      // Master: kills by a headshot
     public const string StatSteals         = "Stat_Steals";         // Master: Keep Away discs taken from an enemy
     public const string StatCatches        = "Stat_Catches";        // Master: Keep Away loose discs grabbed
+    public const string StatKnockOffs      = "Stat_KnockOffs";      // Master: enemies who fell right after this player's push
+    public const string StatDonuts         = "Stat_Donuts";         // Master: donuts eaten
 
     /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
     public const string Gun = "Gun";

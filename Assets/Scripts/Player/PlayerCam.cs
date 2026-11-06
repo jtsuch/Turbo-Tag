@@ -425,6 +425,14 @@ public class PlayerCam : MonoBehaviour
 
     private void ReadMouse()
     {
+        // The clip recorder sets the view directly
+        if (SimInput.Active)
+        {
+            yRotation = SimInput.Yaw;
+            xRotation = Mathf.Clamp(SimInput.Pitch, -90f, 90f);
+            return;
+        }
+
         // Sensitivity 100 = raw 1:1 mouse delta
         float scale = sensitivity / 100f;
         yRotation += Input.GetAxisRaw("Mouse X") * scale;

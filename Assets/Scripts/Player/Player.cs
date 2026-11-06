@@ -192,8 +192,31 @@ public class Player : MonoBehaviourPun, IPunObservable
     private float lastPushTime = float.NegativeInfinity;
     private const float PushGrace = 0.2f;
 
-    /// <summary>Called by anything applying an outside force (see <see cref="WorldFx.Push"/>).</summary>
-    public void NotePushed() => lastPushTime = Time.time;
+    /// <summary>
+    /// Called by anything applying an outside force (see <see cref="WorldFx.Push"/>). With another player as the
+    /// source, they're remembered as the last pusher (with the ability that did it), so a fall soon after counts
+    /// as their knock-off.
+    /// </summary>
+    public void NotePushed(int sourceActor = 0, string cause = null)
+    {
+        lastPushTime = Time.time;
+        if (sourceActor <= 0 || sourceActor == ActorNumber) return;
+        lastPusher = sourceActor;
+        lastPushCause = cause ?? "";
+        lastPusherTime = Time.time;
+    }
+
+    private int    lastPusher;
+    private string lastPushCause = "";
+    private float  lastPusherTime = float.NegativeInfinity;
+
+    /// <summary>Who last pushed this player (and with what ability id, "" if unknown), within the last <paramref name="seconds"/>.</summary>
+    public bool TryGetPusher(float seconds, out int actor, out string cause)
+    {
+        actor = lastPusher;
+        cause = lastPushCause;
+        return lastPusher > 0 && Time.time - lastPusherTime <= seconds;
+    }
 
     /// <summary>Movement off while abilities still work (looking through a placed Camera).</summary>
     public bool MovementLocked { get; set; }

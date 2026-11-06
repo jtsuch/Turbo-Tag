@@ -3,7 +3,7 @@ using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Facts about the loaded level, worked out once per scene: <see cref="Bounds"/> is everything walkable (the
-/// structure layer), minus death planes. Used by donut placement and the countdown fly-over.
+/// structure layer), minus death planes and terrain-sized ground. Used by donut placement and the countdown fly-over.
 /// </summary>
 public static class LevelInfo
 {
@@ -30,6 +30,8 @@ public static class LevelInfo
         {
             if (col.gameObject.layer != StructureLayer || col.isTrigger || !col.enabled) continue;
             if (col.GetComponentInParent<DeathZone>() != null) continue;
+            var size = col.bounds.size;
+            if (size.x * size.z > 150000f) continue; // Terrain-sized ground (Quads' 1 km terrain) isn't the play area
             if (total.HasValue) { var t = total.Value; t.Encapsulate(col.bounds); total = t; }
             else total = col.bounds;
         }

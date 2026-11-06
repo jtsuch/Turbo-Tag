@@ -50,6 +50,11 @@ public class LobbyScreen : MenuScreen
         rulesModal = UIKit.Modal(Root, "Game Settings", new Vector2(1180f, 900f));
         rulesModal.NoFooter();
         rules = RulesEditor.Create(rulesModal.Body);
+
+        // Study the abilities while waiting: the full list, each with its clip
+        var browser = AbilityBrowser.Create(Root);
+        var abilities = UIKit.Button(Root, "Abilities", UIKit.Style.Secondary, browser.OpenList, 64f, 26f);
+        UIKit.Place((RectTransform)abilities.transform, new Vector2(1f, 1f), new Vector2(-300f, -60f), new Vector2(220f, 64f));
     }
 
     private void BuildPlayers()
@@ -89,7 +94,7 @@ public class LobbyScreen : MenuScreen
 
         // Your penguin
         var you = UIKit.Card(side, Theme.panel, 28f, 0.45f, "You");
-        UIKit.Size(you, height: 170f);
+        UIKit.Size(you, height: 250f);
         UIKit.VStack(you, 10f, UIKit.Pad(28, 20), TextAnchor.UpperLeft);
         UIKit.Text(you, "YOUR PENGUIN", 20f, UIKit.Font.Bold, Theme.textMuted);
         var row = UIKit.Rect("Swatches", you);
@@ -111,6 +116,7 @@ public class LobbyScreen : MenuScreen
             swatch.GetComponent<Button>().onClick.AddListener(() => { PenguinSkins.SetLocal(name); RefreshSwatches(); });
             swatches.Add((ring, name));
         }
+        CosmeticPickers.Build(you, null, compact: true);
 
         // The match
         var match = UIKit.Card(side, Theme.panel, 28f, 0.45f, "Match");
@@ -205,7 +211,7 @@ public class LobbyScreen : MenuScreen
 
     private void Start()
     {
-        PenguinSkins.EnsureLocal();
+        PenguinSkins.EnsureLocal(); Cosmetics.EnsureLocal();
         if (IsHost) EnsureRoomDefaults();
         RefreshAll();
     }
@@ -215,7 +221,7 @@ public class LobbyScreen : MenuScreen
         if (Input.GetKeyDown(KeyCode.Escape) && !mapModal.IsOpen && !rulesModal.IsOpen && !rules.IsTyping) PhotonNetwork.LeaveRoom();
     }
 
-    public override void OnJoinedRoom()                               { PenguinSkins.EnsureLocal(); RefreshAll(); }
+    public override void OnJoinedRoom()                               { PenguinSkins.EnsureLocal(); Cosmetics.EnsureLocal(); RefreshAll(); }
     public override void OnRoomPropertiesUpdate(Hashtable changed)    => RefreshMatch();
     public override void OnPlayerEnteredRoom(PhotonPlayer newPlayer)  { RefreshPlayers(); Toast($"{newPlayer.NickName} joined!"); }
     public override void OnPlayerLeftRoom(PhotonPlayer otherPlayer)   => RefreshPlayers();

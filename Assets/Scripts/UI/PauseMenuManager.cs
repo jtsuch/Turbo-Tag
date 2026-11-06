@@ -138,11 +138,12 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
         var settings = UIKit.Button(menu, "Settings", UIKit.Style.Ghost, () => Show(0), 66f, 28f);
         var rules = UIKit.Button(menu, "Match Rules", UIKit.Style.Ghost, () => Show(1), 66f, 28f);
         var cheats = UIKit.Button(menu, "Cheats", UIKit.Style.Ghost, () => Show(2), 66f, 28f);
+        var bug = UIKit.Button(menu, "Report a Bug", UIKit.Style.Ghost, () => Show(3), 66f, 28f);
         UIKit.Spacer(menu);
         var leave = UIKit.Button(menu, "Leave Match", UIKit.Style.Danger, () => Leave(false), 66f, 28f);
         var quit = UIKit.Button(menu, "Quit Game", UIKit.Style.Ghost, () => Leave(true), 60f, 26f);
         leave.GetComponent<UIButtonFx>().ClickSound = quit.GetComponent<UIButtonFx>().ClickSound = UISound.Kind.Back;
-        UIKit.ChainVertical(resume, settings, rules, cheats, leave, quit);
+        UIKit.ChainVertical(resume, settings, rules, cheats, bug, leave, quit);
 
         // Page card (right)
         var pageCard = UIKit.Card(root, Theme.panel, 32f, 0.55f, "Page Card");
@@ -172,10 +173,41 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
         var cheatsPage = Page(area, "Cheats");
         CheatsPanel.Create(Body(cheatsPage, "Cheats"));
 
+        var bugPage = Page(area, "Report a Bug");
+        BuildBugPage(Body(bugPage, "Report a Bug"));
+
         pages.Add((settings, settingsPage));
         pages.Add((rules, rulesPage));
         pages.Add((cheats, cheatsPage));
+        pages.Add((bug, bugPage));
         root.gameObject.SetActive(false);
+    }
+
+    // Report a Bug: a note, Save (closes the menu so the screenshot shows the game), and the folder
+    private void BuildBugPage(RectTransform body)
+    {
+        UIKit.VStack(body, 16f, null, TextAnchor.UpperLeft);
+        UIKit.Text(body, $"Something broke? Write what happened, then save. The report keeps a screenshot, the game state and the " +
+                         $"recent log. In a hurry: press {SessionLog.ReportKey} any time.", 22f, UIKit.Font.Body, Theme.textMuted);
+        var note = UIKit.InputField(body, "What happened? (optional)");
+        var row = UIKit.Rect("Buttons", body);
+        UIKit.HStack(row, 14f, null, TextAnchor.MiddleLeft, expandHeight: false);
+        UIKit.Size(row, height: 64f);
+        var save = UIKit.Button(row, "Save Report", UIKit.Style.Primary, () => StartCoroutine(SaveBugReport(note)), 60f, 24f);
+        UIKit.Size(save, 260f, 60f);
+        var open = UIKit.Button(row, "Open Folder", UIKit.Style.Secondary, SessionLog.OpenReportsFolder, 60f, 24f);
+        UIKit.Size(open, 260f, 60f);
+        UIKit.Text(body, $"Reports: {SessionLog.ReportsFolder}\nSession logs: {SessionLog.LogsFolder}", 16f, UIKit.Font.Body,
+                   UIKit.WithAlpha(Theme.textMuted, 0.7f));
+    }
+
+    private System.Collections.IEnumerator SaveBugReport(TMPro.TMP_InputField note)
+    {
+        string text = note.text;
+        note.text = "";
+        Resume();
+        yield return new WaitForSecondsRealtime(0.35f); // Let the menu fade out of the screenshot
+        SessionLog.Report(text);
     }
 
     private static RectTransform Page(RectTransform area, string name)

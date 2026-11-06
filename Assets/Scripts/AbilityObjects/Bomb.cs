@@ -170,6 +170,6 @@ public class Bomb : NetworkedProjectile
         WorldFx.SpawnVfx(explosionVFX, position);
         WorldFx.PlayClip(explosionSFX, position, audioRadius);
         Fx.Explosion(position, radius);
-        WorldFx.Explode(position, radius, explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr);
+        WorldFx.Explode(position, radius, explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr, cause: "BoomBomb");
     }
 }

@@ -64,7 +64,7 @@ public class Donut : MonoBehaviour
         new(typeof(TimeWarpEffect),         5f, 0.4f, Kind.Good),
         new(typeof(OverdriveEffect),       15f, 0.9f, Kind.Good),
         new(typeof(LuckyStreakEffect),      3f, 0.6f, Kind.Good),
-        new(typeof(GoldenDonutEffect),      3f, 0.25f, Kind.Good),
+        // (Golden Donut isn't rolled: it comes from the rare golden donuts on the map, DonutManager.GoldenChance)
         // Boons with a gun
         new(typeof(BottomlessMagEffect),   15f, 1f,   Kind.Good, Where.Guns),
         new(typeof(VampireEffect),         20f, 1f,   Kind.Good, Where.Guns),
@@ -144,12 +144,35 @@ public class Donut : MonoBehaviour
 
     public int Id { get; private set; }
 
-    /// <summary>Makes a donut at <paramref name="ground"/> (it hovers above it).</summary>
-    public static Donut Create(int id, Vector3 ground)
+    /// <summary>A rare golden donut: always the Golden Donut (its boons), announced to everyone.</summary>
+    public bool Golden { get; private set; }
+
+    private static readonly Color Gold = new(1f, 0.78f, 0.2f);
+    private static Material goldMaterial;
+
+    // Shiny gold, glowing a little
+    private static Material GoldMaterial
     {
-        var root = new GameObject($"Donut {id}");
+        get
+        {
+            if (goldMaterial != null) return goldMaterial;
+            goldMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Golden Donut" };
+            goldMaterial.SetColor("_BaseColor", Gold);
+            goldMaterial.SetFloat("_Metallic", 0.9f);
+            goldMaterial.SetFloat("_Smoothness", 0.8f);
+            goldMaterial.EnableKeyword("_EMISSION");
+            goldMaterial.SetColor("_EmissionColor", new Color(1f, 0.55f, 0.1f) * 0.6f);
+            return goldMaterial;
+        }
+    }
+
+    /// <summary>Makes a donut at <paramref name="ground"/> (it hovers above it).</summary>
+    public static Donut Create(int id, Vector3 ground, bool golden = false)
+    {
+        var root = new GameObject(golden ? $"Golden Donut {id}" : $"Donut {id}");
         var donut = root.AddComponent<Donut>();
         donut.Id = id;
+        donut.Golden = golden;
         donut.basePosition = ground + Vector3.up * HoverHeight;
         donut.phase = UnityEngine.Random.value * 10f;
         root.transform.position = donut.basePosition;
@@ -176,7 +199,18 @@ public class Donut : MonoBehaviour
         light.type = LightType.Point;
         light.range = 3f;
         light.intensity = 1.2f;
-        light.color = new Color(1f, 0.6f, 0.8f);
+        light.color = golden ? Gold : new Color(1f, 0.6f, 0.8f);
+        if (golden)
+        {
+            light.range = 6f;
+            light.intensity = 2.5f;
+            if (donut.visual != null)
+            {
+                donut.visual.localScale *= 1.35f;
+                foreach (var r in donut.visual.GetComponentsInChildren<Renderer>())
+                    r.sharedMaterials = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Repeat(GoldMaterial, r.sharedMaterials.Length));
+            }
+        }
         light.shadows = LightShadows.None;
 
         // A soft pink beam into the sky, so donuts can be spotted from across the map
@@ -185,18 +219,19 @@ public class Donut : MonoBehaviour
         beam.useWorldSpace = false;
         beam.positionCount = 2;
         beam.SetPosition(0, Vector3.down * HoverHeight);
-        beam.SetPosition(1, Vector3.up * 9f);
+        beam.SetPosition(1, Vector3.up * (golden ? 18f : 9f));
         beam.widthCurve = new AnimationCurve(new Keyframe(0f, 0.35f), new Keyframe(1f, 0.05f));
         beam.sharedMaterial = BeamMaterial;
         var fade = new Gradient();
         fade.SetKeys(
-            new[] { new GradientColorKey(new Color(1f, 0.55f, 0.85f), 0f), new GradientColorKey(new Color(1f, 0.8f, 0.95f), 1f) },
+            golden ? new[] { new GradientColorKey(Gold, 0f), new GradientColorKey(new Color(1f, 0.95f, 0.7f), 1f) }
+                   : new[] { new GradientColorKey(new Color(1f, 0.55f, 0.85f), 0f), new GradientColorKey(new Color(1f, 0.8f, 0.95f), 1f) },
             new[] { new GradientAlphaKey(0.45f, 0f), new GradientAlphaKey(0f, 1f) });
         beam.colorGradient = fade;
         beam.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         beam.receiveShadows = false;
 
-        Vfx.Ring(ground, new Color(1f, 0.6f, 0.85f, 0.8f), 18, 3f, 0.3f, 0.5f);
+        Vfx.Ring(ground, golden ? Gold : new Color(1f, 0.6f, 0.85f, 0.8f), 18, 3f, 0.3f, 0.5f);
         return donut;
     }
 

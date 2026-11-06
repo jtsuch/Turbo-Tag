@@ -99,7 +99,9 @@ public static class WorldFx
     /// Remote objects are moved by their owners, so pushing them here would only cause jitter.
     /// </summary>
     /// <param name="sourceActor">Who caused it (0 = the world): a shielded player ignores other players' blasts.</param>
-    public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f, int sourceActor = 0)
+    /// <param name="cause">The ability id behind it (knock-offs name it in the kill feed).</param>
+    public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f, int sourceActor = 0,
+                               string cause = null)
     {
         int layers = mask.value != 0 ? mask.value : Physics.AllLayers;
         int count  = Physics.OverlapSphereNonAlloc(position, radius, overlapBuffer, layers, QueryTriggerInteraction.Ignore);
@@ -114,7 +116,7 @@ public static class WorldFx
             var player = body.GetComponent<Player>();
             if (player != null && !player.AffectedBy(sourceActor)) continue;
             body.AddExplosionForce(force, position, radius, upwardsModifier, ForceMode.Impulse);
-            if (player != null) player.NotePushed();
+            if (player != null) player.NotePushed(sourceActor, cause);
         }
     }
 
@@ -123,12 +125,13 @@ public static class WorldFx
     /// movement code not to brake for a moment, so pulls and blasts actually move them.
     /// </summary>
     /// <param name="sourceActor">Who caused it (0 = the world, e.g. fans): a shielded player ignores other players' pushes.</param>
-    public static void Push(Rigidbody body, Vector3 force, ForceMode mode, int sourceActor = 0)
+    /// <param name="cause">The ability id behind it (knock-offs name it in the kill feed).</param>
+    public static void Push(Rigidbody body, Vector3 force, ForceMode mode, int sourceActor = 0, string cause = null)
     {
         var player = body.GetComponent<Player>();
         if (player != null && !player.AffectedBy(sourceActor)) return;
         body.AddForce(force, mode);
-        if (player != null) player.NotePushed();
+        if (player != null) player.NotePushed(sourceActor, cause);
     }
 
     /// <summary>True if this client should simulate forces on <paramref name="body"/>.</summary>

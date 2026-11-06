@@ -113,6 +113,14 @@ public class SettingsPanel : MonoBehaviour
         SliderRow(list, "Field of View", "Vertical degrees. Higher sees more around you", 50f, 100f, S.FieldOfView, true,
             v => S.FieldOfView = v, v => $"{v:0}°");
         SwitchRow(list, "Invert Mouse Y", "Moving the mouse up looks down", S.InvertY, v => S.InvertY = v);
+        SelectorRow(list, "Crosshair", "The mark in the middle of the screen", CrosshairSettings.Styles, CrosshairSettings.Style,
+            i => CrosshairSettings.Style = i);
+        SelectorRow(list, "Crosshair Colour", null, CrosshairSettings.ColorNames, CrosshairSettings.ColorIndex,
+            i => CrosshairSettings.ColorIndex = i);
+        SliderRow(list, "Crosshair Size", null, 50f, 200f, CrosshairSettings.Size * 100f, true,
+            v => CrosshairSettings.Size = v / 100f, v => $"{v:0}%");
+        SwitchRow(list, "Crosshair Outline", "A dark edge so it shows on bright walls", CrosshairSettings.Outline,
+            v => CrosshairSettings.Outline = v);
     }
 
     private void BuildVideo(RectTransform list)

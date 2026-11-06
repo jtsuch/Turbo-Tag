@@ -79,6 +79,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out AdminCommands _)) gameObject.AddComponent<AdminCommands>(); // Shares this scene PhotonView
         if (!TryGetComponent(out DonutManager _)) gameObject.AddComponent<DonutManager>();   // Random-effect donuts
         if (!TryGetComponent(out TrailHistory _)) gameObject.AddComponent<TrailHistory>();   // Bloodhound's footprints
+        if (!TryGetComponent(out RoundModifiers _)) gameObject.AddComponent<RoundModifiers>(); // Round Modifiers rule
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
@@ -181,6 +182,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
         Hashtable props = Clock.BuildRestart(duration);
         props[RoomKeys.Phase] = (int)phase;
+        // Every round's countdown: a new random modifier when the rule is on
+        if (phase == MatchPhase.Countdown)
+            props[RoomKeys.Modifier] = MatchRules.Modifiers ? RoundModifiers.PickNext(NetProps.Room(RoomKeys.Modifier, "")) : "";
         if (extra != null)
             foreach (var entry in extra) props[entry.Key] = entry.Value;
 
@@ -208,8 +212,10 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.ServedAsHunter] = new int[0],
             [RoomKeys.PausedAt]       = -1d,
             [RoomKeys.DiscHolder]     = -1,
+            [RoomKeys.Modifier]       = "",
         });
 
+        PlayerRoles.ClearPending();
         foreach (var player in PhotonNetwork.PlayerList)
         {
             var props = new Hashtable

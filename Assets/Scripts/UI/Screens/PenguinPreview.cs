@@ -30,6 +30,13 @@ public class PenguinPreview : MonoBehaviour
     private Vector3 stage;
     private float nextMove;
     private static int created;
+    private readonly GameObject[] worn = new GameObject[2];
+    private readonly string[] wornId = { "", "" };
+    private Transform headBone, chestBone;
+    private float backUntil, facing;
+
+    /// <summary>Turns the penguin's back to the camera for a few seconds (to show a back cosmetic).</summary>
+    public void ShowBack(float seconds = 3.5f) => backUntil = Time.unscaledTime + seconds;
 
     /// <summary>Keeps hopping and twirling (with a little sway), for celebrations.</summary>
     public bool Dance { get; set; }
@@ -67,6 +74,7 @@ public class PenguinPreview : MonoBehaviour
         animator = copy.GetComponentInChildren<Animator>();
         if (animator != null) animator.applyRootMotion = false;
         renderers = copy.GetComponentsInChildren<Renderer>(true);
+        Cosmetics.FindBones(copy.transform, out headBone, out chestBone);
 
         // Its own camera and light
         var camGo = new GameObject("Camera");
@@ -183,6 +191,38 @@ public class PenguinPreview : MonoBehaviour
         if (changed) spin = 360f;
     }
 
+    /// <summary>Wears a cosmetic (<see cref="Cosmetics"/> id, "" for nothing) in a slot.</summary>
+    public void SetCosmetic(Cosmetics.Slot slot, string id)
+    {
+        int i = (int)slot;
+        id ??= Cosmetics.None;
+        if (holder == null || wornId[i] == id) return;
+        wornId[i] = id;
+        if (worn[i] != null) Destroy(worn[i]);
+        worn[i] = null;
+        var prefab = Cosmetics.Prefab(id);
+        if (prefab == null) return;
+        worn[i] = Instantiate(prefab, holder.transform);
+        foreach (var t in worn[i].GetComponentsInChildren<Transform>(true)) t.gameObject.layer = PreviewLayer;
+        foreach (var c in worn[i].GetComponentsInChildren<Collider>(true)) Destroy(c);
+        spin = 360f; // A twirl to show it off
+    }
+
+    /// <summary>Wears <paramref name="player"/>'s picks (or the local saved ones when null).</summary>
+    public void SetCosmetics(Photon.Realtime.Player player)
+    {
+        foreach (Cosmetics.Slot slot in System.Enum.GetValues(typeof(Cosmetics.Slot)))
+            SetCosmetic(slot, player != null ? Cosmetics.Of(player, slot) : Cosmetics.Saved(slot));
+    }
+
+    private void LateUpdate()
+    {
+        if (model == null) return;
+        for (int i = 0; i < worn.Length; i++)
+            if (worn[i] != null)
+                Cosmetics.Place(worn[i].transform, (Cosmetics.Slot)i, model, headBone, chestBone, model.position.y + Height, 1f);
+    }
+
     private void Update()
     {
         if (model == null) return;
@@ -202,7 +242,8 @@ public class PenguinPreview : MonoBehaviour
                 if (UnityEngine.Random.value < 0.45f) spin = UnityEngine.Random.value < 0.5f ? 360f : -360f;
             }
         }
-        model.localRotation = Quaternion.Euler(0f, yaw, sway);
+        facing = Mathf.MoveTowardsAngle(facing, Time.unscaledTime < backUntil ? 180f : 0f, 420f * Time.unscaledDeltaTime);
+        model.localRotation = Quaternion.Euler(0f, yaw + facing, sway);
     }
 
     private void OnDestroy()

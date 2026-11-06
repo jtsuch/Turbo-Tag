@@ -89,7 +89,7 @@ public class Spawner : MonoBehaviour
 
         spawned = true;
         AbilityLoadout.EnsureLocal();
-        PenguinSkins.EnsureLocal();
+        PenguinSkins.EnsureLocal(); Cosmetics.EnsureLocal();
 
         GetSpawnPoint(PlayerRoles.Get(PhotonNetwork.LocalPlayer), out Vector3 position, out Quaternion rotation);
         PhotonNetwork.Instantiate(PlayerPrefab, position, rotation);

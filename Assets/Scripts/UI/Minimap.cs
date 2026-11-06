@@ -180,7 +180,7 @@ public class Minimap : MonoBehaviour
         {
             float pulse = 12f + Mathf.PingPong(Time.unscaledTime * 10f, 4f);
             foreach (var donut in DonutManager.Instance.Donuts)
-                if (donut != null) Mark(ref used, donut.transform.position, local, new Color(1f, 0.45f, 0.8f), pulse);
+                if (donut != null) Mark(ref used, donut.transform.position, local, donut.Golden ? new Color(1f, 0.8f, 0.2f) : new Color(1f, 0.45f, 0.8f), pulse);
         }
 
         // Keep Away: the disc, always (it's the whole game)
@@ -233,11 +233,19 @@ public class Minimap : MonoBehaviour
         foreach (var p in Player.All)
         {
             if (p == null) continue;
-            foreach (var r in p.GetComponentsInChildren<Renderer>()) Hide(r);
-            if (p.Corpse != null) foreach (var r in p.Corpse.root.GetComponentsInChildren<Renderer>()) Hide(r);
+            HideAll(p.transform);
+            if (p.Corpse != null) HideAll(p.Corpse.root);
+            // The name tag floats separately from the body
+            if (p.TryGetComponent(out PlayerNameTag tag) && tag.TagRoot != null) HideAll(tag.TagRoot);
         }
-        foreach (var tag in FindObjectsByType<PlayerNameTag>(FindObjectsSortMode.None))
-            if (tag.TagRoot != null) foreach (var r in tag.TagRoot.GetComponentsInChildren<Renderer>()) Hide(r);
+    }
+
+    private readonly List<Renderer> rendererBuffer = new(); // Reused: this runs every map frame
+
+    private void HideAll(Transform root)
+    {
+        root.GetComponentsInChildren(rendererBuffer);
+        foreach (var r in rendererBuffer) Hide(r);
     }
 
     private void Hide(Renderer r)

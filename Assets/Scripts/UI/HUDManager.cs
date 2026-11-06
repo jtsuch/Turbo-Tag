@@ -205,27 +205,7 @@ public class HUDManager : MonoBehaviour
         if (show) promptCard.localScale = Vector3.one * (1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.025f);
     }
 
-    private void BuildCrosshair()
-    {
-        var cross = UIKit.Place(UIKit.Rect("Crosshair", root), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(40f, 40f));
-        cross.pivot = new Vector2(0.5f, 0.5f);
-        Dot(cross, Vector2.zero, new Vector2(6f, 6f), true);
-        foreach (var dir in new[] { Vector2.up, Vector2.down, Vector2.left, Vector2.right })
-            Dot(cross, dir * 13f, dir.x != 0f ? new Vector2(10f, 3f) : new Vector2(3f, 10f), false);
-    }
-
-    private static void Dot(Transform parent, Vector2 pos, Vector2 size, bool round)
-    {
-        var img = UIKit.Rect("Mark", parent).gameObject.AddComponent<Image>();
-        if (round) img.sprite = UISprites.Circle; else UIKit.Round(img, 1.5f);
-        img.color = Color.white;
-        img.raycastTarget = false;
-        img.rectTransform.anchoredPosition = pos;
-        img.rectTransform.sizeDelta = size;
-        var shadow = img.gameObject.AddComponent<Outline>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.6f);
-        shadow.effectDistance = new Vector2(1.5f, -1.5f);
-    }
+    private void BuildCrosshair() => Crosshair.Create(root); // Style, colour and size from Settings → Gameplay
 
     private void BuildRoleCard()
     {
@@ -506,7 +486,10 @@ public class HUDManager : MonoBehaviour
         else if (AudioManager.Instance != null) AudioManager.Instance.SetTempo(1f);
         bool paused = showClock && clock.IsPaused;
         pausedChip.SetActive(paused);
-        roundText.text = showClock && !paused && mode.HasRounds && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
+        string round = showClock && !paused && mode.HasRounds && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
+        var modifier = RoundModifiers.Current;
+        bool modLive = modifier != null && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding || phase == MatchPhase.Active);
+        roundText.text = modLive ? (round.Length > 0 ? $"{round}  ·  " : "") + $"<color=#FF8A3D>{modifier.Name.ToUpperInvariant()}</color>" : round;
 
         // Score
         bool showScore = mode != null && mode.ShowsScores && player != null;

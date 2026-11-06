@@ -13,6 +13,12 @@ public readonly struct KillInfo
     public readonly bool   Headshot;
     public readonly bool   SelfDestruct; // Fell off the map
 
+    /// <summary>Weapon prefix for a fall right after an enemy's push ("knock:Honk"): a knock-off, credited to them.</summary>
+    public const string KnockPrefix = "knock:";
+
+    public bool   IsKnockOff  => Weapon != null && Weapon.StartsWith(KnockPrefix);
+    public string KnockedWith => IsKnockOff ? Weapon.Substring(KnockPrefix.Length) : "";
+
     public KillInfo(int killer, int victim, string weapon, bool headshot, bool selfDestruct)
     {
         Killer = killer; Victim = victim; Weapon = weapon; Headshot = headshot; SelfDestruct = selfDestruct;
@@ -149,8 +155,28 @@ public class CombatManager : MonoBehaviourPun
 
     // ─── Deaths ───────────────────────────────────────────────────────────────
 
-    /// <summary>Local player: fell off the map.</summary>
-    public void ReportFall() => ReportLocalDeath(-1, "", false);
+    /// <summary>How long after an enemy's push a fall still counts as their knock-off.</summary>
+    public const float KnockOffWindow = 6f;
+
+    /// <summary>
+    /// Local player: fell off the map. Within <see cref="KnockOffWindow"/> s of a push from someone the mode lets
+    /// hurt us, it's their kill (a knock-off, no fall penalty); otherwise a self destruction.
+    /// </summary>
+    public void ReportFall()
+    {
+        var local = Player.Local;
+        var mode  = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (local != null && local.TryGetPusher(KnockOffWindow, out int by, out string cause))
+        {
+            var pusher = PhotonNetwork.CurrentRoom?.GetPlayer(by);
+            if (pusher != null && (mode == null || mode.CanDamage(PlayerRoles.Get(pusher), local.Role)))
+            {
+                ReportLocalDeath(by, KillInfo.KnockPrefix + cause, false);
+                return;
+            }
+        }
+        ReportLocalDeath(-1, "", false);
+    }
 
     /// <summary>Local player died (<paramref name="killerActor"/> -1 for a fall). Sent once per life.</summary>
     public void ReportLocalDeath(int killerActor, string weapon, bool headshot)
@@ -211,6 +237,7 @@ public class CombatManager : MonoBehaviourPun
         bool live = manager.Phase == MatchPhase.Active && !manager.Clock.IsExpired;
 
         if (live && !killerLeft) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
+        if (live && !selfDestruct && weapon.StartsWith(KillInfo.KnockPrefix)) MatchStats.Add(killer, PlayerKeys.StatKnockOffs);
 
         photonView.RPC(nameof(RPC_Killed), RpcTarget.All,
             selfDestruct ? victim.ActorNumber : killer.ActorNumber, victim.ActorNumber, weapon, headshot, selfDestruct);
@@ -231,7 +258,9 @@ public class CombatManager : MonoBehaviourPun
             var room  = PhotonNetwork.CurrentRoom;
             var who   = room?.GetPlayer(killer);
             string by = who != null && !string.IsNullOrEmpty(who.NickName) ? who.NickName : $"Player {killer}";
-            string gun = GunCatalog.Find(weapon)?.Name ?? "";
+            string gun = weapon.StartsWith(KillInfo.KnockPrefix)
+                ? "knocked off" + (weapon.Length > KillInfo.KnockPrefix.Length ? $" with {AbilityCatalog.DisplayName(weapon.Substring(KillInfo.KnockPrefix.Length))}" : "")
+                : GunCatalog.Find(weapon)?.Name ?? "";
             Killcam.Instance.Play(killer, $"Eliminated by <color=#FF8C1A>{by}</color>  ·  {gun}{(headshot ? "  ·  headshot" : "")}");
         }
 

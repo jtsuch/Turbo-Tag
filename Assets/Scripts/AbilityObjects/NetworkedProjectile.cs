@@ -83,7 +83,7 @@ public abstract class NetworkedProjectile : MonoBehaviourPun, IPunInstantiateMag
         foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = false;
         if (Body != null)
         {
-            Body.linearVelocity = Vector3.zero;
+            if (!Body.isKinematic) Body.linearVelocity = Vector3.zero; // A stuck bomb is already kinematic
             Body.isKinematic    = true;
         }
     }

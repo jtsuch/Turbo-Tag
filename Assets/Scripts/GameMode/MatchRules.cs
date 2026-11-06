@@ -56,6 +56,9 @@ public static class MatchRules
 
     /// <summary>Donuts (random-effect pickups) appear around the map. On by default (and in Freeplay).</summary>
     public static bool Donuts => NetProps.Room(RuleKeys.Donuts, true);
+
+    /// <summary>Round Modifiers: every round gets a random modifier (RoundModifiers). Off by default.</summary>
+    public static bool Modifiers => NetProps.Room(RuleKeys.Modifiers, false);
     public static float TagBonus       => NetProps.Room(RuleKeys.TagBonus, DefaultTagBonus);
 
     public static bool  ScoreLimitEnabled => NetProps.Room(RuleKeys.ScoreLimitEnabled, false);

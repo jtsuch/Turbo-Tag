@@ -29,7 +29,6 @@ public static class EditorJobQueue
     {
         ["SyncBuildSettings"] = LevelTools.SyncBuildSettings,
         ["UpgradeAllLevels"]  = LevelTools.UpgradeAllLevels,
-        ["RebuildGreybox"]    = LevelTools.RebuildGreybox,
         ["Refresh"]           = AssetDatabase.Refresh,
         ["AssignSceneViewIds"] = LevelTools.AssignSceneViewIds,
         ["RemoveStraySpawners"] = LevelTools.RemoveStraySpawners,
@@ -39,6 +38,14 @@ public static class EditorJobQueue
         ["BuildGunPrefabs"] = GunPrefabBuilder.Build,
         ["BuildPinnacle"] = PinnacleBuilder.Build,
         ["BuildSkyreach"] = SkyreachBuilder.Build,
+        ["BuildMapThumbnails"] = MapThumbnails.Build,
+        ["BuildWindows"] = BuildTools.BuildWindows,
+        ["BuildCosmetics"] = CosmeticPrefabBuilder.Build,
+        ["RecordAbilityClips"] = AbilityClipTools.Record,
+        ["RecordClipsSample"] = () => AbilityClipTools.Record("ZipGrapple,Honk,Snowball,MouseTrap"),
+        ["RecordThrowClips"] = () => AbilityClipTools.Record("BoomBomb,BoomStick,FishBait,Flashbang,GravBall,Rock,Semtex,Snowball"),
+        ["MakeLevelsPlayable"] = LevelPlayability.MakePlayable,
+        ["AuditLevels"] = LevelPlayability.Audit,
     };
 
     private static double nextPoll;
