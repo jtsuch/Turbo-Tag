@@ -390,7 +390,11 @@ public class Player : MonoBehaviourPun, IPunObservable
 
     private void Start()
     {
-        if (IsLocal) LocalPlayerSpawned?.Invoke(this);
+        if (!IsLocal) return;
+        // Tutorial: arrive with abilities off until an admin turns them on (all ability 1)
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && mode.AbilitiesStartOff) AdminAbilitiesOff = true;
+        LocalPlayerSpawned?.Invoke(this);
     }
 
     private void OnDestroy()

@@ -72,8 +72,17 @@ public class AdminConsole : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Tab)) Complete();
         if (Input.GetKeyDown(KeyCode.UpArrow))   Recall(-1);
         if (Input.GetKeyDown(KeyCode.DownArrow)) Recall(+1);
+
+        // Mouse wheel (or Page Up/Down) scrolls back through the log; the mouse is free while open (PlayerCam)
+        int step = Mathf.RoundToInt(Input.mouseScrollDelta.y * 3f);
+        if (Input.GetKeyDown(KeyCode.PageUp))   step += MaxLines - 2;
+        if (Input.GetKeyDown(KeyCode.PageDown)) step -= MaxLines - 2;
+        if (step != 0) { scroll += step; Refresh(); }
+
         if (!field.isFocused) field.ActivateInputField();
     }
+
+    private int scroll; // Display lines scrolled up from the newest (0 = the bottom)
 
     private void SetOpen(bool value)
     {
@@ -212,22 +221,22 @@ public class AdminConsole : MonoBehaviour
     private void Print(string line)
     {
         lines.Add(line);
-        while (lines.Count > 60) lines.RemoveAt(0);
+        while (lines.Count > 200) lines.RemoveAt(0);
+        scroll = 0; // New output jumps back to the bottom
         Refresh();
     }
 
     private void Refresh()
     {
         if (log == null) return;
-        // The last lines that fit (help is several lines in one entry)
-        var shown = new List<string>();
-        int count = 0;
-        for (int i = lines.Count - 1; i >= 0 && count < MaxLines; i--)
-        {
-            shown.Insert(0, lines[i]);
-            count += lines[i].Split('\n').Length;
-        }
-        log.text = string.Join("\n", shown);
+        // A window of display lines (help is several lines in one entry), scrolled up from the newest
+        var all = new List<string>();
+        foreach (var entry in lines) all.AddRange(entry.Split('\n'));
+        scroll = Mathf.Clamp(scroll, 0, Mathf.Max(0, all.Count - MaxLines));
+        int end = all.Count - scroll, start = Mathf.Max(0, end - MaxLines);
+        string text = string.Join("\n", all.GetRange(start, end - start));
+        if (scroll > 0) text += $"\n<color=#8A84B5>  ▼ {scroll} more below (scroll down)</color>";
+        log.text = text;
     }
 
     // ─── UI ───────────────────────────────────────────────────────────────────

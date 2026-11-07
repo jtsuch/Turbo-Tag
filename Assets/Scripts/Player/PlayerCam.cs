@@ -142,8 +142,8 @@ public class PlayerCam : MonoBehaviour
         UpdateSpeedFeel();
         bool paused = PauseMenuManager.IsPaused;
 
-        // The gun picker frees the mouse to click a gun (and the view stops turning meanwhile)
-        if (GunPicker.IsOpen && !paused)
+        // The gun picker frees the mouse to click a gun, the admin console to scroll its log (and the view stops turning)
+        if ((GunPicker.IsOpen && !paused) || AdminConsole.IsOpen)
         {
             if (Cursor.lockState != CursorLockMode.None || !Cursor.visible)
             {

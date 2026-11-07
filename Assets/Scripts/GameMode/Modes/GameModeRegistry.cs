@@ -22,6 +22,7 @@ public static class GameModeRegistry
         ["TDM"]       = () => new TeamDeathmatchMode(),
         ["Hunter"]    = () => new HunterMode(),
         ["KeepAway"]  = () => new KeepAwayMode(),
+        ["Tutorial"]  = () => new TutorialMode(),
     };
 
     private static GameModeDefinition[] definitions;
