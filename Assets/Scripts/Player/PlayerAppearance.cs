@@ -148,8 +148,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         UpdateCrown(crowned);
         // Cosmetics: hidden whenever the body is disguised, hidden or see-through (they'd give the player away)
         bool plain = !silhouette && CloakAmount < 0.05f && !Camouflage.HasValue && ghostAmount < 0.05f && !player.IsDownAfterTag;
-        UpdateCosmetic(Cosmetics.Slot.Hat, plain && !crowned);
-        UpdateCosmetic(Cosmetics.Slot.Back, plain && player.State != Player.MovementState.Prone);
+        UpdateCosmetics(plain, crowned);
 
         iceAmount   = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * dt);
         camoAmount  = Mathf.MoveTowards(camoAmount, Camouflage.HasValue ? 1f : 0f, camouflageFadeSpeed * dt);
@@ -247,28 +246,25 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
     // ─── Cosmetics ────────────────────────────────────────────────────────────
 
-    private readonly GameObject[] cosmetic = new GameObject[2];
-    private readonly string[] cosmeticId = new string[2];
-    private Transform cosmeticHead, cosmeticChest;
-    private bool cosmeticBones;
+    private CosmeticWearer wearer;
 
-    // The player's pick for a slot, worn (a child of the body, so the minimap hides it too)
-    private void UpdateCosmetic(Cosmetics.Slot slot, bool show)
+    // The owner's synced loadout, worn on this copy (children of the body, so the minimap hides them too). Hidden
+    // whole while the body is disguised, hidden or see-through; head gear gives way to the crown, rigid body gear to
+    // lying prone (skinned items follow the body down)
+    private void UpdateCosmetics(bool plain, bool crowned)
     {
-        int i = (int)slot;
-        string id = show ? Cosmetics.Of(photonView.Owner, slot) : Cosmetics.None;
-        if (id != cosmeticId[i])
+        if (wearer == null)
         {
-            if (cosmetic[i] != null) Destroy(cosmetic[i]);
-            cosmetic[i] = null;
-            cosmeticId[i] = id;
-            var prefab = Cosmetics.Prefab(id);
-            if (prefab != null) cosmetic[i] = Instantiate(prefab, transform);
+            var skin = GetComponentInChildren<SkinnedMeshRenderer>(true);
+            wearer = new CosmeticWearer(transform, skin != null ? skin.gameObject.layer : gameObject.layer);
         }
-        if (cosmetic[i] == null) return;
-        if (!cosmeticBones) { Cosmetics.FindBones(transform, out cosmeticHead, out cosmeticChest); cosmeticBones = true; }
-        Cosmetics.Place(cosmetic[i].transform, slot, transform, cosmeticHead, cosmeticChest, player.TopY, player.Size);
+        foreach (var slot in Cosmetics.Slots) wearer.Wear(slot, Cosmetics.Of(photonView.Owner, slot));
+        bool prone = player.State == Player.MovementState.Prone;
+        wearer.Update(player.TopY, player.Size, slot =>
+            plain && !(slot == CosmeticSlot.Head && crowned) && !(slot == CosmeticSlot.Body && prone && !IsSkinned(slot)));
     }
+
+    private bool IsSkinned(CosmeticSlot slot) => CosmeticRegistry.Find(Cosmetics.Of(photonView.Owner, slot))?.kind == CosmeticKind.Skinned;
 
     // ─── Cloak materials ──────────────────────────────────────────────────────
 

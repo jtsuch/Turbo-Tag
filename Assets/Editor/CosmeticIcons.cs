@@ -31,10 +31,14 @@ public static class CosmeticIcons
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.55f, 0.55f, 0.6f);
 
-        foreach (var item in Cosmetics.All)
+        // Rigid items only: skinned outfits bring their own picture (they need Jimmy inside them to read)
+        var registry = AssetDatabase.LoadAssetAtPath<CosmeticRegistry>("Assets/Resources/Cosmetics/CosmeticRegistry.asset");
+        if (registry == null) return;
+        foreach (var item in registry.items)
         {
-            var prefab = Cosmetics.Prefab(item.Id);
-            if (prefab == null) continue;
+            if (item == null || item.kind != CosmeticKind.Rigid || item.prefab == null) continue;
+            if (File.Exists($"{Folder}/{item.id}.png")) continue; // Keep pictures made elsewhere (and earlier renders)
+            var prefab = item.prefab;
             var go = Object.Instantiate(prefab);
             go.transform.rotation = Quaternion.Euler(0f, -25f, 0f);
             foreach (var spin in go.GetComponentsInChildren<CosmeticSpin>()) Object.DestroyImmediate(spin);
@@ -49,7 +53,7 @@ public static class CosmeticIcons
             cam.fieldOfView = 22f;
             float radius = b.extents.magnitude;
             float distance = radius / Mathf.Sin(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 0.82f;
-            Vector3 view = new Vector3(0f, item.Slot == Cosmetics.Slot.Hat ? 0.35f : 0.1f, 1f).normalized;
+            Vector3 view = new Vector3(0f, item.slot == CosmeticSlot.Head ? 0.35f : 0.1f, 1f).normalized;
             camGo.transform.position = b.center + view * distance;
             camGo.transform.LookAt(b.center);
 
@@ -61,7 +65,7 @@ public static class CosmeticIcons
             tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
             tex.Apply();
             RenderTexture.active = null;
-            string path = $"{Folder}/{item.Id}.png";
+            string path = $"{Folder}/{item.id}.png";
             File.WriteAllBytes(path, tex.EncodeToPNG());
             cam.targetTexture = null;
             Object.DestroyImmediate(rt);

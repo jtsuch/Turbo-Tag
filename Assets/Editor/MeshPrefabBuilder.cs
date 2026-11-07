@@ -35,6 +35,7 @@ public static class MeshPrefabBuilder
         foreach (string guid in AssetDatabase.FindAssets("t:Model", new[] { MeshFolder }))
         {
             string modelPath  = AssetDatabase.GUIDToAssetPath(guid);
+            if (modelPath.StartsWith("Assets/Resources/Cosmetics/")) continue; // Cosmetics never get colliders, layers or Static
             string name       = Path.GetFileNameWithoutExtension(modelPath);
             string prefabPath = $"{PrefabFolder}/{name}.prefab";
             if (File.Exists(prefabPath)) continue;

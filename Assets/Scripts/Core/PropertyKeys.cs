@@ -89,10 +89,6 @@ public static class PlayerKeys
     /// <summary>Current <see cref="PlayerRole"/> (int). Written by the master client.</summary>
     public const string Role = "Role";
 
-    /// <summary>Cosmetics worn (Cosmetics item ids, "" for none). Written by the player themself.</summary>
-    public const string CosmeticHat  = "CosHat";
-    public const string CosmeticBack = "CosBack";
-
     /// <summary>Ready in Pregame (bool). Written by the player themself; cleared when Pregame opens.</summary>
     public const string Ready = "Ready";
 

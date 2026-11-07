@@ -12,7 +12,7 @@ using UnityEngine.UI;
 /// and twirling (the scoreboard podium). Each preview gets its own spot below the scene, so several can exist.
 /// Used on the main menu player card and the scoreboard podium.
 /// </summary>
-public class PenguinPreview : MonoBehaviour
+public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandler
 {
     private const int   PreviewLayer = 30;
     private const float Height = 2.9f; // The model's height (Player.TopY on a standing penguin)
@@ -30,10 +30,22 @@ public class PenguinPreview : MonoBehaviour
     private Vector3 stage;
     private float nextMove;
     private static int created;
-    private readonly GameObject[] worn = new GameObject[2];
-    private readonly string[] wornId = { "", "" };
-    private Transform headBone, chestBone;
-    private float backUntil, facing;
+    private CosmeticWearer wearer;
+    private float backUntil, facing, dragYaw, idleLook = 1f;
+    private RawImage image;
+
+    /// <summary>Lets the viewer spin the penguin by dragging it (the Wardrobe). Off by default.</summary>
+    public bool Draggable
+    {
+        set { if (image != null) image.raycastTarget = value; }
+    }
+
+    // Dragging turns the penguin and stops its idle look-around, so it stays where it's put
+    public void OnDrag(UnityEngine.EventSystems.PointerEventData e)
+    {
+        dragYaw -= e.delta.x * 0.5f;
+        idleLook = 0f;
+    }
 
     /// <summary>Turns the penguin's back to the camera for a few seconds (to show a back cosmetic).</summary>
     public void ShowBack(float seconds = 3.5f) => backUntil = Time.unscaledTime + seconds;
@@ -48,6 +60,7 @@ public class PenguinPreview : MonoBehaviour
         UIKit.Size(image, size, size);
         image.raycastTarget = false;
         var preview = image.gameObject.AddComponent<PenguinPreview>();
+        preview.image = image;
         preview.Build(image, Mathf.RoundToInt(size * 2f));
         return preview;
     }
@@ -74,7 +87,7 @@ public class PenguinPreview : MonoBehaviour
         animator = copy.GetComponentInChildren<Animator>();
         if (animator != null) animator.applyRootMotion = false;
         renderers = copy.GetComponentsInChildren<Renderer>(true);
-        Cosmetics.FindBones(copy.transform, out headBone, out chestBone);
+        wearer = new CosmeticWearer(copy.transform, PreviewLayer);
 
         // Its own camera and light
         var camGo = new GameObject("Camera");
@@ -83,11 +96,11 @@ public class PenguinPreview : MonoBehaviour
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
         cam.cullingMask = 1 << PreviewLayer;
-        cam.fieldOfView = 24f;
+        cam.fieldOfView = 28f; // Room above the head for tall hats (a wizard hat reaches ~3.7 m)
         cam.targetTexture = texture;
         cam.depth = -20;
-        camGo.transform.localPosition = new Vector3(0f, Height * 0.55f, 9.5f);
-        camGo.transform.LookAt(stage + Vector3.up * Height * 0.48f);
+        camGo.transform.localPosition = new Vector3(0f, Height * 0.62f, 9.5f);
+        camGo.transform.LookAt(stage + Vector3.up * Height * 0.58f);
         var data = camGo.AddComponent<UniversalAdditionalCameraData>();
         data.renderShadows = false;
         data.renderPostProcessing = false;
@@ -97,7 +110,7 @@ public class PenguinPreview : MonoBehaviour
         lightGo.transform.rotation = Quaternion.Euler(35f, 160f, 0f);
         var light = lightGo.AddComponent<Light>();
         light.type = LightType.Directional;
-        light.intensity = 1.3f;
+        light.intensity = 1.0f;
         light.cullingMask = 1 << PreviewLayer;
         light.shadows = LightShadows.None;
 
@@ -109,7 +122,7 @@ public class PenguinPreview : MonoBehaviour
         var fill = fillGo.AddComponent<Light>();
         fill.type = LightType.Point;
         fill.range = 20f;
-        fill.intensity = 3f;
+        fill.intensity = 1.4f; // Softer: brighter glared on the white belly in the big Wardrobe view
         fill.cullingMask = 1 << PreviewLayer;
         fill.shadows = LightShadows.None;
         fill.renderMode = LightRenderMode.ForcePixel;
@@ -192,35 +205,31 @@ public class PenguinPreview : MonoBehaviour
     }
 
     /// <summary>Wears a cosmetic (<see cref="Cosmetics"/> id, "" for nothing) in a slot.</summary>
-    public void SetCosmetic(Cosmetics.Slot slot, string id)
+    public void SetCosmetic(CosmeticSlot slot, string id)
     {
-        int i = (int)slot;
+        if (wearer == null) return;
         id ??= Cosmetics.None;
-        if (holder == null || wornId[i] == id) return;
-        wornId[i] = id;
-        if (worn[i] != null) Destroy(worn[i]);
-        worn[i] = null;
-        var prefab = Cosmetics.Prefab(id);
-        if (prefab == null) return;
-        worn[i] = Instantiate(prefab, holder.transform);
-        foreach (var t in worn[i].GetComponentsInChildren<Transform>(true)) t.gameObject.layer = PreviewLayer;
-        foreach (var c in worn[i].GetComponentsInChildren<Collider>(true)) Destroy(c);
-        spin = 360f; // A twirl to show it off
+        bool had = wearer.Wearing(slot);
+        string before = had ? currentIds.TryGetValue(slot, out var b) ? b : "" : "";
+        if (before == id) return;
+        currentIds[slot] = id;
+        wearer.Wear(slot, id);
+        if (id != Cosmetics.None) spin = 360f; // A twirl to show it off
     }
+
+    private readonly System.Collections.Generic.Dictionary<CosmeticSlot, string> currentIds = new();
 
     /// <summary>Wears <paramref name="player"/>'s picks (or the local saved ones when null).</summary>
     public void SetCosmetics(Photon.Realtime.Player player)
     {
-        foreach (Cosmetics.Slot slot in System.Enum.GetValues(typeof(Cosmetics.Slot)))
+        foreach (var slot in Cosmetics.Slots)
             SetCosmetic(slot, player != null ? Cosmetics.Of(player, slot) : Cosmetics.Saved(slot));
     }
 
     private void LateUpdate()
     {
-        if (model == null) return;
-        for (int i = 0; i < worn.Length; i++)
-            if (worn[i] != null)
-                Cosmetics.Place(worn[i].transform, (Cosmetics.Slot)i, model, headBone, chestBone, model.position.y + Height, 1f);
+        if (model == null || wearer == null) return;
+        wearer.Update(model.position.y + Height, 1f);
     }
 
     private void Update()
@@ -228,7 +237,7 @@ public class PenguinPreview : MonoBehaviour
         if (model == null) return;
         // A slow look around, and a quick twirl after a colour change
         spin = Mathf.MoveTowards(spin, 0f, Time.unscaledDeltaTime * 720f);
-        float yaw = Mathf.Sin(Time.unscaledTime * 0.6f) * 25f + spin;
+        float yaw = Mathf.Sin(Time.unscaledTime * 0.6f) * 25f * idleLook + spin + dragYaw;
         float sway = 0f;
         if (Dance)
         {

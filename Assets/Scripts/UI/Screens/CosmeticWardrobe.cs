@@ -17,7 +17,7 @@ public class CosmeticWardrobe : MonoBehaviour
 
     private UIModal modal;
     private PenguinPreview preview;
-    private readonly List<(Cosmetics.Slot slot, string id, Outline outline, Image face)> cards = new();
+    private readonly List<(CosmeticSlot slot, string id, Outline outline, Image face)> cards = new();
 
     /// <summary>Raised after a pick (the main menu card refreshes its own preview).</summary>
     public event System.Action Changed;
@@ -52,6 +52,7 @@ public class CosmeticWardrobe : MonoBehaviour
         lr.sizeDelta = new Vector2(440f, 0f);
         lr.anchoredPosition = Vector2.zero;
         preview = PenguinPreview.Create(left.transform, 420f);
+        preview.Draggable = true; // Drag to spin Jimmy round
         var pr = (RectTransform)preview.transform;
         pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
         pr.sizeDelta = new Vector2(420f, 420f); // No layout group here: size it directly
@@ -61,9 +62,11 @@ public class CosmeticWardrobe : MonoBehaviour
         var right = UIKit.Rect("Items", body);
         UIKit.Stretch(right, 470f, 0f, 0f, 0f);
         var list = UIKit.ScrollList(right, 10f, UIKit.Pad(4));
-        foreach (Cosmetics.Slot slot in System.Enum.GetValues(typeof(Cosmetics.Slot)))
+        foreach (var slot in Cosmetics.Slots)
         {
-            var head = UIKit.Text(list, slot == Cosmetics.Slot.Hat ? "Hats" : "Back", 34f, UIKit.Font.Display, Theme.text);
+            var items = CosmeticRegistry.InSlot(slot);
+            if (items.Count == 0) continue; // No section for a slot with nothing in it yet
+            var head = UIKit.Text(list, SlotTitle(slot), 34f, UIKit.Font.Display, Theme.text);
             UIKit.Size(head, height: 48f);
             var grid = UIKit.Rect(slot + " Grid", list);
             var layout = grid.gameObject.AddComponent<GridLayoutGroup>();
@@ -71,16 +74,21 @@ public class CosmeticWardrobe : MonoBehaviour
             layout.spacing = new Vector2(16f, 16f);
             layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             layout.constraintCount = 4;
-            var items = Cosmetics.InSlot(slot);
             int count = items.Count + 1;
             UIKit.Size(grid, height: Mathf.CeilToInt(count / 4f) * 212f);
             AddCard(grid, slot, Cosmetics.None, "None", null);
-            foreach (var item in items)
-                AddCard(grid, slot, item.Id, item.Name, Resources.Load<Sprite>("Cosmetics/Icons/" + item.Id));
+            foreach (var item in items) AddCard(grid, slot, item.id, item.displayName, item.icon);
         }
     }
 
-    private void AddCard(Transform grid, Cosmetics.Slot slot, string id, string name, Sprite icon)
+    private static string SlotTitle(CosmeticSlot slot) => slot switch
+    {
+        CosmeticSlot.Head => "Head Gear",
+        CosmeticSlot.Body => "Body Gear",
+        _                 => "Outfits",
+    };
+
+    private void AddCard(Transform grid, CosmeticSlot slot, string id, string name, Sprite icon)
     {
         var face = UIKit.Panel(grid, Theme.card, 18f, name);
         var outline = face.gameObject.AddComponent<Outline>();
@@ -132,11 +140,11 @@ public class CosmeticWardrobe : MonoBehaviour
         modal.Open();
     }
 
-    private void Pick(Cosmetics.Slot slot, string id)
+    private void Pick(CosmeticSlot slot, string id)
     {
         Cosmetics.SetLocal(slot, id);
         preview.SetCosmetics(null);
-        if (slot == Cosmetics.Slot.Back && id != Cosmetics.None) preview.ShowBack();
+        if (CosmeticRegistry.Find(id) is { backFacing: true }) preview.ShowBack(); // Turn round to show it
         Refresh();
         Changed?.Invoke();
     }
