@@ -88,6 +88,15 @@ public class PlayerMovement : MonoBehaviourPun
     private Vector3 ledgeNormal;
     private bool    climbingLedge;
     private const float LedgeOffset = -1f;
+
+    /// <summary>Owner, while hanging: the way the body faces (into the wall).</summary>
+    public Vector3 LedgeFacing => -ledgeNormal;
+
+    /// <summary>Owner, while hanging: pulling up onto the ledge (the climb-up animation).</summary>
+    public bool ClimbingLedge => climbingLedge;
+
+    /// <summary>Owner, while hanging: -1 shimmying left, +1 right, 0 still (or blocked: no ledge that way).</summary>
+    public float LedgeShimmy { get; private set; }
     private const float MinClimbSpeed = 3f; // Below this a climb only slides down the wall
     private const float SteadyClimbReach = 1.8f; // Wall detection for Infinite Climb (normal climbs: 1 m)
     private const float SteadyClimbGrip  = 2f;   // Speed toward the wall that keeps an Infinite Climb on it
@@ -355,7 +364,54 @@ public class PlayerMovement : MonoBehaviourPun
         if (wallForward && move.y > 0.1f && State != Player.MovementState.Climb)
             StartClimb();
         else if (State == Player.MovementState.Climb && ShouldStopClimbing(move))
-            player.SetState(Player.MovementState.Idle);
+        {
+            // Ran out of wall while going up: climb onto the top instead of flying off into the sky
+            bool topped = !wallForward && rb.linearVelocity.y > 0.5f && TryMantle();
+            if (!topped) player.SetState(Player.MovementState.Idle);
+        }
+    }
+
+    // ─── Mantle (over the top of a climbed wall) ──────────────────────────────
+
+    [Header("Mantle")]
+    [Tooltip("Share of the climb's upward speed turned into forward speed when climbing over the top of a wall.")]
+    [SerializeField] private float mantleForwardShare = 0.6f;
+    [Tooltip("Extra clearance (m) above the top the hop aims for, so the feet clear the edge.")]
+    [SerializeField] private float mantleClearance = 0.35f;
+    [Tooltip("Cap on the forward speed a mantle can give (m/s).")]
+    [SerializeField] private float mantleMaxForward = 14f;
+
+    /// <summary>
+    /// The climb reached the top of a wall: if there's floor just past the edge (within reach of the body's
+    /// height), swap the upward rush for a small hop that just clears the edge plus forward speed (a share of the
+    /// climb speed), so the player lands on top of the wall moving on, instead of shooting metres into the air.
+    /// </summary>
+    private bool TryMantle()
+    {
+        Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (forward.sqrMagnitude < 0.01f) return false;
+        forward.Normalize();
+
+        float height = player.Height;
+        Vector3 from = transform.position + Vector3.up * (height + 1f) + forward * 1.1f;
+        if (!Physics.Raycast(from, Vector3.down, out RaycastHit top, height + 1.5f, structureLayer, QueryTriggerInteraction.Ignore))
+            return false;
+        if (top.normal.y < 0.7f) return false;
+        float rise = top.point.y - transform.position.y; // How far the feet still have to go up
+        if (rise < -0.2f || rise > height + 0.5f) return false;
+        if (Physics.Raycast(top.point + Vector3.up * 0.1f, Vector3.up, height * 0.7f, structureLayer)) return false; // No room on top
+
+        float g = -Physics.gravity.y * Mathf.Max(0.1f, player.Modifiers.Get(Stat.Gravity));
+        float needUp = Mathf.Sqrt(2f * g * Mathf.Max(0.05f, rise + mantleClearance));
+        float up = rb.linearVelocity.y;
+        Vector3 flat = new(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+        float along = Mathf.Max(Vector3.Dot(flat, forward), 0f);
+        float gain = Mathf.Max(0f, up - needUp) * mantleForwardShare;
+        float forwardSpeed = Mathf.Min(Mathf.Max(along, 3f) + gain, Mathf.Max(mantleMaxForward, along));
+
+        rb.linearVelocity = forward * forwardSpeed + Vector3.up * Mathf.Min(up, needUp);
+        player.SetState(Player.MovementState.Idle);
+        return true;
     }
 
     // A sphere just inside the capsule's bottom, swept down: finds ground under any part of the feet (standing
@@ -910,6 +966,7 @@ public class PlayerMovement : MonoBehaviourPun
 
         // Shimmy along the ledge while there is ledge to hold
         float horizontal = input.MoveInput.x;
+        LedgeShimmy = 0f;
         if (Mathf.Abs(horizontal) < 0.01f) return;
 
         Vector3 left     = Vector3.Cross(Vector3.up, ledgeNormal);
@@ -918,17 +975,22 @@ public class PlayerMovement : MonoBehaviourPun
 
         if (Physics.Raycast(probe, Vector3.down, out RaycastHit support, 1f, structureLayer)
             && Vector3.Dot(support.normal, Vector3.up) >= 0.7f)
+        {
             ledgePosition = proposed;
+            LedgeShimmy = Mathf.Sign(horizontal);
+        }
     }
 
     private IEnumerator ClimbOntoLedge()
     {
         climbingLedge = true;
+        LedgeShimmy = 0f;
         Vector3 start  = transform.position;
         Vector3 target = ledgePosition + Vector3.up * 0.5f - ledgeNormal * 0.3f;
 
-        // Moved in physics steps through the Rigidbody, so interpolation keeps it smooth
-        const float duration = 0.5f;
+        // Moved in physics steps through the Rigidbody, so interpolation keeps it smooth; as long as the
+        // climb-up animation takes at its state speed (LedgeAnimationSetup: 1.33 s clip × 1.8)
+        const float duration = 0.75f;
         for (float t = 0f; t < duration; t += Time.fixedDeltaTime)
         {
             rb.linearVelocity = Vector3.zero;

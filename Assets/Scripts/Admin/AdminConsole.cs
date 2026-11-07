@@ -235,7 +235,7 @@ public class AdminConsole : MonoBehaviour
         scroll = Mathf.Clamp(scroll, 0, Mathf.Max(0, all.Count - MaxLines));
         int end = all.Count - scroll, start = Mathf.Max(0, end - MaxLines);
         string text = string.Join("\n", all.GetRange(start, end - start));
-        if (scroll > 0) text += $"\n<color=#8A84B5>  ▼ {scroll} more below (scroll down)</color>";
+        if (scroll > 0) text += $"\n<color=#8A84B5>  … {scroll} more below (scroll down)</color>";
         log.text = text;
     }
 

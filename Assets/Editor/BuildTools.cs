@@ -9,7 +9,9 @@ using UnityEngine;
 /// <summary>
 /// One-click Windows playtest build: stamps a version (0.1.MMdd.HHmm, shown on the main menu and in every log and bug
 /// report), builds every scene in Build Settings to Builds/TurboTag-{version}/TurboTag.exe and zips it to
-/// Builds/TurboTag-{version}.zip, ready to send to friends. The result goes to Library/TurboTag/scratch/build_result.txt.
+/// Builds/TurboTag-{version}.zip, ready to send to friends. After a successful build everything else in Builds/ is
+/// deleted (older versions, and builds made from Unity's Build window straight into the folder), so it only ever holds
+/// the latest. The result goes to Library/TurboTag/scratch/build_result.txt.
 /// Menu: Turbo Tag/Build/Windows Playtest Build (editor job: BuildWindows).
 /// </summary>
 public static class BuildTools
@@ -46,6 +48,8 @@ public static class BuildTools
             if (File.Exists(zip)) File.Delete(zip);
             ZipFile.CreateFromDirectory(folder, zip, System.IO.Compression.CompressionLevel.Optimal, false);
             result = $"OK v{version}: {Path.GetFullPath(zip)} ({new FileInfo(zip).Length / (1024f * 1024f):0} MB, {summary.totalTime.TotalMinutes:0.0} min)";
+            string skipped = RemoveOlderBuilds(folder, zip);
+            if (skipped.Length > 0) result += "\nCouldn't delete (in use?): " + skipped;
         }
         else
         {
@@ -56,5 +60,24 @@ public static class BuildTools
         Directory.CreateDirectory(Path.GetDirectoryName(ResultPath));
         File.WriteAllText(ResultPath, result);
         Debug.Log("[BuildTools] " + result);
+    }
+
+    // Everything in Builds/ except the new build's folder and zip. Returns what couldn't be deleted (a running copy)
+    private static string RemoveOlderBuilds(string keepFolder, string keepZip)
+    {
+        string folder = Path.GetFullPath(keepFolder), zip = Path.GetFullPath(keepZip);
+        var skipped = new System.Collections.Generic.List<string>();
+        foreach (string entry in Directory.GetFileSystemEntries(BuildsFolder))
+        {
+            string full = Path.GetFullPath(entry);
+            if (full == folder || full == zip) continue;
+            try
+            {
+                if (Directory.Exists(full)) Directory.Delete(full, true);
+                else File.Delete(full);
+            }
+            catch (Exception) { skipped.Add(Path.GetFileName(full)); }
+        }
+        return string.Join(", ", skipped);
     }
 }

@@ -111,7 +111,7 @@ public class AbilityBrowser : MonoBehaviour
         if (!string.IsNullOrEmpty(stats)) UIKit.OneLine(UIKit.Text(text, stats, 16f, UIKit.Font.Bold, UIKit.WithAlpha(Theme.textMuted, 0.8f)));
 
         bool has = AbilityClipPlayer.Has(id);
-        var watch = UIKit.Button(row.transform, has ? "▶ Watch" : "No clip", has ? UIKit.Style.Secondary : UIKit.Style.Ghost, () => ShowClip(id), 56f, 22f);
+        var watch = UIKit.Button(row.transform, has ? "Watch" : "No clip", has ? UIKit.Style.Secondary : UIKit.Style.Ghost, () => ShowClip(id), 56f, 22f);
         UIKit.Size(watch, 170f, 56f);
         watch.interactable = has;
     }

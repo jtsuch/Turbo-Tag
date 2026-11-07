@@ -228,11 +228,20 @@ public class PlayerCam : MonoBehaviour
             if (Quaternion.Angle(next, upright) < 1f) { next = upright; recoveringFromSpin = false; player.IsFreeSpinning = false; }
             RotateBodyAroundCenter(next);
         }
+        else if (player.State == Player.MovementState.Hang && movement != null && movement.LedgeFacing.sqrMagnitude > 0.5f)
+        {
+            // Hanging: the body keeps facing the wall (the ledge animations), the view still turns all the way round
+            Quaternion facing = Quaternion.LookRotation(movement.LedgeFacing, Vector3.up);
+            playerTransform.rotation = Quaternion.Slerp(playerTransform.rotation, facing, 1f - Mathf.Exp(-14f * Time.deltaTime)); // Turns in, no snap
+        }
         else
         {
             playerTransform.rotation = upright;
         }
     }
+
+    private PlayerMovement movementCache;
+    private PlayerMovement movement => movementCache != null ? movementCache : movementCache = player != null ? player.GetComponent<PlayerMovement>() : null;
 
     // ─── Lure (Fish Bait) ─────────────────────────────────────────────────────
 

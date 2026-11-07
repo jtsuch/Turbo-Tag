@@ -151,7 +151,9 @@ public class PregameScreen : MenuScreen
         UIKit.Size(name, flexWidth: 1f);
 
         // ▶ watches the clip (the button takes the click, so the card isn't picked)
-        var watch = UIKit.RoundButton(top, "\u25B6", () => browser.ShowClip(id), 40f, UIKit.Style.Ghost);
+        var watch = UIKit.RoundButton(top, "", () => browser.ShowClip(id), 40f, UIKit.Style.Ghost);
+        var watchLabel = UIKit.Label(watch);
+        UISprites.AddPlayIcon(watchLabel.transform.parent, 18f, watchLabel.color); // The fonts have no \u25B6 glyph (it showed as a box)
         watch.gameObject.SetActive(AbilityClipPlayer.Has(id));
 
         var check = UIKit.Rect("Check", top).gameObject.AddComponent<Image>();

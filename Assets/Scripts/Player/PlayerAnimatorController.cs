@@ -18,6 +18,11 @@ using UnityEngine;
 ///
 /// Flappy: while the player glides with Flappy, the "Flappy Layer" (both arms) plays the Flappy clip.
 ///
+/// Ledges: while hanging, the "Ledge Layer" (full body, built by Editor/LedgeAnimationSetup) plays LedgeIdle,
+/// LedgeShimmy (backwards for the other way, via LedgeShimmySpeed), LedgeClimbUp, or LedgeLookLeft/Right when the
+/// view is turned more than 90° from the wall (the side flips as the view passes straight behind). The body
+/// faces the wall (PlayerCam). The pose is chosen by the owner and synced.
+///
 /// The gun: hands are empty except while grappling. Both pistols (the first-person one under the camera
 /// and the third-person one in the right hand) are shown only then, on every client.
 ///
@@ -82,6 +87,26 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     private int    flappyLayer = -1;
     private bool   gliding;
     private float  flappyWeight;
+
+    // Ledge (the pose is synced; the layer is found by name)
+    private enum LedgePose : byte { None, Idle, Shimmy, LookLeft, LookRight, ClimbUp }
+    private static readonly string[] LedgeStates = { "Empty", "LedgeIdle", "LedgeShimmy", "LedgeLookLeft", "LedgeLookRight", "LedgeClimbUp" };
+    private static readonly int H_ShimmySpeed = Animator.StringToHash("LedgeShimmySpeed");
+    private const string LedgeLayerName = "Ledge Layer";
+    private const float  LookAwayAngle  = 90f;
+    private const float  LookHysteresis = 10f;   // Past 90 + this to start a look pose, back under 90 - this to end it
+    private const float  LedgeFade      = 0.3f;  // Cross-fade between ledge poses (s)
+    [Header("Ledge")]
+    [Tooltip("The shimmy clip moves to the right; flip if the penguin shimmies the wrong way.")]
+    [SerializeField] private bool shimmyClipGoesRight = true;
+    [Tooltip("Most the head (and neck) turn up or down with the view while hanging (degrees). Looking right down tucks the head under the ledge.")]
+    [SerializeField] private float ledgeHeadPitch = 80f;
+    private Transform neckBone;
+    private float     ledgeHeadAngle;
+    private int       ledgeLayer = -1;
+    private LedgePose ledgePose, shownLedgePose;
+    private float     shimmyDirection = 1f;
+    private float     ledgeWeight;
 
     // ─── Synced values ────────────────────────────────────────────────────────
     private float movementSpeed;
@@ -152,6 +177,7 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         foreach (var param in animator.parameters) validHashes.Add(param.nameHash);
         layerCount = animator.layerCount;
         flappyLayer = animator.GetLayerIndex(FlappyLayerName);
+        ledgeLayer  = animator.GetLayerIndex(LedgeLayerName);
     }
 
     private void Update()
@@ -172,6 +198,29 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         float pitch = cameraHolder.localEulerAngles.x;
         if (pitch > 180f) pitch -= 360f;
         verticalLook = Mathf.InverseLerp(90f, -90f, Mathf.Clamp(pitch, -90f, 90f));
+        ledgePose = SampleLedgePose();
+    }
+
+    // Which ledge animation: climbing up, looking far round (beyond 90° from the wall, by side), shimmying, idle
+    private LedgePose SampleLedgePose()
+    {
+        if (player.State != Player.MovementState.Hang) return LedgePose.None;
+        if (pm.ClimbingLedge) return LedgePose.ClimbUp;
+
+        Vector3 view = Vector3.ProjectOnPlane(cameraHolder.forward, Vector3.up);
+        float look = view.sqrMagnitude > 0.001f ? Vector3.SignedAngle(pm.LedgeFacing, view, Vector3.up) : 0f;
+        // A little hysteresis, so hovering around 90 degrees doesn't flick between poses
+        bool lookingAway = ledgePose == LedgePose.LookLeft || ledgePose == LedgePose.LookRight;
+        float threshold = LookAwayAngle + (lookingAway ? -LookHysteresis : LookHysteresis);
+        if (look >  threshold) return LedgePose.LookRight;
+        if (look < -threshold) return LedgePose.LookLeft;
+
+        if (Mathf.Abs(pm.LedgeShimmy) > 0.1f)
+        {
+            shimmyDirection = pm.LedgeShimmy > 0f == shimmyClipGoesRight ? 1f : -1f;
+            return LedgePose.Shimmy;
+        }
+        return LedgePose.Idle;
     }
 
     private float ComputeMovementSpeed(Player.MovementState state, float speed)
@@ -225,6 +274,25 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         if (layerCount > LayerClimb)
             animator.SetLayerWeight(LayerClimb, Mathf.MoveTowards(
                 animator.GetLayerWeight(LayerClimb), state == Player.MovementState.Climb ? 1f : 0f, blend));
+
+        UpdateLedgeLayer();
+    }
+
+    // Cross-fades the Ledge Layer to the synced pose and blends the layer in while hanging (and out after)
+    private void UpdateLedgeLayer()
+    {
+        if (ledgeLayer < 0) return;
+        var pose = player.State == Player.MovementState.Hang ? ledgePose : LedgePose.None;
+        if (pose != shownLedgePose)
+        {
+            // Out of a climb-up the pose holds while the layer fades, so it doesn't snap back to hanging
+            if (pose != LedgePose.None)
+                animator.CrossFadeInFixedTime(LedgeStates[(int)pose], shownLedgePose == LedgePose.None ? 0f : LedgeFade, ledgeLayer);
+            shownLedgePose = pose;
+        }
+        if (validHashes.Contains(H_ShimmySpeed)) animator.SetFloat(H_ShimmySpeed, shimmyDirection);
+        ledgeWeight = Mathf.MoveTowards(ledgeWeight, pose != LedgePose.None ? 1f : 0f, Time.deltaTime * 5f); // ~0.2 s in and out
+        animator.SetLayerWeight(ledgeLayer, ledgeWeight);
     }
 
     // ─── Head tilt ────────────────────────────────────────────────────────────
@@ -245,6 +313,25 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 
         if (headTilt > 0.01f)
             headBone.rotation = Quaternion.AngleAxis(-headTilt, transform.right) * headBone.rotation;
+
+        LedgeHeadLook();
+    }
+
+    // Hanging, the Ledge Layer poses the whole body, head included: put the view's up/down back on top, split
+    // between the neck and the head (looking right down bends the neck too, tucking the head under the ledge)
+    private void LedgeHeadLook()
+    {
+        float up = Mathf.Clamp((verticalLook - 0.5f) * 180f, -ledgeHeadPitch, ledgeHeadPitch); // + up, - down
+        float target = ledgeWeight > 0.01f && shownLedgePose != LedgePose.ClimbUp ? up * ledgeWeight : 0f;
+        ledgeHeadAngle = Mathf.MoveTowards(ledgeHeadAngle, target, 360f * Time.deltaTime);
+        if (Mathf.Abs(ledgeHeadAngle) < 0.01f) return;
+
+        if (neckBone == null && headBone != null) neckBone = headBone.parent;
+        float neck = ledgeHeadAngle < 0f ? 0.45f : 0.25f; // Down bends the neck more
+        if (neckBone != null)
+            neckBone.rotation = Quaternion.AngleAxis(-ledgeHeadAngle * neck, transform.right) * neckBone.rotation;
+        if (headBone != null)
+            headBone.rotation = Quaternion.AngleAxis(-ledgeHeadAngle * (1f - neck), transform.right) * headBone.rotation;
     }
 
     // ─── Gun ──────────────────────────────────────────────────────────────────
@@ -350,6 +437,8 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
             stream.SendNext(verticalLook);
             stream.SendNext(onGround);
             stream.SendNext(gliding);
+            stream.SendNext((byte)ledgePose);
+            stream.SendNext(shimmyDirection > 0f);
         }
         else
         {
@@ -357,6 +446,8 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
             verticalLook  = (float)stream.ReceiveNext();
             onGround      = (bool) stream.ReceiveNext();
             gliding       = (bool) stream.ReceiveNext();
+            ledgePose     = (LedgePose)(byte)stream.ReceiveNext();
+            shimmyDirection = (bool)stream.ReceiveNext() ? 1f : -1f;
         }
     }
 }

@@ -201,7 +201,7 @@ public class SessionLog : MonoBehaviour
         style ??= new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(Screen.height / 60f), richText = true };
         if (errors > 0)
             GUI.Label(new Rect(8, Screen.height - style.fontSize * 2.2f, Screen.width, style.fontSize * 2f),
-                      $"<color=#FF5A6E>⚠ {errors} error{(errors == 1 ? "" : "s")} · press {ReportKey} to save a bug report</color>", style);
+                      $"<color=#FF5A6E>! {errors} error{(errors == 1 ? "" : "s")} · press {ReportKey} to save a bug report</color>", style);
         if (toast != null && Time.unscaledTime < toastUntil)
             GUI.Label(new Rect(8, Screen.height - style.fontSize * 4.2f, Screen.width, style.fontSize * 2f),
                       $"<color=#FFD23F>{toast}</color>", style);
