@@ -43,7 +43,7 @@ public class HunterMode : GameMode
     public override void StartMatch()
     {
         ghosted.Clear();
-        AssignRoles();
+        if (!TakeDealtRoles()) AssignRoles();
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = 1 });
     }
 
@@ -75,6 +75,9 @@ public class HunterMode : GameMode
                 break;
         }
     }
+
+    protected override bool DealsRolesInPregame => true;
+    protected override void AssignStartingRoles() => AssignRoles();
 
     private static void AssignRoles()
     {

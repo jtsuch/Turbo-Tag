@@ -9,7 +9,7 @@ using Hashtable = ExitGames.Client.Photon.Hashtable;
 public static class MatchRules
 {
     // ─── Defaults ─────────────────────────────────────────────────────────────
-    public const float DefaultHideTime       = 120f;  // seconds
+    public const float DefaultHideTime       = 20f;   // seconds
     public const float DefaultSeekTime       = 300f;  // seconds (only used when the limit is enabled)
     public const int   DefaultHunterCount    = 1;
     public const float DefaultHunterCooldown = 0f;    // % reduction

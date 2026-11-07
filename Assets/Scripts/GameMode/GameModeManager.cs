@@ -233,13 +233,11 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         });
 
         PlayerRoles.ClearPending();
+        bool keepRoles = NetProps.Room(RoomKeys.RolesDealt, false); // Dealt in Pregame: StartMatch keeps them
         foreach (var player in PhotonNetwork.PlayerList)
         {
-            var props = new Hashtable
-            {
-                [PlayerKeys.Role]  = (int)PlayerRole.None,
-                [PlayerKeys.Score] = 0f,
-            };
+            var props = new Hashtable { [PlayerKeys.Score] = 0f };
+            if (!keepRoles) props[PlayerKeys.Role] = (int)PlayerRole.None;
             foreach (string stat in MatchStats.All) props[stat] = 0f;
             player.SetCustomProperties(props);
         }

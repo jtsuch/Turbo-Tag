@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Photon.Pun;
 using PhotonPlayer = Photon.Realtime.Player;
 
 /// <summary>One scoreboard column: a header and how to show a player's value.</summary>
@@ -198,6 +199,48 @@ public abstract class GameMode
     /// these markers). Default: teammates (same role; nobody when roles aren't used).
     /// </summary>
     public virtual bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => viewer == target && viewer != PlayerRole.None;
+
+    /// <summary>
+    /// Who <paramref name="viewer"/> sees through walls (PlayerAppearance's X-ray pass): 0 nobody, 1 an ally (blue;
+    /// the President and the disc carrier show yellow), 2 an enemy (red). Default: teammates, in every mode with teams.
+    /// </summary>
+    public virtual int SeesThroughWalls(PlayerRole viewer, PlayerRole target) => SameTeam(viewer, target) ? 1 : 0;
+
+    /// <summary>
+    /// Tag-like modes: every <see cref="Minimap"/> radar interval during the hunt, hunters see a red circle on the map
+    /// around each hider (somewhere inside it), or a glow on the map's edge toward one too far away.
+    /// </summary>
+    public virtual bool HunterRadar => false;
+
+    // ─── Roles dealt in Pregame ───────────────────────────────────────────────
+
+    /// <summary>Master, when Pregame opens: deals the starting roles now, so everyone picks abilities knowing them.</summary>
+    public void DealPregameRoles()
+    {
+        if (!PhotonNetwork.IsMasterClient || !DealsRolesInPregame) return;
+        AssignStartingRoles();
+        NetProps.SetRoom(RoomKeys.RolesDealt, true);
+    }
+
+    /// <summary>Modes with starting roles (Tag, Protect the President, Hunter, team modes) deal them in Pregame.</summary>
+    protected virtual bool DealsRolesInPregame => false;
+
+    /// <summary>Master: the mode's starting roles (also used by StartMatch when Pregame didn't deal them).</summary>
+    protected virtual void AssignStartingRoles() { }
+
+    /// <summary>
+    /// Master, in StartMatch: true when Pregame dealt the roles and every player still has one (they're kept);
+    /// otherwise the mode deals afresh (someone joined since, or the match skipped Pregame). Clears the flag.
+    /// </summary>
+    protected bool TakeDealtRoles()
+    {
+        bool dealt = NetProps.Room(RoomKeys.RolesDealt, false);
+        if (!dealt) return false;
+        NetProps.SetRoom(RoomKeys.RolesDealt, false);
+        foreach (var p in PhotonNetwork.PlayerList)
+            if (PlayerRoles.Get(p) == PlayerRole.None) return false;
+        return true;
+    }
 
     /// <summary>True when a player in <paramref name="role"/> wears a crown (seen by anyone their identity isn't hidden from).</summary>
     public virtual bool WearsCrown(PlayerRole role, MatchPhase phase) => false;

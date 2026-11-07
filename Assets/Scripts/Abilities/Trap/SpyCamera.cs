@@ -54,6 +54,9 @@ public class SpyCamera : TrapAbility
         viewing = on;
 
         Owner.MovementLocked = on;
+        Owner.ViewingCamera = on;
+        // Watching is for watching: anything held lets go, and other ability keys do nothing until it ends
+        if (on) foreach (var other in Owner.GetComponents<Ability>()) if (other != this && other.enabled) other.Cancel();
         var initializer = Owner.GetComponent<PlayerInitializer>();
         if (initializer != null) initializer.SetOwnBodyVisible(on); // See yourself from the camera
         if (PlayerCam.Local != null)

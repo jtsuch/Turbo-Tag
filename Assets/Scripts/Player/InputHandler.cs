@@ -92,6 +92,16 @@ public class InputHandler : MonoBehaviourPun
         }
         abilitiesBlocked = false;
 
+        // Looking through a Spy Camera: only that camera's own key (to stop watching)
+        if (player.ViewingCamera)
+        {
+            foreach (var slot in Slots)
+                if (abilities.GetEquipped(slot) is SpyCamera cam) Route(cam, Keybinds.ForSlot(slot));
+            foreach (var binding in abilities.CustomBindings)
+                if (abilities.Find(binding.Key) is SpyCamera cam) Route(cam, binding.Value);
+            return;
+        }
+
         KeyCode action = Keybinds.Get(InputAction.Action);
         if (SimInput.KeyDown(action)) abilities.ConfirmDown();
         if (SimInput.KeyUp(action))   abilities.ConfirmUp();

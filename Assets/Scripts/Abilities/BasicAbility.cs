@@ -52,7 +52,7 @@ public abstract class BasicAbility : Ability
         if (IsActive)
         {
             // No Cooldowns (donut, or the cheats' cooldown at 0): the meter never runs down
-            if (Draining && Owner.Modifiers.Get(Stat.Cooldown) > 0f) CurrentDuration -= Time.fixedDeltaTime;
+            if (Owner.Modifiers.Get(Stat.Cooldown) > 0f) CurrentDuration -= Time.fixedDeltaTime * DrainRate;
             if (CurrentDuration <= 0.01f) Deactivate();
         }
         else
@@ -69,6 +69,9 @@ public abstract class BasicAbility : Ability
 
     /// <summary>While active, whether the meter runs down this step (Wall Magnet rests while standing still).</summary>
     protected virtual bool Draining => true;
+
+    /// <summary>While active, how fast the meter runs down (1 = one second per second; default: all or nothing by <see cref="Draining"/>).</summary>
+    protected virtual float DrainRate => Draining ? 1f : 0f;
 
     protected virtual void OnPress() { }
     protected virtual void OnRelease() => Deactivate();

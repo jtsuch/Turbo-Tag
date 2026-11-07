@@ -23,6 +23,9 @@ public abstract class MenuScreen : MonoBehaviourPunCallbacks
 
     protected virtual void Awake()
     {
+        // Cheats-tab key changes last one match: out of the level they're gone (Pregame showed keys a cheat
+        // extra had taken in the last match as unbound)
+        Keybinds.ResetMatchBindings();
         Canvas = UIKit.Canvas(GetType().Name + " Canvas");
         Root = (RectTransform)Canvas.transform;
         UIKit.Background(Root);

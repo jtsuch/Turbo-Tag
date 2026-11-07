@@ -25,7 +25,7 @@ public class Minimap : MonoBehaviour
 
     private Camera cam;
     private RenderTexture texture;
-    private RectTransform card, markers, arrow, frame;
+    private RectTransform card, markers, arrow, frame, radarLayer;
     private bool big;
     private float radius = ViewRadius, mapSize = MapSize;
     private readonly List<Image> dots = new();
@@ -65,6 +65,8 @@ public class Minimap : MonoBehaviour
         texture = new RenderTexture(TextureSize, TextureSize, 24) { name = "Minimap" };
         view.texture = texture;
 
+        radarLayer = UIKit.Rect("Radar", frame); // Under the player markers
+        UIKit.Stretch(radarLayer);
         markers = UIKit.Rect("Markers", frame);
         UIKit.Stretch(markers);
 
@@ -167,6 +169,117 @@ public class Minimap : MonoBehaviour
         arrow.localRotation = Quaternion.Euler(0f, 0f, -yaw);
 
         DrawOthers(local);
+        UpdateRadar(local);
+    }
+
+    // ─── Hunter radar (Tag, Protect the President) ────────────────────────────
+
+    private const float RadarInterval = 20f; // Seconds between sweeps (every hunter's screen agrees: network time)
+    private const float RadarShow     = 7f;  // How long a sweep stays up (fading out)
+    private const float RadarRadius   = 14f; // Metres: the hider is somewhere inside
+    private int   radarSweep = -1;
+    private float radarShownAt = -99f;
+    private readonly List<Vector3> radarPings = new();
+    private readonly List<(Image fill, Image ring)> radarCircles = new();
+    private readonly List<Image> radarGlows = new();
+
+    // Every RadarInterval seconds of the hunt, a hunter's map shows a red circle around each hider (offset at
+    // random so the hider can be anywhere inside it), or, for one off the map, a red glow on the rim toward them
+    private void UpdateRadar(Player local)
+    {
+        var manager = GameModeManager.Instance;
+        var mode = manager != null ? manager.Mode : null;
+        bool on = mode != null && mode.HunterRadar && local.Role == PlayerRole.Hunter && !local.IsCaught
+                  && manager.Phase == MatchPhase.Active && Photon.Pun.PhotonNetwork.InRoom;
+        if (on)
+        {
+            int sweep = (int)(Photon.Pun.PhotonNetwork.Time / RadarInterval);
+            if (sweep != radarSweep)
+            {
+                bool first = radarSweep < 0; // Not the moment the hunt starts: the first sweep is a full interval in
+                radarSweep = sweep;
+                radarPings.Clear();
+                foreach (var p in Player.All)
+                {
+                    if (p == null || p == local || p.IsDownAfterTag) continue;
+                    if (p.Role == PlayerRole.Hunter || p.Role == PlayerRole.None || p.Role == PlayerRole.Ghost) continue;
+                    var rng = new System.Random(sweep * 7919 + p.ActorNumber);
+                    float angle = (float)rng.NextDouble() * Mathf.PI * 2f;
+                    float r = Mathf.Sqrt((float)rng.NextDouble()) * RadarRadius * 0.8f;
+                    radarPings.Add(p.transform.position + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * r);
+                }
+                if (!first && radarPings.Count > 0)
+                {
+                    radarShownAt = Time.time;
+                    Sfx.Here(SfxKind.Shimmer, 0.7f, 0.7f);
+                    if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner("<size=70%>RADAR</size>\nHIDERS SPOTTED", 1.6f);
+                }
+            }
+        }
+        else radarSweep = -1;
+
+        float age = Time.time - radarShownAt;
+        float alpha = on && age < RadarShow ? Mathf.Clamp01((RadarShow - age) / 2f) : 0f; // Fades out over the last 2 s
+        int circles = 0, glows = 0;
+        if (alpha > 0f)
+        {
+            float edge = mapSize * 0.5f;
+            float size = RadarRadius * 2f / (radius * 2f) * mapSize;
+            float pulse = 0.75f + 0.25f * Mathf.Sin(Time.time * 6f);
+            foreach (var centre in radarPings)
+            {
+                Vector3 d = centre - local.transform.position;
+                Vector2 pos = new Vector2(d.x, d.z) / (radius * 2f) * mapSize;
+                if (pos.magnitude - size * 0.5f < edge)
+                {
+                    var (fill, ring) = RadarCircle(circles++);
+                    fill.rectTransform.anchoredPosition = ring.rectTransform.anchoredPosition = pos;
+                    fill.rectTransform.sizeDelta = ring.rectTransform.sizeDelta = new Vector2(size, size);
+                    fill.color = new Color(1f, 0.15f, 0.2f, 0.22f * alpha);
+                    ring.color = new Color(1f, 0.2f, 0.25f, 0.9f * alpha);
+                }
+                else
+                {
+                    var glow = RadarGlow(glows++);
+                    glow.rectTransform.anchoredPosition = pos.normalized * (edge - 6f);
+                    glow.rectTransform.sizeDelta = new Vector2(110f, 110f) * (big ? 1.4f : 1f);
+                    glow.color = new Color(1f, 0.1f, 0.15f, 0.85f * alpha * pulse);
+                }
+            }
+        }
+        for (int i = circles; i < radarCircles.Count; i++) { radarCircles[i].fill.gameObject.SetActive(false); radarCircles[i].ring.gameObject.SetActive(false); }
+        for (int i = glows; i < radarGlows.Count; i++) radarGlows[i].gameObject.SetActive(false);
+    }
+
+    private (Image fill, Image ring) RadarCircle(int index)
+    {
+        while (radarCircles.Count <= index)
+        {
+            var fill = UIKit.Rect("Radar Area", radarLayer).gameObject.AddComponent<Image>();
+            fill.sprite = UISprites.Circle;
+            fill.raycastTarget = false;
+            var ring = UIKit.Rect("Radar Ring", radarLayer).gameObject.AddComponent<Image>();
+            ring.sprite = UISprites.Ring;
+            ring.raycastTarget = false;
+            radarCircles.Add((fill, ring));
+        }
+        var c = radarCircles[index];
+        c.fill.gameObject.SetActive(true);
+        c.ring.gameObject.SetActive(true);
+        return c;
+    }
+
+    private Image RadarGlow(int index)
+    {
+        while (radarGlows.Count <= index)
+        {
+            var glow = UIKit.Rect("Radar Edge", radarLayer).gameObject.AddComponent<Image>();
+            glow.sprite = UISprites.Blob;
+            glow.raycastTarget = false;
+            radarGlows.Add(glow);
+        }
+        radarGlows[index].gameObject.SetActive(true);
+        return radarGlows[index];
     }
 
     private void DrawOthers(Player local)

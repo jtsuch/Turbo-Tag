@@ -180,8 +180,33 @@ public class PregameScreen : MenuScreen
 
     // ─── Selection ────────────────────────────────────────────────────────────
 
+    private GameMode roleMode;
+    private TMP_Text roleLabel;
+    private float nextRoleCheck;
+
+    // Your role for this match (dealt by the host as Pregame opens), beside the title
+    private void BuildRole()
+    {
+        roleMode = GameModeRegistry.Create(MatchRules.GameModeKey);
+        roleLabel = UIKit.Text(Root, "", 30f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Left);
+        UIKit.Place(roleLabel.rectTransform, new Vector2(0f, 1f), new Vector2(900f, -70f), new Vector2(330f, 90f));
+        roleLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        if (PhotonNetwork.IsMasterClient) roleMode.DealPregameRoles();
+    }
+
+    private void UpdateRole()
+    {
+        if (roleLabel == null || Time.unscaledTime < nextRoleCheck) return;
+        nextRoleCheck = Time.unscaledTime + 0.3f;
+        var role = PlayerRoles.Get(PhotonNetwork.LocalPlayer);
+        bool show = role != PlayerRole.None && NetProps.Room(RoomKeys.RolesDealt, false);
+        string hex = ColorUtility.ToHtmlStringRGB(PlayerRoles.Color(role));
+        roleLabel.text = show ? $"<size=55%><color=#{ColorUtility.ToHtmlStringRGB(Theme.textMuted)}>YOUR ROLE</color></size>\n<color=#{hex}>{roleMode.RoleName(role)}</color>" : "";
+    }
+
     private void Start()
     {
+        BuildRole();
         // Start everyone on their last picks (written now, so a forced start still equips them)
         foreach (AbilitySlot slot in System.Enum.GetValues(typeof(AbilitySlot)))
             AbilityLoadout.SetLocal(slot, AbilityLoadout.LastChoice(slot));
@@ -226,6 +251,7 @@ public class PregameScreen : MenuScreen
 
     private void Update()
     {
+        UpdateRole();
         var players = PhotonNetwork.PlayerList;
         int ready = 0;
         waiting.Clear();

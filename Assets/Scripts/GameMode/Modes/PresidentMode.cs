@@ -26,6 +26,7 @@ public class PresidentMode : GameMode
     private readonly Dictionary<int, float> lastContactRequest = new(); // Local: throttles tag requests
 
     public override string DisplayName => "Protect the President";
+    public override bool HunterRadar => true;
     public override bool   UsesRoles   => true;
 
     // Tagging the President ends the match: they stay down, watching, until the scoreboard
@@ -35,7 +36,7 @@ public class PresidentMode : GameMode
 
     public override void StartMatch()
     {
-        AssignRoles();
+        if (!TakeDealtRoles()) AssignRoles();
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = 1 });
     }
 
@@ -60,6 +61,9 @@ public class PresidentMode : GameMode
                 break;
         }
     }
+
+    protected override bool DealsRolesInPregame => true;
+    protected override void AssignStartingRoles() => AssignRoles();
 
     /// <summary>Random hunters (at least one President is always left), a random President, the rest defend.</summary>
     private static void AssignRoles()
@@ -162,9 +166,13 @@ public class PresidentMode : GameMode
         viewer == PlayerRole.Hunter && target != PlayerRole.Hunter
         && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding);
 
-    // Two teams: hunters, and the President with the defenders
+    // Two teams: hunters, and the President with the defenders; the defenders see the hunters too
     public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) =>
-        (viewer == PlayerRole.Hunter) == (target == PlayerRole.Hunter);
+        viewer != PlayerRole.None && (viewer != PlayerRole.Hunter || target == PlayerRole.Hunter);
+
+    // Teammates through walls (the President yellow), and the hunters (red) for the President and defenders
+    public override int SeesThroughWalls(PlayerRole viewer, PlayerRole target) =>
+        viewer != PlayerRole.None && viewer != PlayerRole.Hunter && target == PlayerRole.Hunter ? 2 : base.SeesThroughWalls(viewer, target);
 
     public override bool WearsCrown(PlayerRole role, MatchPhase phase) =>
         role == PlayerRole.President && phase != MatchPhase.Waiting;

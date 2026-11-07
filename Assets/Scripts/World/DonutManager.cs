@@ -49,6 +49,7 @@ public class DonutManager : MonoBehaviourPunCallbacks
     {
         AdoptIfNewMaster();
         CheckTouch();
+        DropLeftCarriers();
         UpdateStare();
         if (PhotonNetwork.IsMasterClient) MasterUpdate();
     }
@@ -213,8 +214,25 @@ public class DonutManager : MonoBehaviourPunCallbacks
     private void CheckTouch()
     {
         var local = Player.Local;
-        if (local == null || local.IsCaught || donuts.Count == 0 || Time.time - lastRequest < 0.3f) return;
+        if (local == null || local.IsCaught || Time.time - lastRequest < 0.3f) return;
         if (!local.TryGetComponent(out CapsuleCollider body)) return;
+
+        // Hunter mode ghosts get nothing from donuts: they pick them up (F) and carry them to the living
+        if (local.Role == PlayerRole.Ghost)
+        {
+            GhostPickUp(local, body);
+            return;
+        }
+        // Touching a ghost who carries one hands it over
+        foreach (var pair in carried)
+        {
+            var ghost = Player.Find(pair.Key);
+            if (ghost == null || Vector3.Distance(body.ClosestPoint(ghost.transform.position + Vector3.up), ghost.transform.position + Vector3.up) > HandoffRange) continue;
+            lastRequest = Time.time;
+            photonView.RPC(nameof(RPC_RequestHandoff), RpcTarget.MasterClient, pair.Key);
+            return;
+        }
+        if (donuts.Count == 0) return;
 
         foreach (var pair in donuts)
         {
@@ -224,6 +242,83 @@ public class DonutManager : MonoBehaviourPunCallbacks
             lastRequest = Time.time;
             photonView.RPC(nameof(RPC_RequestDonut), RpcTarget.MasterClient, pair.Key);
             return;
+        }
+    }
+
+    // ─── Ghosts carry donuts (Hunter mode) ────────────────────────────────────
+
+    private const float HandoffRange = 1.6f; // From a living player's body to a carrying ghost
+    private readonly Dictionary<int, Donut> carried = new(); // Ghost actor -> the donut over their head
+
+    private void GhostPickUp(Player local, CapsuleCollider body)
+    {
+        if (carried.ContainsKey(local.ActorNumber)) return; // One at a time
+        foreach (var pair in donuts)
+        {
+            if (pair.Value == null) continue;
+            Vector3 at = pair.Value.transform.position;
+            if (Vector3.Distance(body.ClosestPoint(at), at) > Donut.TouchRadius + 0.6f) continue;
+            KeyCode key = Keybinds.Get(InputAction.Grab);
+            local.ClaimGrabKey();
+            HUDManager.Prompt(key, "Pick up the donut (carry it to a teammate)");
+            if (!PauseMenuManager.IsPaused && Input.GetKeyDown(key))
+            {
+                lastRequest = Time.time;
+                photonView.RPC(nameof(RPC_RequestCarry), RpcTarget.MasterClient, pair.Key);
+            }
+            return;
+        }
+    }
+
+    [PunRPC]
+    private void RPC_RequestCarry(int id, PhotonMessageInfo info)
+    {
+        if (!PhotonNetwork.IsMasterClient || info.Sender == null || PlayerRoles.Get(info.Sender) != PlayerRole.Ghost) return;
+        if (carried.ContainsKey(info.Sender.ActorNumber) || !expiry.Remove(id)) return;
+        photonView.RPC(nameof(RPC_CarryDonut), RpcTarget.All, id, info.Sender.ActorNumber);
+    }
+
+    [PunRPC]
+    private void RPC_CarryDonut(int id, int ghostActor)
+    {
+        if (!donuts.TryGetValue(id, out var donut)) return;
+        donuts.Remove(id);
+        var ghost = Player.Find(ghostActor);
+        if (donut == null || ghost == null) { if (donut != null) donut.Pop(false); return; }
+        donut.CarryBy(ghost.transform);
+        carried[ghostActor] = donut;
+        Sfx.At(SfxKind.Pop, donut.transform.position, 0.7f, 25f, 1.5f);
+    }
+
+    [PunRPC]
+    private void RPC_RequestHandoff(int ghostActor, PhotonMessageInfo info)
+    {
+        if (!PhotonNetwork.IsMasterClient || info.Sender == null || !carried.ContainsKey(ghostActor)) return;
+        var role = PlayerRoles.Get(info.Sender);
+        if (role == PlayerRole.Ghost || role == PlayerRole.None) return;
+        MatchStats.Add(info.Sender, PlayerKeys.StatDonuts);
+        photonView.RPC(nameof(RPC_HandDonut), RpcTarget.All, ghostActor, info.Sender.ActorNumber);
+    }
+
+    [PunRPC]
+    private void RPC_HandDonut(int ghostActor, int receiver)
+    {
+        if (!carried.TryGetValue(ghostActor, out var donut)) return;
+        carried.Remove(ghostActor);
+        bool golden = donut != null && donut.Golden;
+        if (donut != null) donut.Pop(true);
+        if (receiver == PhotonNetwork.LocalPlayer.ActorNumber && Player.Local != null) GiveLocal(golden);
+    }
+
+    // A carrying ghost who left: their donut goes
+    private void DropLeftCarriers()
+    {
+        if (carried.Count == 0) return;
+        foreach (var actor in new List<int>(carried.Keys))
+        {
+            if (Player.Find(actor) != null) continue;
+            if (carried[actor] != null) carried[actor].Pop(false);
+            carried.Remove(actor);
         }
     }
 
@@ -288,10 +383,15 @@ public class DonutManager : MonoBehaviourPunCallbacks
         {
             var taker = PhotonNetwork.CurrentRoom?.GetPlayer(takenBy);
             string name = taker == null ? "Someone" : string.IsNullOrEmpty(taker.NickName) ? $"Player {takenBy}" : taker.NickName;
-            CombatHud.Post($"<color=#FFD23F>\u2605 {name} grabbed a GOLDEN DONUT!</color>");
+            CombatHud.Post($"<color=#FFD23F><b>GOLDEN!</b> {name} grabbed a golden donut</color>"); // The fonts have no star glyph
         }
         if (takenBy <= 0 || takenBy != PhotonNetwork.LocalPlayer.ActorNumber || Player.Local == null) return;
+        GiveLocal(golden);
+    }
 
+    // The local player gets a donut's effect (or a golden donut's boons)
+    private void GiveLocal(bool golden)
+    {
         var entry = golden ? new Donut.Entry(typeof(GoldenDonutEffect), 3f, 0f, Donut.Kind.Good) : Donut.Roll();
         if (entry.Everyone)
         {

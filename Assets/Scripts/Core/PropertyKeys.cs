@@ -22,6 +22,8 @@ public static class RoomKeys
     public const string Modifier      = "Match_Modifier";      // This round's RoundModifiers id ("" none)
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
+    /// <summary>The starting roles were dealt in Pregame (so players chose abilities knowing them): the level keeps them.</summary>
+    public const string RolesDealt = "Match_RolesDealt";
 
     /// <summary>Keys exposed in the room listing so the Join List can show them.</summary>
     public static readonly string[] LobbyVisible = { Map, GameMode };

@@ -2,9 +2,12 @@ using UnityEngine;
 using Photon.Pun;
 
 /// <summary>
-/// Plays positional audio for the local player's footsteps, jumps, lands, and sliding.
-/// The local client drives its own audio in Update; RPCs replicate one-shot and looping
-/// sounds to remote clients so they hear positional audio at this object's world position.
+/// Plays positional audio for a player's footsteps, jumps, lands, and sliding.
+/// Footsteps play on every screen from each copy's own (synced) movement, so you hear other players walking: they
+/// used to be played only for the local player, which made everyone else silent. Others' steps are louder and
+/// carry further (hunters listen for them); crouching and crawling are quieter (sneaking). The step is a sound made
+/// in code (<see cref="SfxKind.Step"/>); tick <c>useClassicFootsteps</c> to go back to the old clips.
+/// Jumps, lands and the slide loop are sent to remote clients by RPC.
 /// Attach to: ThePlayer prefab — requires AudioSource and PhotonView on the same object.
 /// </summary>
 [RequireComponent(typeof(AudioSource))]
@@ -16,7 +19,14 @@ public class PlayerAudio : MonoBehaviour
     [SerializeField] private PlayerMovement movement;
 
     [Header("Footstep Clips")]
+    [Tooltip("The old recorded footsteps (kept): used only when Use Classic Footsteps is on.")]
     [SerializeField] private AudioClip[] footsteps;
+    [Tooltip("Use the old recorded clips instead of the synthesised penguin step.")]
+    [SerializeField] private bool useClassicFootsteps;
+    [Tooltip("Volume of other players' steps (yours use Footstep Volume).")]
+    [SerializeField] private float remoteStepVolume = 0.9f;
+    [Tooltip("How far other players' steps can be heard (m).")]
+    [SerializeField] private float remoteStepRange = 38f;
 
     [Header("Action Clips")]
     [SerializeField] private AudioClip jumpSound;
@@ -68,41 +78,55 @@ public class PlayerAudio : MonoBehaviour
         player.Landed -= HandleLand;
     }
 
+    private PlayerAnimatorController anim;
+
     private void Update()
     {
-        // Only drive audio logic for the local player.
-        // Remote players hear audio via RPCs, not local Update.
+        HandleFootsteps(); // Every copy: from its own synced movement
         if (!photonView.IsMine) return;
-
-        HandleFootsteps();
         HandleSlide();
     }
 
     // ─── Footsteps ────────────────────────────────────────────────────────────
 
+    private bool leftFoot;
+
     private void HandleFootsteps()
     {
-        // No footsteps if airborne, hanging, climbing, or sliding
-        if (!movement.OnGround) return;
-        if (player.State == Player.MovementState.Hang) return;
-        if (player.State == Player.MovementState.Climb) return;
-        if (isSliding) return;
+        bool mine = photonView.IsMine;
+        if (!mine && anim == null) anim = GetComponent<PlayerAnimatorController>();
+        bool grounded = mine ? movement.OnGround : anim != null && anim.GroundedParam;
+
+        // No footsteps if airborne, hanging, climbing, sliding, caught or a ghost
+        var state = player.State;
+        if (!grounded || state == Player.MovementState.Hang || state == Player.MovementState.Climb) return;
+        if (player.IsCaught || player.IsDownAfterTag || player.Role == PlayerRole.Ghost) return;
+        if (mine ? isSliding : movement != null && state == Player.MovementState.Prone && player.Velocity.magnitude > player.Stats.proneSpeed + 1f) return;
 
         // Check if the player is actually moving horizontally
         Vector3 flatVelocity = Vector3.ProjectOnPlane(player.Velocity, Vector3.up);
         if (flatVelocity.magnitude < 2f) return;
 
-        bool isSprinting = player.State == Player.MovementState.WallRun
+        bool isSprinting = state == Player.MovementState.WallRun
                         || flatVelocity.magnitude >= player.Stats.sprintSpeed * 0.8f;
 
         float interval = isSprinting ? sprintStepInterval : walkStepInterval;
 
         footstepTimer -= Time.deltaTime;
-        if (footstepTimer <= 0f)
+        if (footstepTimer > 0f) return;
+        footstepTimer = interval;
+
+        // Sneaking is quieter: crouched about half, crawling a quarter; sprinting a little louder
+        float stance = state == Player.MovementState.Crouch ? 0.45f : state == Player.MovementState.Prone ? 0.25f : isSprinting ? 1.15f : 1f;
+        if (useClassicFootsteps)
         {
-            PlayRandomFromPool(footsteps, footstepVolume);
-            footstepTimer = interval;
+            PlayRandomFromPool(footsteps, footstepVolume * stance * (mine ? 1f : 2f));
+            return;
         }
+        leftFoot = !leftFoot;
+        float pitch = (leftFoot ? 0.96f : 1.06f) * Random.Range(0.92f, 1.08f) / Mathf.Sqrt(Mathf.Max(0.3f, player.Size));
+        float volume = (mine ? footstepVolume * 1.5f : remoteStepVolume) * stance;
+        Sfx.At(SfxKind.Step, transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
     }
 
     // ─── Sliding ──────────────────────────────────────────────────────────────

@@ -138,6 +138,33 @@ public abstract class GrappleAbility : BasicAbility, IPunObservable
     }
 
     // The rope object is shared by every grapple, so only touch it on state changes
+    /// <summary>The rope's colour for this variant (null: the rope's own look).</summary>
+    protected virtual Color? RopeColor => null;
+
+    // The rope is shared by every grapple on the player: each sets (or puts back) its colour when it starts drawing
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorId     = Shader.PropertyToID("_Color");
+    private Color? ropeOriginal;
+    private Gradient ropeGradient;
+
+    private void ApplyRopeColor()
+    {
+        var mat = lr.material; // An instance per player's rope
+        int id = mat.HasProperty(BaseColorId) ? BaseColorId : mat.HasProperty(ColorId) ? ColorId : -1;
+        ropeOriginal ??= id >= 0 ? mat.GetColor(id) : Color.white;
+        ropeGradient ??= lr.colorGradient;
+        if (RopeColor.HasValue)
+        {
+            if (id >= 0) mat.SetColor(id, RopeColor.Value);
+            lr.startColor = lr.endColor = RopeColor.Value;
+        }
+        else
+        {
+            if (id >= 0) mat.SetColor(id, ropeOriginal.Value);
+            lr.colorGradient = ropeGradient;
+        }
+    }
+
     private void DrawRope()
     {
         if (rope == null || lr == null) return;
@@ -155,6 +182,7 @@ public abstract class GrappleAbility : BasicAbility, IPunObservable
         {
             drawingRope = true;
             rope.SetActive(true);
+            ApplyRopeColor();
             lr.positionCount = 2;
         }
 

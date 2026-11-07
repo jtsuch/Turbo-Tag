@@ -9,6 +9,7 @@ using UnityEngine;
 ///   owner first touch → RPC_Land (all: same spot everywhere, plop) → each client lures its own player while in
 ///   range (PlayerCam.Lure) → owner removes it after the lure time.
 /// It only settles on ground (walls and ceilings bounce it off), lying flat on the floor under where it touched.
+/// A lured player within <see cref="eatRange"/> can press the Grab key (F) to eat it: the fish is gone for everyone.
 /// The thrower and shielded players aren't lured. Attach to: Resources/Object/FishBait (Rigidbody, Collider, PhotonView).
 /// </summary>
 public class FishBaitObject : NetworkedProjectile
@@ -22,6 +23,8 @@ public class FishBaitObject : NetworkedProjectile
     [SerializeField] private float maxFlightTime = 6f;
     [Tooltip("Half its thickness lying on its side: how far above the floor its middle rests.")]
     [SerializeField] private float restHeight = 0.11f;
+    [Tooltip("How close a lured player must be to eat the fish (Grab key).")]
+    [SerializeField] private float eatRange = 2f;
 
     private bool  landed;
     private float lureEndsAt;
@@ -102,8 +105,29 @@ public class FishBaitObject : NetworkedProjectile
         var local = Player.Local;
         if (local == null || local.IsCaught || local.ActorNumber == photonView.OwnerActorNr) return;
         if (!local.AffectedBy(photonView.OwnerActorNr)) return;
-        if (Vector3.Distance(local.transform.position, transform.position) > lureRadius * Mathf.Sqrt(Power)) return;
+        float distance = Vector3.Distance(local.transform.position, transform.position);
+        if (distance > lureRadius * Mathf.Sqrt(Power)) return;
         if (PlayerCam.Local != null) PlayerCam.Local.Lure(transform.position);
+
+        // Close enough: eat it and get your eyes back
+        if (distance <= eatRange && !local.IsCaught)
+        {
+            KeyCode key = Keybinds.Get(InputAction.Grab);
+            local.ClaimGrabKey(); // F eats, it doesn't also grab a ledge
+            HUDManager.Prompt(key, "Eat the fish");
+            if (!PauseMenuManager.IsPaused && Input.GetKeyDown(key)) photonView.RPC(nameof(RPC_Eaten), RpcTarget.All);
+        }
+    }
+
+    [PunRPC]
+    private void RPC_Eaten()
+    {
+        if (!landed || Time.time > lureEndsAt) return;
+        lureEndsAt = 0f; // Nobody is lured any more
+        Sfx.At(SfxKind.Pop, transform.position, 1f, 25f, 0.8f);
+        Vfx.Burst(transform.position, new Color(1f, 0.85f, 0.4f), 14, 2.5f, 0.2f, 0.5f);
+        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = false;
+        if (IsAuthority) DestroyNetworked();
     }
 
 #if UNITY_EDITOR

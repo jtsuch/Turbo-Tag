@@ -235,10 +235,21 @@ public class Donut : MonoBehaviour
         return donut;
     }
 
+    private Transform carrier;
+
+    /// <summary>Hunter mode: a ghost carries it (smaller, no beam), floating over their head until handed over.</summary>
+    public void CarryBy(Transform ghost)
+    {
+        carrier = ghost;
+        transform.localScale *= 0.7f;
+        foreach (var beam in GetComponentsInChildren<LineRenderer>()) beam.enabled = false;
+    }
+
     private void Update()
     {
         float t = Time.time + phase;
-        transform.position = basePosition + Vector3.up * (Mathf.Sin(t * 2f) * 0.15f);
+        Vector3 anchor = carrier != null ? carrier.position + Vector3.up * 3.3f : basePosition;
+        transform.position = anchor + Vector3.up * (Mathf.Sin(t * 2f) * 0.15f);
         if (visual != null) visual.localRotation = Quaternion.Euler(18f * Mathf.Sin(t * 0.7f), t * 70f, 12f);
 
         if (Time.time >= nextGlint)

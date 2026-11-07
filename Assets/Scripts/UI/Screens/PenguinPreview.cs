@@ -250,10 +250,30 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
     // One directional light for every preview (they all share the preview layer). Each preview used to bring its
     // own: with the podium's three, Unity had to choose between three directional lights per penguin and one
     // penguin could come out unlit (black). Rebuilt when a new scene has none.
-    private static Light keyLight;
+    private static Light keyLight, sunBefore;
+    private static bool  sunHooked, sunSwapped;
 
     private static void EnsureKeyLight()
     {
+        if (!sunHooked)
+        {
+            // While a preview camera renders, its key light is the sun (URP's main light): whatever other
+            // directional lights a scene has, the penguins are always lit (podium penguins came out black)
+            sunHooked = true;
+            UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering += (_, cam) =>
+            {
+                if (keyLight == null || cam.targetTexture == null || cam.cullingMask != 1 << PreviewLayer) return;
+                sunBefore = RenderSettings.sun;
+                RenderSettings.sun = keyLight;
+                sunSwapped = true;
+            };
+            UnityEngine.Rendering.RenderPipelineManager.endCameraRendering += (_, cam) =>
+            {
+                if (!sunSwapped) return;
+                RenderSettings.sun = sunBefore;
+                sunSwapped = false;
+            };
+        }
         if (keyLight != null) return;
         var go = new GameObject("Penguin Preview Light");
         go.transform.rotation = Quaternion.Euler(35f, 160f, 0f);

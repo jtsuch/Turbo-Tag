@@ -229,6 +229,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Movement off while abilities still work (looking through a placed Camera).</summary>
     public bool MovementLocked { get; set; }
 
+    /// <summary>Owner: looking through a placed Spy Camera. Only the camera's own key works (to stop watching).</summary>
+    public bool ViewingCamera { get; set; }
+
     public bool CanMove =>
         !IsCaught && !IsHeld && !MovementLocked && (GameModeManager.Instance == null || GameModeManager.Instance.CanMove(this));
 

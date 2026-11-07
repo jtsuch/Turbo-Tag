@@ -37,7 +37,7 @@ public abstract class TeamMode : GameMode
     {
         tally.Clear();
         Scores.ResetAll();
-        AssignTeams();
+        if (!TakeDealtRoles()) AssignTeams();
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = 1 });
     }
 
@@ -68,6 +68,9 @@ public abstract class TeamMode : GameMode
     protected virtual void ActiveUpdate() { }
 
     // Shuffled, then dealt out alternately: sizes differ by one at most
+    protected override bool DealsRolesInPregame => true;
+    protected override void AssignStartingRoles() => AssignTeams();
+
     private static void AssignTeams()
     {
         var players = new List<PhotonPlayer>(PhotonNetwork.PlayerList);

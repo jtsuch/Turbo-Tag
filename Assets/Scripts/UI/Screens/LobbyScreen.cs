@@ -265,6 +265,7 @@ public class LobbyScreen : MenuScreen
         var mode = GameModeRegistry.Find(MatchRules.GameModeKey);
         if (mode == null) foreach (var m in GameModeRegistry.Definitions) { mode = m; break; }
         MatchRules.ApplyGameMode(mode, overwrite: false);
+        if (NetProps.Room(RoomKeys.RolesDealt, false)) NetProps.SetRoom(RoomKeys.RolesDealt, false); // Pregame deals afresh
     }
 
     // ─── Refresh ──────────────────────────────────────────────────────────────

@@ -33,14 +33,32 @@ public class TagMode : GameMode
     public override bool   UsesRoles   => true;
     public override bool   ShowsScores => true;
     public override bool   HasRounds   => true;
+    public override bool   HunterRadar => true;
 
     // ─── Master: match flow ───────────────────────────────────────────────────
 
     public override void StartMatch()
     {
         Scores.ResetAll();
+        if (TakeDealtRoles())
+        {
+            var hunters = new List<int>();
+            foreach (var p in PhotonNetwork.PlayerList)
+                if (PlayerRoles.Get(p) == PlayerRole.Hunter) hunters.Add(p.ActorNumber);
+            NetProps.SetRoom(RoomKeys.ServedAsHunter, hunters.ToArray());
+            StartRound(1, keepRoles: true);
+            return;
+        }
         NetProps.SetRoom(RoomKeys.ServedAsHunter, new int[0]);
         StartRound(1);
+    }
+
+    protected override bool DealsRolesInPregame => true;
+
+    protected override void AssignStartingRoles()
+    {
+        NetProps.SetRoom(RoomKeys.ServedAsHunter, new int[0]); // A fresh match: nobody has hunted yet
+        AssignRoles();
     }
 
     public override void MasterUpdate()
@@ -74,11 +92,11 @@ public class TagMode : GameMode
         }
     }
 
-    private void StartRound(int round)
+    private void StartRound(int round, bool keepRoles = false)
     {
         caughtThisRound.Clear();
         becameHunterAt.Clear();
-        AssignRoles();
+        if (!keepRoles) AssignRoles();
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = round });
     }
 
@@ -173,6 +191,13 @@ public class TagMode : GameMode
 
     // ─── Master: tagging ──────────────────────────────────────────────────────
 
+    // Hiders always know where the hunters are: through walls (red) and on the map
+    public override int SeesThroughWalls(PlayerRole viewer, PlayerRole target) =>
+        viewer == PlayerRole.Hider && target == PlayerRole.Hunter ? 2 : base.SeesThroughWalls(viewer, target);
+
+    public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) =>
+        base.ShowsOnMap(viewer, target) || (viewer == PlayerRole.Hider && target == PlayerRole.Hunter);
+
     public override void HandleTagRequest(PhotonPlayer tagger, PhotonPlayer target)
     {
         if (Phase != MatchPhase.Active || tagger == null || target == null) return;
@@ -198,10 +223,11 @@ public class TagMode : GameMode
         Manager.BroadcastTag(tagger, target);
     }
 
-    // A hider who falls off the edge is caught, as if tagged by nobody (hide phase too)
+    // A hider who falls off the edge during the hunt is caught, as if tagged by nobody (in the hide phase they
+    // just respawn: the Spawner has already put them back)
     public override void HandleFall(PhotonPlayer player)
     {
-        if ((Phase != MatchPhase.Active && Phase != MatchPhase.Hiding) || player == null) return;
+        if (Phase != MatchPhase.Active || player == null) return;
         if (PlayerRoles.Get(player) != PlayerRole.Hider || caughtThisRound.Contains(player.ActorNumber)) return;
 
         BankHider(player);

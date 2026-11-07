@@ -162,7 +162,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         int  kind    = !clear && !silhouette && manager != null && manager.Mode != null && Player.Local != null
                        ? manager.Mode.OutlineFor(Player.Local.Role, player.Role) : 0;
         Material outline = OutlineMaterial(kind);
-        Material xray = (XRay || player.IsBeacon) && !player.IsDownAfterTag ? XRayMaterial(IsTeammateOfLocal()) : null;
+        Material xray = XRayMaterial(XRayKind(manager));
         if (clear != showingClear || outline != showingOutline || xray != showingXRay) SetMaterials(clear, outline, xray);
 
         // Ghosts (Hunter mode) are pale and see-through on every screen
@@ -294,19 +294,43 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         return blueOutline;
     }
 
-    // Resources/Cosmetics/XRay (TurboTag/XRay shader): one copy per colour
-    private static Material XRayMaterial(bool ally)
+    // Who this screen sees through walls: 0 none, 1 ally (blue), 2 enemy (red), 3 key ally (yellow: the President,
+    // the disc carrier). The X-ray donut and Beacon show anyone; otherwise the mode decides (teammates in every mode,
+    // hunters for hiders in Tag and Protect the President). A cloaked enemy stays hidden.
+    private int XRayKind(GameModeManager manager)
     {
-        if (xrayAlly == null || xrayEnemy == null)
+        if (player.IsDownAfterTag) return 0;
+        var local = Player.Local;
+        int kind = 0;
+        if (XRay || player.IsBeacon) kind = IsTeammateOfLocal() ? 1 : 2;
+        else if (local != null && local != player && manager != null && manager.Mode != null)
+        {
+            kind = manager.Mode.SeesThroughWalls(local.Role, player.Role);
+            if (kind == 2 && CloakAmount > 0.5f) kind = 0;
+        }
+        bool key = player.Role == PlayerRole.President
+                   || (KeepAwayDisc.Instance != null && KeepAwayDisc.Instance.Holder == player.ActorNumber);
+        return kind == 1 && key ? 3 : kind;
+    }
+
+    private static Material xrayKey;
+
+    // Resources/Cosmetics/XRay (TurboTag/XRay shader): one copy per colour
+    private static Material XRayMaterial(int kind)
+    {
+        if (kind == 0) return null;
+        if (xrayAlly == null || xrayEnemy == null || xrayKey == null)
         {
             var source = Resources.Load<Material>("Cosmetics/XRay");
             if (source == null) return null;
             xrayAlly  = new Material(source) { name = "XRay Ally" };
             xrayEnemy = new Material(source) { name = "XRay Enemy" };
+            xrayKey   = new Material(source) { name = "XRay Key" };
             xrayAlly.SetColor("_Color",  new Color(0.25f, 0.6f, 1f, 0.75f));
             xrayEnemy.SetColor("_Color", new Color(1f, 0.25f, 0.3f, 0.75f));
+            xrayKey.SetColor("_Color",   new Color(1f, 0.85f, 0.2f, 0.8f));
         }
-        return ally ? xrayAlly : xrayEnemy;
+        return kind == 1 ? xrayAlly : kind == 2 ? xrayEnemy : xrayKey;
     }
 
     // Same side as the local player: both hunters or both not, in modes with roles (no teams otherwise)
