@@ -104,6 +104,14 @@ public class Player : MonoBehaviourPun, IPunObservable
     public bool IsDashing  { get; set; }
     public bool IsCaught   { get; private set; }
 
+    /// <summary>
+    /// Owner: something else uses the Grab key right now (the Spy Camera's withdraw prompt), so movement doesn't
+    /// also grab a ledge or an object with it. Call <see cref="ClaimGrabKey"/> every frame it applies.
+    /// </summary>
+    public bool GrabKeyClaimed => Time.frameCount - grabClaimFrame <= 1;
+    public void ClaimGrabKey() => grabClaimFrame = Time.frameCount;
+    private int grabClaimFrame = -10;
+
     /// <summary>Free Spin (PlayerCam): the body is tumbling, so movement ignores its tilt.</summary>
     public bool IsFreeSpinning { get; set; }
 

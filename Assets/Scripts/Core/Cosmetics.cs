@@ -19,6 +19,22 @@ public static class Cosmetics
     private const float HatSink   = 0.2f;  // Below the top of the body: the hat sits down over the head
     private const float BackDepth = 0.72f; // Behind the chest bone
     private const float BackDrop  = 0.2f;  // Below the chest bone: the back anchor is the penguin's rear
+    private const float StandingTop = 2.9f; // Top of a standing size-1 penguin above its feet (Player.TopY)
+
+    /// <summary>The bone a rigid item rides when its definition names none: the head for Head gear, else the chest.</summary>
+    public static string AnchorBone(CosmeticSlot slot) => slot == CosmeticSlot.Head ? "Head" : "Chest";
+
+    /// <summary>
+    /// Where a rigid item sits on a standing, size-1 penguin, relative to the player root, given its anchor bone's rest
+    /// position there: the same spots as <see cref="Place"/> (the wearer turns this into an offset from the bone, so
+    /// the item then follows the bone through tilts, prone and every animation).
+    /// </summary>
+    public static Matrix4x4 RestPlacement(CosmeticSlot slot, Vector3 anchor)
+    {
+        if (slot == CosmeticSlot.Head)
+            return Matrix4x4.TRS(new Vector3(anchor.x, StandingTop - HatSink, anchor.z), Quaternion.identity, Vector3.one);
+        return Matrix4x4.TRS(anchor - Vector3.forward * BackDepth - Vector3.up * BackDrop, Quaternion.LookRotation(Vector3.back), Vector3.one);
+    }
 
     public static string PropertyKey(CosmeticSlot slot) => "Cos_" + slot;
 

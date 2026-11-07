@@ -9,12 +9,13 @@ using UnityEngine.UI;
 /// <summary>
 /// The main menu: logo and big buttons on the left (Quick Play, Create Game, Join Game, Settings, Quit), the
 /// player's card on the right (name, penguin colour picker, log out), connection status and version along
-/// the bottom. Logs in or registers first (PlayFab through <see cref="AccountService"/>) in a modal that
+/// the bottom, with the game mode picker (Quick Play looks for that mode, Create Game starts it). Logs in or registers first (PlayFab through <see cref="AccountService"/>) in a modal that
 /// can't be dismissed. Attach to one GameObject in the MainMenu scene.
 /// </summary>
 public class MainMenuScreen : MenuScreen
 {
     public const string UsernamePrefsKey = "Username";
+    private const string ModePrefsKey = "MainMenu_Mode";
 
     private static readonly Regex UsernameRegex = new(@"^[a-zA-Z0-9]{3,24}$");
 
@@ -25,6 +26,8 @@ public class MainMenuScreen : MenuScreen
     private readonly List<(Image ring, string skin)> swatches = new();
     private UIModal settings;
     private bool busy, creating;
+    private readonly List<GameModeDefinition> modes = new();
+    private int modeIndex;
 
     // Login
     private enum LoginMode { Login, Register, Reset }
@@ -43,6 +46,7 @@ public class MainMenuScreen : MenuScreen
         BuildLeft();
         BuildPlayerCard();
         BuildFooter();
+        BuildModePicker();
 
         settings = UIKit.Modal(Root, "Settings", new Vector2(1280f, 860f));
         settings.NoFooter();
@@ -56,13 +60,17 @@ public class MainMenuScreen : MenuScreen
 
     private void BuildLeft()
     {
+        // The logo picture is mostly empty space: show only the title (its top 40%), twice the size it used to be
         var logo = UIKit.Rect("Logo", Root).gameObject.AddComponent<RawImage>();
         logo.texture = Theme.logo;
         logo.raycastTarget = false;
-        float aspect = Theme.logo != null ? Theme.logo.width / (float)Theme.logo.height : 1.45f;
-        UIKit.Place(logo.rectTransform, new Vector2(0f, 1f), new Vector2(30f, 10f), new Vector2(560f * aspect, 560f));
+        var crop = new Rect(0.15f, 0.55f, 0.70f, 0.42f); // UV (from the bottom left) around the lettering
+        logo.uvRect = crop;
+        float aspect = Theme.logo != null ? crop.width * Theme.logo.width / (crop.height * Theme.logo.height) : 1.67f;
+        const float logoHeight = 460f;
+        UIKit.Place(logo.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -10f), new Vector2(logoHeight * aspect, logoHeight));
 
-        var column = UIKit.Place(UIKit.Rect("Buttons", Root), new Vector2(0f, 0f), new Vector2(110f, 120f), new Vector2(560f, 560f));
+        var column = UIKit.Place(UIKit.Rect("Buttons", Root), new Vector2(0f, 0f), new Vector2(110f, 90f), new Vector2(560f, 560f));
         UIKit.VStack(column, 18f, null, TextAnchor.LowerLeft);
 
         var quick  = UIKit.Button(column, "Quick Play", UIKit.Style.Primary, QuickPlay, 104f, 44f);
@@ -145,6 +153,28 @@ public class MainMenuScreen : MenuScreen
         UIKit.Place(version.rectTransform, new Vector2(1f, 0f), new Vector2(-100f, 40f), new Vector2(500f, 36f));
     }
 
+    // Bottom middle: which mode Quick Play looks for and Create Game starts (remembered)
+    private void BuildModePicker()
+    {
+        foreach (var def in GameModeRegistry.Definitions) modes.Add(def);
+        if (modes.Count == 0) return;
+        string saved = PlayerPrefs.GetString(ModePrefsKey, GameModeRegistry.DefaultKey);
+        modeIndex = Mathf.Max(0, modes.FindIndex(m => m.gameModeKey == saved));
+
+        var box = UIKit.Place(UIKit.Rect("Game Mode", Root), new Vector2(0f, 0f), new Vector2(830f, 28f), new Vector2(400f, 110f));
+        UIKit.VStack(box, 8f, null, TextAnchor.LowerCenter);
+        UIKit.Text(box, "GAME MODE", 20f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
+        var names = new string[modes.Count];
+        for (int i = 0; i < modes.Count; i++) names[i] = modes[i].gameModeName;
+        UIKit.Selector(box, names, modeIndex, i =>
+        {
+            modeIndex = i;
+            PlayerPrefs.SetString(ModePrefsKey, modes[i].gameModeKey);
+        }, 400f);
+    }
+
+    private string SelectedMode => modes.Count > 0 ? modes[modeIndex].gameModeKey : null;
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     private void Start()
@@ -176,22 +206,24 @@ public class MainMenuScreen : MenuScreen
     {
         if (!PhotonNetwork.IsConnectedAndReady || busy) return;
         busy = true;
+        string mode = SelectedMode;
         Toast("Finding a game…");
-        PhotonNetwork.JoinRandomRoom();
+        if (mode == null) PhotonNetwork.JoinRandomRoom();
+        else PhotonNetwork.JoinRandomRoom(new ExitGames.Client.Photon.Hashtable { [RoomKeys.GameMode] = mode }, 0);
     }
 
     private void CreateGame()
     {
         if (!PhotonNetwork.IsConnectedAndReady || busy) return;
         busy = creating = true;
-        RoomFactory.CreateRoom();
+        RoomFactory.CreateRoom(SelectedMode);
     }
 
     public override void OnJoinRandomFailed(short returnCode, string message)
     {
         // Nobody to join: start a game for others to find
         creating = true;
-        RoomFactory.CreateRoom();
+        RoomFactory.CreateRoom(SelectedMode);
     }
 
     public override void OnCreatedRoom() => PhotonNetwork.LoadLevel(SceneNames.Lobby);
@@ -199,7 +231,7 @@ public class MainMenuScreen : MenuScreen
     public override void OnCreateRoomFailed(short returnCode, string message)
     {
         Debug.LogWarning($"[MainMenu] Create room failed ({returnCode}): {message}. Retrying with a new name.");
-        RoomFactory.CreateRoom();
+        RoomFactory.CreateRoom(SelectedMode);
     }
 
     public override void OnJoinedRoom()

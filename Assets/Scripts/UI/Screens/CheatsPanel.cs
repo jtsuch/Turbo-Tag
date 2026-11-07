@@ -11,7 +11,7 @@ using Hashtable = ExitGames.Client.Photon.Hashtable;
 ///   - Basic / Quick / Throw / Trap: every ability of that kind as a card (icon, name, EQUIPPED tag), with a key to bind
 ///     it to (extra abilities on extra keys; the equipped one rebinds its slot), a clear button, and an expandable
 ///     section with its description and [TunableParam] sliders (and its object's tunables).
-/// Abilities in use sort first. Changes go through StatModifiers (source <see cref="Cheats.ModifierSource"/>) and
+/// Cards keep a fixed order (the catalog's); the EQUIPPED tag marks every ability that holds a key. Changes go through StatModifiers (source <see cref="Cheats.ModifierSource"/>) and
 /// AbilityHandler bindings, exactly as before; turning cheats off reverts everything (AbilityHandler.ClearCheats).
 /// </summary>
 public class CheatsPanel : MonoBehaviourPunCallbacks
@@ -34,6 +34,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         public KeyCode       Key;
         public RectTransform Root;
         public TMP_Text      KeyLabel;
+        public GameObject    EquippedTag;
         public GameObject    Details;
         public List<(Slider slider, System.Func<float> get)> Sliders = new();
     }
@@ -264,7 +265,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         description.fontSizeMin = 14f;
         description.fontSizeMax = 18f;
         UIKit.Size(description, height: 60f, flexWidth: 1f);
-        if (equipped) UIKit.Chip(top, "EQUIPPED", Theme.lime);
+        row.EquippedTag = UIKit.Chip(top, "EQUIPPED", Theme.lime).gameObject; // Shown while it holds a key (RefreshBindings)
 
         var bind = UIKit.Button(top, "", UIKit.Style.Ghost, () => Listen(row), 48f, 22f);
         UIKit.Size(bind, 170f, 48f);
@@ -356,25 +357,9 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
             row.Key = key;
             row.KeyLabel.text = key == KeyCode.None ? "Bind key" : Keybinds.Label(key);
             row.KeyLabel.color = key == KeyCode.None ? Theme.textMuted : Theme.text;
-        }
-
-        // Active abilities first: equipped, then bound extras, then the rest
-        var sorted = new List<AbilityRow>(rows);
-        sorted.Sort((a, b) =>
-        {
-            int rank = Rank(a).CompareTo(Rank(b));
-            return rank != 0 ? rank : string.CompareOrdinal(a.Ability.Id, b.Ability.Id);
-        });
-        var index = new Dictionary<Transform, int>();
-        foreach (var row in sorted)
-        {
-            var parent = row.Root.parent;
-            index.TryGetValue(parent, out int i);
-            row.Root.SetSiblingIndex(i);
-            index[parent] = i + 1;
+            // Binding another ability to the slot's key takes the key off the starting one: the tag moves with it
+            if (row.EquippedTag != null) row.EquippedTag.SetActive(key != KeyCode.None);
         }
         if (tabs.Count > 0) UIKit.Relayout(tabs[current].page);
     }
-
-    private static int Rank(AbilityRow row) => row.Equipped ? 0 : row.Key != KeyCode.None ? 1 : 2;
 }

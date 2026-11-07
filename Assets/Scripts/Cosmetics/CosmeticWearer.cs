@@ -3,7 +3,9 @@ using UnityEngine;
 
 /// <summary>
 /// Wears cosmetics on one penguin (a player copy, a menu preview, a podium dancer), one per slot. Rigid items are
-/// children of the body placed every frame (<see cref="Cosmetics.Place"/>). Skinned outfits are instantiated under
+/// children of the body that ride a bone every frame (Head gear the head, the rest the chest, or the definition's
+/// socket), at an offset worked out once from Jimmy's rest pose (<see cref="Cosmetics.RestPlacement"/>), so they
+/// stay put through Wall Magnet tilts, prone, crouching and animations (<see cref="Cosmetics.Place"/> is the fallback). Skinned outfits are instantiated under
 /// the body and every SkinnedMeshRenderer is rebound to Jimmy's bones by name (rootBone: Stomach), then the outfit's
 /// own armature is destroyed, so the outfit follows his animations, crouch squash and size exactly.
 /// The outfit's bind poses are recomputed against Jimmy's rest skeleton, so an outfit exported with a differently
@@ -17,6 +19,7 @@ public class CosmeticWearer
     private readonly Dictionary<string, Transform> bones = new();
     private readonly Transform head, chest, stomach;
     private readonly Dictionary<CosmeticSlot, (string id, GameObject instance, CosmeticDefinition def)> worn = new();
+    private readonly Dictionary<CosmeticSlot, (Transform bone, Matrix4x4 offset)> anchors = new();
 
     public CosmeticWearer(Transform body, int layer)
     {
@@ -37,6 +40,7 @@ public class CosmeticWearer
         if (worn.TryGetValue(slot, out var current) && current.id == id) return;
         if (current.instance != null) Object.Destroy(current.instance);
         worn.Remove(slot);
+        anchors.Remove(slot);
 
         var def = CosmeticRegistry.Find(id);
         if (def == null || def.prefab == null || def.slot != slot) return;
@@ -45,6 +49,7 @@ public class CosmeticWearer
         foreach (var c in instance.GetComponentsInChildren<Collider>(true)) Object.Destroy(c);
         foreach (var a in instance.GetComponentsInChildren<Animator>(true)) Object.Destroy(a);
         if (def.kind == CosmeticKind.Skinned) BindToSkeleton(instance);
+        else if (RestAnchor(def, out var bone, out var offset)) anchors[slot] = (bone, offset);
         foreach (var t in instance.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
         worn[slot] = (id, instance, def);
     }
@@ -54,6 +59,7 @@ public class CosmeticWearer
     {
         foreach (var w in worn.Values) if (w.instance != null) Object.Destroy(w.instance);
         worn.Clear();
+        anchors.Clear();
     }
 
     /// <summary>
@@ -68,9 +74,35 @@ public class CosmeticWearer
             bool show = visible == null || visible(pair.Key);
             if (instance.activeSelf != show) instance.SetActive(show);
             if (!show || def.kind != CosmeticKind.Rigid) continue;
+            if (anchors.TryGetValue(pair.Key, out var anchor) && anchor.bone != null)
+            {
+                // Bone × rest offset; the item keeps its own (uniform) scale, so a crouch squash doesn't flatten it
+                Matrix4x4 m = anchor.bone.localToWorldMatrix * anchor.offset;
+                Vector3 up = m.GetColumn(1), forward = m.GetColumn(2);
+                if (forward.sqrMagnitude > 1e-8f && up.sqrMagnitude > 1e-8f)
+                {
+                    instance.transform.SetPositionAndRotation(m.GetColumn(3), Quaternion.LookRotation(forward, up));
+                    instance.transform.localScale = Vector3.one * size;
+                    continue;
+                }
+            }
             Transform socket = !string.IsNullOrEmpty(def.socket) && bones.TryGetValue(def.socket, out var s) ? s : null;
             Cosmetics.Place(instance.transform, def.slot, body, head, chest, socket, topY, size);
         }
+    }
+
+    // A rigid item's bone and its offset from it: its standing spot (or the socket itself) seen from the bone's rest pose
+    private bool RestAnchor(CosmeticDefinition def, out Transform bone, out Matrix4x4 offset)
+    {
+        offset = Matrix4x4.identity;
+        bool socketed = !string.IsNullOrEmpty(def.socket);
+        string name = socketed ? def.socket : Cosmetics.AnchorBone(def.slot);
+        var rest = JimmyRest();
+        if (!bones.TryGetValue(name, out bone) || bone == null) return false;
+        if (socketed) return true; // On the bone itself, as before
+        if (rest == null || !rest.TryGetValue(name, out var boneRest)) return false;
+        offset = boneRest.inverse * Cosmetics.RestPlacement(def.slot, boneRest.GetColumn(3));
+        return true;
     }
 
     /// <summary>True if something is worn in the slot.</summary>

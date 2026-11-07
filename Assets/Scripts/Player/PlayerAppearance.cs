@@ -249,8 +249,8 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     private CosmeticWearer wearer;
 
     // The owner's synced loadout, worn on this copy (children of the body, so the minimap hides them too). Hidden
-    // whole while the body is disguised, hidden or see-through; head gear gives way to the crown, rigid body gear to
-    // lying prone (skinned items follow the body down)
+    // whole while the body is disguised, hidden or see-through; head gear gives way to the crown. Everything rides
+    // Jimmy's bones, so it lies down, tilts and crouches with him
     private void UpdateCosmetics(bool plain, bool crowned)
     {
         if (wearer == null)
@@ -259,12 +259,8 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
             wearer = new CosmeticWearer(transform, skin != null ? skin.gameObject.layer : gameObject.layer);
         }
         foreach (var slot in Cosmetics.Slots) wearer.Wear(slot, Cosmetics.Of(photonView.Owner, slot));
-        bool prone = player.State == Player.MovementState.Prone;
-        wearer.Update(player.TopY, player.Size, slot =>
-            plain && !(slot == CosmeticSlot.Head && crowned) && !(slot == CosmeticSlot.Body && prone && !IsSkinned(slot)));
+        wearer.Update(player.TopY, player.Size, slot => plain && !(slot == CosmeticSlot.Head && crowned));
     }
-
-    private bool IsSkinned(CosmeticSlot slot) => CosmeticRegistry.Find(Cosmetics.Of(photonView.Owner, slot))?.kind == CosmeticKind.Skinned;
 
     // ─── Cloak materials ──────────────────────────────────────────────────────
 

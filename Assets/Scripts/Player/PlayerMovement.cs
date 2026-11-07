@@ -392,7 +392,7 @@ public class PlayerMovement : MonoBehaviourPun
         {
             HandleHanging();
         }
-        else if (input.GrabPressed)
+        else if (input.GrabPressed && !player.GrabKeyClaimed) // The key may be withdrawing a spy camera instead
         {
             if (player.IsHolding) DropHeldObject();
             else                  Grab();

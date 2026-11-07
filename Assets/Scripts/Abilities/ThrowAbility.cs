@@ -122,13 +122,14 @@ public abstract class ThrowAbility : Ability
     /// Where a throw starts and which way it goes. The hand (throwOrigin) sits low and to the side of the eyes, so
     /// a throw straight along its forward missed the crosshair by half a metre and clipped door frames, and next
     /// to a wall the hand could be inside or behind it. Now the throw aims at what's under the crosshair (keeping
-    /// the hand's own tilt), and starts just in front of anything between the eyes and the hand.
+    /// the hand's own tilt), and starts where the held copy is (so the arc and the throw leave from the object, not
+    /// half a metre behind it), or just in front of anything between the eyes and it.
     /// </summary>
     protected void Launch(out Vector3 start, out Vector3 direction)
     {
         Transform eye = throwOrigin.parent != null ? throwOrigin.parent : throwOrigin;
         Vector3 eyePos = eye.position, forward = eye.forward;
-        start = throwOrigin.position;
+        start = throwOrigin.TransformPoint(HeldOffset);
 
         Vector3 toHand = start - eyePos;
         if (toHand.sqrMagnitude > 0.0001f && FirstHit(eyePos, toHand.normalized, toHand.magnitude + 0.2f, out RaycastHit wall))
@@ -172,6 +173,9 @@ public abstract class ThrowAbility : Ability
 
     // ─── Held visual ──────────────────────────────────────────────────────────
 
+    // Where the held copy sits in front of the hand (throwOrigin space); throws leave from here
+    private static readonly Vector3 HeldOffset = Vector3.forward * 0.5f;
+
     /// <summary>Shows or hides a local-only copy of the throwable in this player's hand.</summary>
     public void SetHeldVisual(bool visible)
     {
@@ -190,7 +194,7 @@ public abstract class ThrowAbility : Ability
         heldVisual = VisualProxy.Create(prefab, parent);
 
         Vector3 offset = IsLocal || remoteHoldPoint != null
-            ? Vector3.forward * 0.5f
+            ? HeldOffset
             : new Vector3(0.4f, Owner.Height * 0.75f, 0.6f);
         // Held the way it will leave the hand (a frisbee lies flat)
         var projectile = prefab.GetComponent<NetworkedProjectile>();

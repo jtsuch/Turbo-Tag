@@ -17,7 +17,7 @@ public class SpyCamera : TrapAbility
     [Tooltip("How far from vertical a surface may be and still take a camera (0 = only perfectly vertical walls).")]
     [SerializeField, Range(0f, 1f)] private float maxSurfaceTilt = 0.35f;
     [Tooltip("How close (m) you must be to pick your camera back up.")]
-    [SerializeField] private float withdrawRange = 3f;
+    [SerializeField] private float withdrawRange = 10f;
     [Tooltip("Seconds before a withdrawn camera can be placed again.")]
     [SerializeField] private float withdrawCooldown = 2f;
 
@@ -76,6 +76,7 @@ public class SpyCamera : TrapAbility
         if (Vector3.Distance(chest, placed.transform.position) > withdrawRange) return;
 
         KeyCode key = Keybinds.Get(InputAction.Grab);
+        Owner.ClaimGrabKey(); // F withdraws the camera here; it must not also grab a ledge
         HUDManager.Prompt(key, "Withdraw camera");
         if (!PauseMenuManager.IsPaused && Input.GetKeyDown(key)) Withdraw();
     }

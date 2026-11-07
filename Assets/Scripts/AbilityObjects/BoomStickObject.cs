@@ -3,7 +3,9 @@ using UnityEngine;
 
 /// <summary>
 /// Dynamite for the BoomStick ability: explodes on its first collision, pushing every nearby
-/// rigidbody. The thrower's client detects the hit; the blast runs on all clients.
+/// rigidbody. The thrower's client detects the hit; the blast runs on all clients. Only a real touch counts: a fast
+/// (fully charged) throw got speculative contacts from the floor or a wall it hadn't reached yet, and blew up in
+/// the thrower's hand.
 /// Attach to: Resources/Object/BoomStick (with Rigidbody, Collider, PhotonView).
 /// </summary>
 public class BoomStickObject : NetworkedProjectile
@@ -25,14 +27,25 @@ public class BoomStickObject : NetworkedProjectile
 
     private bool exploded;
 
-    private void OnCollisionEnter(Collision _)
+    private void OnCollisionEnter(Collision collision) => TryExplode(collision);
+    private void OnCollisionStay(Collision collision)  => TryExplode(collision);
+
+    private void TryExplode(Collision collision)
     {
-        if (!IsAuthority || exploded) return;
+        if (!IsAuthority || exploded || !Touching(collision)) return;
         exploded = true;
 
         HideAndFreeze();
         photonView.RPC(nameof(RPC_Explode), RpcTarget.All, transform.position);
         DestroyNetworked();
+    }
+
+    // Speculative contacts report a positive separation (not touching yet); a real hit is at or inside the surface
+    private static bool Touching(Collision collision)
+    {
+        for (int i = 0; i < collision.contactCount; i++)
+            if (collision.GetContact(i).separation <= 0.05f) return true;
+        return false;
     }
 
     [PunRPC]

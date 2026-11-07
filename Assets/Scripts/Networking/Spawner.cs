@@ -129,11 +129,25 @@ public class Spawner : MonoBehaviour
             return;
         }
 
-        // Spread evenly in a circle, facing outward
-        float   angle  = 360f / Mathf.Max(1, total) * index * Mathf.Deg2Rad;
-        Vector3 dir    = new(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-        position = transform.position + dir * (hunter ? hunterSpawnRadius : spawnRadius);
+        // Spread evenly in a circle, facing outward; a spot on a bounce pad turns further round the circle
+        float   radius = hunter ? hunterSpawnRadius : spawnRadius;
+        float   angle  = 360f / Mathf.Max(1, total) * index;
+        Vector3 dir    = Vector3.forward;
+        for (int turn = 0; turn < 18; turn++, angle += 20f)
+        {
+            dir = new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad));
+            if (!NearBouncePad(transform.position + dir * radius)) break;
+        }
+        position = transform.position + dir * radius;
         rotation = Quaternion.LookRotation(dir, Vector3.up);
+    }
+
+    // A pad within reach of a spawning player's feet (Pinnacle's plaza pad sat on the first ring spot)
+    private static bool NearBouncePad(Vector3 feet)
+    {
+        foreach (var hit in Physics.OverlapSphere(feet + Vector3.up, 3f, ~0, QueryTriggerInteraction.Collide))
+            if (hit.GetComponentInParent<BouncePad>() != null) return true;
+        return false;
     }
 
     private static SpawnPoint lastSpawnPoint;

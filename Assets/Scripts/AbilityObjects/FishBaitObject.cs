@@ -8,6 +8,7 @@ using UnityEngine;
 /// "forward" is toward it, so walking forward walks to it).
 ///   owner first touch → RPC_Land (all: same spot everywhere, plop) → each client lures its own player while in
 ///   range (PlayerCam.Lure) → owner removes it after the lure time.
+/// It only settles on ground (walls and ceilings bounce it off), lying flat on the floor under where it touched.
 /// The thrower and shielded players aren't lured. Attach to: Resources/Object/FishBait (Rigidbody, Collider, PhotonView).
 /// </summary>
 public class FishBaitObject : NetworkedProjectile
@@ -19,6 +20,8 @@ public class FishBaitObject : NetworkedProjectile
     [SerializeField] private float lureTime = 4f;
     [Tooltip("Seconds before it is removed if it never lands.")]
     [SerializeField] private float maxFlightTime = 6f;
+    [Tooltip("Half its thickness lying on its side: how far above the floor its middle rests.")]
+    [SerializeField] private float restHeight = 0.11f;
 
     private bool  landed;
     private float lureEndsAt;
@@ -39,7 +42,24 @@ public class FishBaitObject : NetworkedProjectile
     {
         if (!IsAuthority || landed) return;
         if (collision.collider.GetComponentInParent<Player>() != null) return; // Bounces off penguins
-        photonView.RPC(nameof(RPC_Land), RpcTarget.All, transform.position);
+        if (!OnGround(collision, out Vector3 floor)) return;                       // Walls: keep falling
+        photonView.RPC(nameof(RPC_Land), RpcTarget.All, floor + Vector3.up * restHeight);
+    }
+
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
+
+    // Touching something it can lie on: the floor point under its middle
+    private bool OnGround(Collision collision, out Vector3 floor)
+    {
+        floor = default;
+        bool ground = false;
+        for (int i = 0; i < collision.contactCount; i++)
+            if (collision.GetContact(i).normal.y > 0.5f) { ground = true; floor = collision.GetContact(i).point; break; }
+        if (!ground) return false;
+        if (Physics.Raycast(transform.position + Vector3.up * 0.3f, Vector3.down, out RaycastHit hit, 1.5f, ~0, QueryTriggerInteraction.Ignore)
+            && hit.collider.GetComponentInParent<Player>() == null && !hit.collider.transform.IsChildOf(transform))
+            floor = hit.point;
+        return true;
     }
 
     [PunRPC]

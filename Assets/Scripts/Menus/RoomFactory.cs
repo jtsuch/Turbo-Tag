@@ -12,13 +12,14 @@ public static class RoomFactory
     /// <summary>Room size: up to 12 players, which also allows 6v6 for future team modes.</summary>
     public const int MaxPlayers = 12;
 
-    public static void CreateRoom()
+    /// <summary>Creates a room playing <paramref name="modeKey"/> (null: the default mode); the lobby fills in its rules.</summary>
+    public static void CreateRoom(string modeKey = null)
     {
         string host = string.IsNullOrEmpty(PhotonNetwork.NickName) ? "Penguin" : PhotonNetwork.NickName;
-        PhotonNetwork.CreateRoom($"{host}'s Game #{Random.Range(100, 1000)}", BuildOptions(), TypedLobby.Default);
+        PhotonNetwork.CreateRoom($"{host}'s Game #{Random.Range(100, 1000)}", BuildOptions(modeKey), TypedLobby.Default);
     }
 
-    private static RoomOptions BuildOptions() => new()
+    private static RoomOptions BuildOptions(string modeKey) => new()
     {
         MaxPlayers                   = MaxPlayers,
         IsVisible                    = true,
@@ -26,7 +27,7 @@ public static class RoomFactory
         CustomRoomPropertiesForLobby = RoomKeys.LobbyVisible,
         CustomRoomProperties         = new Hashtable
         {
-            [RoomKeys.GameMode] = GameModeRegistry.DefaultKey,
+            [RoomKeys.GameMode] = string.IsNullOrEmpty(modeKey) ? GameModeRegistry.DefaultKey : modeKey,
             [RoomKeys.Map]      = SceneNames.DefaultMap,
         },
     };
