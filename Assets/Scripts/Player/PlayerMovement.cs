@@ -33,6 +33,8 @@ public class PlayerMovement : MonoBehaviourPun
     [Header("Tuning")]
     [SerializeField] private float crouchJumpMultiplier = 1.6f;
     [SerializeField] private float proneDiveImpulse     = 10f;
+    [Tooltip("Seconds between airborne dive boosts: jump + prone spam can't keep adding speed.")]
+    [SerializeField] private float proneDiveCooldown    = 1.5f;
     [SerializeField] private float dashSpeedCap         = 30f;
     [SerializeField] private float grabReach            = 4f;
 
@@ -627,6 +629,8 @@ public class PlayerMovement : MonoBehaviourPun
         if (CanChangeStance) player.ToggleCrouch();
     }
 
+    private float nextDiveTime;
+
     private void ToggleProne()
     {
         if (!CanChangeStance) return;
@@ -634,8 +638,11 @@ public class PlayerMovement : MonoBehaviourPun
         player.ToggleProne();
 
         // Airborne dive
-        if (State == Player.MovementState.Prone && !OnGround)
+        if (State == Player.MovementState.Prone && !OnGround && Time.time >= nextDiveTime)
+        {
             rb.AddForce(transform.forward * proneDiveImpulse, ForceMode.Impulse);
+            nextDiveTime = Time.time + proneDiveCooldown; // Invisible cooldown: going prone still works, the boost waits
+        }
     }
 
     // Flat movement directions. Normally the body's own (it is kept upright); during a Free Spin, where the

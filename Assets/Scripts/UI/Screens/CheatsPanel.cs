@@ -155,6 +155,12 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         RefreshBindings();
     }
 
+    public override void OnDisable()
+    {
+        base.OnDisable();
+        StopListening(); // Page switched or menu hidden mid-bind
+    }
+
     private void OnDestroy()
     {
         if (builtFor != null) builtFor.Abilities.LoadoutChanged -= BuildAbilities;
@@ -162,6 +168,8 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
 
     private void Update()
     {
+        // The menu closed (Escape, Resume) while waiting for a key: forget the bind, don't take the next key press
+        if (listening != null && (!PauseMenuManager.IsPaused || !isActiveAndEnabled)) { StopListening(); return; }
         if (listening == null || !listener.Poll(out KeyCode key)) return;
         Bind(listening, key);
         listening = null;

@@ -80,7 +80,7 @@ public class TagFeel : MonoBehaviour
         if (mode == null || !mode.AnnouncesTags || target == null) return;
 
         if (target.IsLocal)
-            Stamp("TAGGED!", UITheme.Current.danger, tagger != null && !tagger.IsLocal ? $"by {tagger.NickName}" : "");
+            Stamp("TAGGED!", UITheme.Current.danger, tagger == null ? "You fell off the edge" : !tagger.IsLocal ? $"by {tagger.NickName}" : "");
         else if (tagger != null && tagger.IsLocal)
         {
             Stamp("+1 TAG", UITheme.Current.lime, $"You caught {target.NickName}!");

@@ -30,16 +30,17 @@ public class TippingProp : MonoBehaviourPun
         body.interpolation = RigidbodyInterpolation.Interpolate;
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         body.angularDamping = 0.05f;
+        body.sleepThreshold = 0f; // Never sleeps: one resting on something that moves away must still fall
 
         var colliders = GetComponentsInChildren<Collider>();
         if (colliders.Length == 0) return;
         Bounds bounds = colliders[0].bounds;
         foreach (var c in colliders) bounds.Encapsulate(c.bounds);
 
-        // Lean it forward (the way the placer looks) around the middle of its base
-        var view = Camera.main != null ? Camera.main.transform : null;
-        Vector3 away = view != null ? Vector3.ProjectOnPlane(view.forward, Vector3.up) : transform.forward;
-        if (startTilt != 0f && away.sqrMagnitude > 0.01f)
+        // Lean it forward, over its own face (the ladder is placed facing the way the placer looks: its local +X),
+        // around the middle of its base. Only when it stands up (placed on a floor)
+        Vector3 away = Vector3.ProjectOnPlane(transform.right, Vector3.up);
+        if (startTilt != 0f && transform.forward.y > 0.7f && away.sqrMagnitude > 0.01f)
         {
             Vector3 basePoint = new(bounds.center.x, bounds.min.y, bounds.center.z);
             transform.RotateAround(basePoint, Vector3.Cross(Vector3.up, away.normalized), startTilt);

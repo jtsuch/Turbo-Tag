@@ -622,8 +622,7 @@ public class HUDManager : MonoBehaviour
         if (target == null || target.IsLocal) return; // The caught player gets their own banner
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         if (mode != null && !mode.AnnouncesTags) return;
-        string taggerName = tagger != null ? tagger.NickName : "Someone";
-        ShowBanner($"{taggerName} tagged {target.NickName}!", 2f);
+        ShowBanner(tagger != null ? $"{tagger.NickName} tagged {target.NickName}!" : $"{target.NickName} fell off the edge!", 2f);
     }
 
     private void HandlePhaseChanged(MatchPhase phase)

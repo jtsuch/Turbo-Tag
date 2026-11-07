@@ -193,6 +193,23 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         NetProps.SetRoom(props);
     }
 
+    /// <summary>
+    /// Every client, when a round's countdown starts: each round starts fresh. Ragdolls go (they're local), and this
+    /// client removes every ability object it owns (traps, ladders, stuck bombs, bait: anything spawned with
+    /// <see cref="SpawnData"/>), whichever ability placed it, so nothing carries over from the last round.
+    /// </summary>
+    private static void ClearRoundLeftovers()
+    {
+        PlayerCorpse.ClearAll();
+        foreach (var view in FindObjectsByType<PhotonView>(FindObjectsSortMode.None))
+        {
+            if (view == null || !view.IsMine || view.IsRoomView || view.GetComponent<Player>() != null) continue;
+            var data = view.InstantiationData;
+            if (data == null || data.Length < 3 || data[2] is not int) continue; // Not an ability object
+            PhotonNetwork.Destroy(view.gameObject);
+        }
+    }
+
     /// <summary>Master: clears phase, round, roles and scores ready for a new match.</summary>
     public void ResetMatchState()
     {
@@ -252,7 +269,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
     /// <summary>Master: tells every client that a tag happened (feedback + caught state).</summary>
     public void BroadcastTag(PhotonPlayer tagger, PhotonPlayer target) =>
-        photonView.RPC(nameof(RPC_PlayerTagged), RpcTarget.All, tagger.ActorNumber, target.ActorNumber);
+        photonView.RPC(nameof(RPC_PlayerTagged), RpcTarget.All, tagger != null ? tagger.ActorNumber : 0, target.ActorNumber);
 
     // ─── Client API ───────────────────────────────────────────────────────────
 
@@ -260,7 +277,17 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     public void RequestTag(Player target) =>
         photonView.RPC(nameof(RPC_RequestTag), RpcTarget.MasterClient, target.ActorNumber);
 
+    /// <summary>The local player fell off the map (non-gun modes): the mode may count it (Tag: a hider is caught).</summary>
+    public void ReportFall() => photonView.RPC(nameof(RPC_ReportFall), RpcTarget.MasterClient);
+
     // ─── RPCs ─────────────────────────────────────────────────────────────────
+
+    [PunRPC]
+    private void RPC_ReportFall(PhotonMessageInfo info)
+    {
+        if (!PhotonNetwork.IsMasterClient || Mode == null) return;
+        Mode.HandleFall(info.Sender);
+    }
 
     [PunRPC]
     private void RPC_RequestTag(int targetActor, PhotonMessageInfo info)
@@ -303,6 +330,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         lastAnnouncedPhase = confirmed;
         Mode?.OnPhaseChanged(confirmed);
         PhaseChanged?.Invoke(confirmed);
+        if (confirmed == MatchPhase.Countdown) ClearRoundLeftovers();
     }
 
     public override void OnPlayerPropertiesUpdate(PhotonPlayer target, Hashtable changed)

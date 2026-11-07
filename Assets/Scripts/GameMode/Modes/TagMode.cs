@@ -198,6 +198,20 @@ public class TagMode : GameMode
         Manager.BroadcastTag(tagger, target);
     }
 
+    // A hider who falls off the edge is caught, as if tagged by nobody (hide phase too)
+    public override void HandleFall(PhotonPlayer player)
+    {
+        if ((Phase != MatchPhase.Active && Phase != MatchPhase.Hiding) || player == null) return;
+        if (PlayerRoles.Get(player) != PlayerRole.Hider || caughtThisRound.Contains(player.ActorNumber)) return;
+
+        BankHider(player);
+        MatchStats.Add(player, PlayerKeys.StatTimesTagged);
+        caughtThisRound.Add(player.ActorNumber);
+        becameHunterAt[player.ActorNumber] = PhotonNetwork.Time;
+        PlayerRoles.Set(player, PlayerRole.Hunter);
+        Manager.BroadcastTag(null, player);
+    }
+
     public override void OnPlayerLeft(PhotonPlayer player)
     {
         caughtThisRound.Remove(player.ActorNumber);

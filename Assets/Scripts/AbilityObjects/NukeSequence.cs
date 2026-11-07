@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// Placed nuke: a <see cref="countdownTime"/> countdown, then a blast that reaches <see cref="explosionRadius"/>
-/// (100 m) and throws much harder the closer you are (cubic falloff: <see cref="centreSpeed"/> at the bomb down to
+/// (70 m) and throws much harder the closer you are (cubic falloff: <see cref="centreSpeed"/> at the bomb down to
 /// <see cref="edgeSpeed"/> at the edge, as a velocity change so every body flies the same). Warnings so people can
 /// react: a slow beep everyone hears wherever they are (quicker for the last few seconds), a red digital countdown
 /// floating on the bomb, and a faint blue ring on the ground marking its reach. Anyone standing next to it can
@@ -24,7 +24,7 @@ public class NukeSequence : MonoBehaviourPun
 
     [Header("Explosion")]
     [TunableParam("Blast Radius", 5f, 300f)]
-    [SerializeField] private float     explosionRadius = 100f;
+    [SerializeField] private float     explosionRadius = 70f;
     [Tooltip("Speed (m/s) a body right at the bomb is thrown at.")]
     [TunableParam("Centre Speed", 5f, 300f)]
     [SerializeField] private float     centreSpeed     = 85f;

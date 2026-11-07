@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Wears cosmetics on one penguin (a player copy, a menu preview, a podium dancer), one per slot. Rigid items are
@@ -54,12 +55,74 @@ public class CosmeticWearer
         worn[slot] = (id, instance, def);
     }
 
+    // ─── See-through (Cloak) ─────────────────────────────────────────────────
+
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private readonly Dictionary<Renderer, Material[]> opaque = new();
+    private readonly Dictionary<Material, Material> clearCopies = new();
+    private float shownAlpha = 1f;
+
+    /// <summary>
+    /// Fades everything worn to <paramref name="alpha"/> (1 = solid): see-through copies of the items' materials,
+    /// like the cloaked body. Call every frame; items put on mid-fade pick it up too.
+    /// </summary>
+    public void SetAlpha(float alpha)
+    {
+        bool clear = alpha < 0.995f;
+        if (!clear && shownAlpha >= 0.995f) return;
+        shownAlpha = alpha;
+        foreach (var w in worn.Values)
+        {
+            if (w.instance == null) continue;
+            foreach (var r in w.instance.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!opaque.TryGetValue(r, out var originals)) opaque[r] = originals = r.sharedMaterials;
+                if (!clear) { r.sharedMaterials = originals; r.shadowCastingMode = ShadowCastingMode.On; continue; }
+                var set = new Material[originals.Length];
+                for (int i = 0; i < originals.Length; i++)
+                {
+                    var source = originals[i];
+                    if (source == null) continue;
+                    if (!clearCopies.TryGetValue(source, out var copy)) clearCopies[source] = copy = SeeThroughCopy(source);
+                    Color c = source.HasProperty(BaseColorId) ? source.GetColor(BaseColorId) : Color.white;
+                    c.a *= alpha;
+                    if (copy.HasProperty(BaseColorId)) copy.SetColor(BaseColorId, c);
+                    set[i] = copy;
+                }
+                r.sharedMaterials = set;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+            }
+        }
+    }
+
+    /// <summary>A copy of a URP Lit material switched to Transparent (alpha blended), as the cloak uses.</summary>
+    public static Material SeeThroughCopy(Material source)
+    {
+        var m = new Material(source) { name = source.name + " (Cloak)" };
+        m.SetFloat("_Surface", 1f);
+        m.SetFloat("_Blend", 0f);
+        m.SetFloat("_ZWrite", 0f);
+        m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        m.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+        m.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.renderQueue = (int)RenderQueue.Transparent;
+        return m;
+    }
+
     /// <summary>Takes everything off.</summary>
     public void Clear()
     {
         foreach (var w in worn.Values) if (w.instance != null) Object.Destroy(w.instance);
         worn.Clear();
         anchors.Clear();
+        opaque.Clear();
+        foreach (var m in clearCopies.Values) if (m != null) Object.Destroy(m);
+        clearCopies.Clear();
+        shownAlpha = 1f;
     }
 
     /// <summary>

@@ -87,6 +87,9 @@ public class RoundModifiers : MonoBehaviour
                 HUDManager.Instance.ShowBanner($"<size=70%>MODIFIER</size>\n{want.Name.ToUpperInvariant()}\n<size=55%>{want.Description}</size>", 4f);
         }
 
+        // Screen-wide modifiers are held every frame on every client (a one-off set was seen on only one screen)
+        if (applied != null && applied.Id == "Fog") HoldFog();
+
         var local = Player.Local;
         if (applied == null || local == null) return;
         // Respawns and size changes rebuild the player's state: keep the multipliers set
@@ -108,6 +111,7 @@ public class RoundModifiers : MonoBehaviour
         }
         applied = next;
         if (applied == null) return;
+        Debug.Log($"[RoundModifiers] {applied.Id} on (role {(local != null ? local.Role.ToString() : "no player")})");
         if (local != null) foreach (var (stat, mult) in applied.Stats) local.Modifiers.Set(stat, Source, mult);
         applied.OnStart?.Invoke();
     }
@@ -125,6 +129,11 @@ public class RoundModifiers : MonoBehaviour
         fogModeWas = RenderSettings.fogMode;
         fogColorWas = RenderSettings.fogColor;
         fogDensityWas = RenderSettings.fogDensity;
+        HoldFog();
+    }
+
+    private static void HoldFog()
+    {
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = new Color(0.72f, 0.74f, 0.8f);

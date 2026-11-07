@@ -18,13 +18,13 @@ public class Honk : QuickAbility
     [TunableParam("Cone Angle", 10f, 90f)]
     [SerializeField] private float coneAngle = 50f;
     [Tooltip("Speed given to players at point-blank range (m/s); fades to half at the edge of the range.")]
-    [TunableParam("Push", 1f, 80f)]
-    [SerializeField] private float push = 22f;
+    [TunableParam("Push", 1f, 150f)]
+    [SerializeField] private float push = 44f;
     [TunableParam("Lift", 0f, 30f)]
-    [SerializeField] private float lift = 6f;
+    [SerializeField] private float lift = 12f;
     [Tooltip("Impulse for loose objects (boxes, ladders), per kg-ish.")]
     [TunableParam("Object Push", 1f, 100f)]
-    [SerializeField] private float objectPush = 14f;
+    [SerializeField] private float objectPush = 28f;
 
     [Header("References")]
     [Tooltip("The camera (aim). Defaults to the player's camera.")]

@@ -47,6 +47,16 @@ public static class PlayerCorpse
     };
 
     /// <summary>Builds the corpse of <paramref name="player"/>. Returns the torso (for the caught camera), or null.</summary>
+    /// <summary>Removes every ragdoll on this screen (a new round starts clean).</summary>
+    public static void ClearAll()
+    {
+        while (corpses.Count > 0)
+        {
+            var corpse = corpses.Dequeue();
+            if (corpse != null) Object.Destroy(corpse);
+        }
+    }
+
     public static Transform Create(Player player, Vector3 velocity, Vector3? shot = null, bool headshot = false)
     {
         Transform root = CreateCopy(player, $"Corpse ({player.DisplayName})", out Transform bones);

@@ -122,6 +122,12 @@ public abstract class GameMode
     public virtual void HandleTagRequest(PhotonPlayer tagger, PhotonPlayer target) { }
 
     /// <summary>
+    /// Master, modes without guns: <paramref name="player"/> fell off the map (they've already been put back on a
+    /// spawn). Default: nothing more. Tag catches a falling hider (they become a hunter).
+    /// </summary>
+    public virtual void HandleFall(PhotonPlayer player) { }
+
+    /// <summary>
     /// Master, gun modes: <paramref name="victim"/> died in the Active phase. <paramref name="killer"/> is null
     /// (or the victim) for a fall. Scoring only: CombatManager handles the respawn, kill feed and drops.
     /// </summary>

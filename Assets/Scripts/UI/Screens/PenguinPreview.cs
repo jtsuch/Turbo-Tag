@@ -105,17 +105,9 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
         data.renderShadows = false;
         data.renderPostProcessing = false;
 
-        var lightGo = new GameObject("Light");
-        lightGo.transform.SetParent(holder.transform, false);
-        lightGo.transform.rotation = Quaternion.Euler(35f, 160f, 0f);
-        var light = lightGo.AddComponent<Light>();
-        light.type = LightType.Directional;
-        light.intensity = 1.0f;
-        light.cullingMask = 1 << PreviewLayer;
-        light.shadows = LightShadows.None;
+        EnsureKeyLight();
 
-        // A point light by the camera as well: with several previews (the scoreboard podium) Unity picks one
-        // directional light as the "main" one, and a penguin whose own light lost out rendered pitch black
+        // A point light by the camera as well, a little extra shape on the front
         var fillGo = new GameObject("Fill");
         fillGo.transform.SetParent(holder.transform, false);
         fillGo.transform.localPosition = new Vector3(1.5f, Height * 0.9f, 5f);
@@ -253,6 +245,24 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
         }
         facing = Mathf.MoveTowardsAngle(facing, Time.unscaledTime < backUntil ? 180f : 0f, 420f * Time.unscaledDeltaTime);
         model.localRotation = Quaternion.Euler(0f, yaw + facing, sway);
+    }
+
+    // One directional light for every preview (they all share the preview layer). Each preview used to bring its
+    // own: with the podium's three, Unity had to choose between three directional lights per penguin and one
+    // penguin could come out unlit (black). Rebuilt when a new scene has none.
+    private static Light keyLight;
+
+    private static void EnsureKeyLight()
+    {
+        if (keyLight != null) return;
+        var go = new GameObject("Penguin Preview Light");
+        go.transform.rotation = Quaternion.Euler(35f, 160f, 0f);
+        keyLight = go.AddComponent<Light>();
+        keyLight.type = LightType.Directional;
+        keyLight.intensity = 1.0f;
+        keyLight.cullingMask = 1 << PreviewLayer;
+        keyLight.shadows = LightShadows.None;
+        keyLight.renderMode = LightRenderMode.ForcePixel;
     }
 
     private void OnDestroy()

@@ -131,6 +131,10 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
         UpdateSkin();
 
+        // Chameleon: the body holds perfectly still (a breathing, blinking wall gives it away)
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (animator != null) animator.speed = Camouflage.HasValue ? 0f : 1f;
+
         bool isGhost = (player.Role == PlayerRole.Ghost || player.Has(PlayerFlag.Phantom)) && !player.IsDownAfterTag;
         goldAmount = Mathf.MoveTowards(goldAmount, player.Has(PlayerFlag.Golden) ? 1f : 0f, 4f * dt);
         ghostAmount = Mathf.MoveTowards(ghostAmount, isGhost ? 1f : 0f, 2f * dt);
@@ -146,8 +150,8 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         bool silhouette = manager != null && manager.HidesIdentityFromLocal(player);
         bool crowned = manager != null && manager.ShowsCrown(player);
         UpdateCrown(crowned);
-        // Cosmetics: hidden whenever the body is disguised, hidden or see-through (they'd give the player away)
-        bool plain = !silhouette && CloakAmount < 0.05f && !Camouflage.HasValue && ghostAmount < 0.05f && !player.IsDownAfterTag;
+        // Cosmetics: hidden while disguised (silhouette, Chameleon), a ghost or down; cloaked, they fade with the body
+        bool plain = !silhouette && !Camouflage.HasValue && ghostAmount < 0.05f && !player.IsDownAfterTag;
         UpdateCosmetics(plain, crowned);
 
         iceAmount   = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * dt);
@@ -260,6 +264,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         }
         foreach (var slot in Cosmetics.Slots) wearer.Wear(slot, Cosmetics.Of(photonView.Owner, slot));
         wearer.Update(player.TopY, player.Size, slot => plain && !(slot == CosmeticSlot.Head && crowned));
+        wearer.SetAlpha(Mathf.Lerp(1f, cloakedAlpha, CloakAmount));
     }
 
     // ─── Cloak materials ──────────────────────────────────────────────────────
@@ -268,6 +273,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     private static Material xrayAlly, xrayEnemy;
     private Material showingXRay, showingOutline;
     private float ghostAmount, goldAmount;
+    private Animator animator;
 
     private const float GhostAlpha = 0.32f;
     private static readonly Color GhostTint     = new(0.75f, 0.88f, 1f, 1f);
@@ -355,19 +361,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
             for (int j = 0; j < source.Length; j++)
             {
                 if (source[j] == null) continue;
-                var m = new Material(source[j]) { name = source[j].name + " (Cloak)" };
-                m.SetFloat("_Surface", 1f);
-                m.SetFloat("_Blend", 0f);
-                m.SetFloat("_ZWrite", 0f);
-                m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-                m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-                m.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
-                m.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
-                m.SetOverrideTag("RenderType", "Transparent");
-                m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                m.DisableKeyword("_ALPHATEST_ON");
-                m.renderQueue = (int)RenderQueue.Transparent;
-                copies[j] = m;
+                copies[j] = CosmeticWearer.SeeThroughCopy(source[j]);
             }
             clearMaterials[i] = copies;
         }

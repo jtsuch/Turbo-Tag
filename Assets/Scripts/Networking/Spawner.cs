@@ -71,7 +71,11 @@ public class Spawner : MonoBehaviour
         var local = Player.Local;
         if (local == null || local.IsCaught) return;
         if (CombatManager.Instance != null) CombatManager.Instance.ReportFall();
-        else RespawnLocalPlayer();
+        else
+        {
+            RespawnLocalPlayer(); // Back on solid ground first, so a catch's ragdoll isn't left in the void
+            if (GameModeManager.Instance != null) GameModeManager.Instance.ReportFall();
+        }
     }
 
     // ─── Spawning ─────────────────────────────────────────────────────────────
