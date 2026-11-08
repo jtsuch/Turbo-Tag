@@ -85,6 +85,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out PingWheel _)) gameObject.AddComponent<PingWheel>();             // Middle mouse: team pings
         if (!TryGetComponent(out PingMarkers _)) gameObject.AddComponent<PingMarkers>();         // ...and where they are
         if (!TryGetComponent(out SoundVisualizer _)) gameObject.AddComponent<SoundVisualizer>(); // Faint edge glows for loud sounds
+        if (!TryGetComponent(out HunterClassPicker _)) gameObject.AddComponent<HunterClassPicker>(); // Hunters pick a class while hiders hide
+        if (!TryGetComponent(out HunterToolHud _)) gameObject.AddComponent<HunterToolHud>();     // ...and its tool on the HUD
+        if (!TryGetComponent(out LastHiderCam _)) gameObject.AddComponent<LastHiderCam>();       // Tag: hunters can watch the last hider
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
@@ -206,6 +209,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private static void ClearRoundLeftovers()
     {
         PlayerCorpse.ClearAll();
+        HunterKit.ClearAll();
         foreach (var view in FindObjectsByType<PhotonView>(FindObjectsSortMode.None))
         {
             if (view == null || !view.IsMine || view.IsRoomView || view.GetComponent<Player>() != null) continue;

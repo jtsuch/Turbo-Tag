@@ -31,6 +31,7 @@ public static class EditorJobQueue
         ["UpgradeAllLevels"]  = LevelTools.UpgradeAllLevels,
         ["Refresh"]           = AssetDatabase.Refresh,
         ["SetupLedgeAnimations"] = LedgeAnimationSetup.Run,
+        ["SetupEmoteAnimations"] = EmoteAnimationSetup.Run,
         ["AssignSceneViewIds"] = LevelTools.AssignSceneViewIds,
         ["RemoveStraySpawners"] = LevelTools.RemoveStraySpawners,
         ["ProcessMeshes"] = MeshPrefabBuilder.ProcessMeshes,

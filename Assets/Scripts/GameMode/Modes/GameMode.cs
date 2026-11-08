@@ -212,6 +212,9 @@ public abstract class GameMode
     /// </summary>
     public virtual bool HunterRadar => false;
 
+    /// <summary>Hunters pick a class and a left-click tool while the hiders hide (HunterClasses, HunterKit).</summary>
+    public virtual bool HasHunterClasses => false;
+
     /// <summary>Extra points per second a hider earns while a hunter is within <see cref="DangerRange"/> (Tag: 1, so 2 a second in all).</summary>
     public virtual float DangerPointsPerSecond => 0f;
     public virtual float DangerRange => 12f;

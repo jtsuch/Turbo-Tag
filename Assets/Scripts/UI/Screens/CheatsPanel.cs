@@ -8,6 +8,8 @@ using Hashtable = ExitGames.Client.Photon.Hashtable;
 /// <summary>
 /// The pause menu's Cheats page (works only while the host has cheats on):
 ///   - Self: multipliers on the local player (speed, acceleration, jump, size, cooldown, air control, gravity), 100% = normal;
+///   - Hunter (modes that don't use left click for guns or the disc): every hunter class tool, to make it your hunter
+///     tool or bind it to a key of its own (usable in any role while cheats are on), and the hunter tool key;
 ///   - Basic / Quick / Throw / Trap: every ability of that kind as a card (icon, name, EQUIPPED tag), with a key to bind
 ///     it to (extra abilities on extra keys; the equipped one rebinds its slot), a clear button, and an expandable
 ///     section with its description and [TunableParam] sliders (and its object's tunables).
@@ -83,7 +85,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         var pages = UIKit.Rect("Pages", holder);
         UIKit.Stretch(pages, 0f, 0f, 80f, 0f);
 
-        foreach (var name in new[] { "Self", "Basic", "Quick", "Throw", "Trap" })
+        foreach (var name in new[] { "Self", "Basic", "Quick", "Throw", "Trap", "Hunter" })
         {
             int index = tabs.Count;
             var button = UIKit.Button(bar, name, UIKit.Style.Ghost, () => Show(index), 56f, 24f);
@@ -94,6 +96,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         }
 
         BuildSelf(tabs[0].list);
+        BuildHunter(tabs[HunterTab].list);
 
         // Shown over everything while cheats are off
         var lockCard = UIKit.Card(transform, UIKit.WithAlpha(Theme.card, 0.97f), 24f, 0.5f, "Locked");
@@ -145,6 +148,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         RefreshSelf();
         BuildAbilities();
         foreach (var row in rows) RefreshSliders(row);
+        RefreshHunter();
     }
 
     public override void OnRoomPropertiesUpdate(Hashtable changed)
@@ -169,8 +173,16 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
     private void Update()
     {
         // The menu closed (Escape, Resume) while waiting for a key: forget the bind, don't take the next key press
-        if (listening != null && (!PauseMenuManager.IsPaused || !isActiveAndEnabled)) { StopListening(); return; }
-        if (listening == null || !listener.Poll(out KeyCode key)) return;
+        bool waiting = listening != null || listeningHunter != null;
+        if (waiting && (!PauseMenuManager.IsPaused || !isActiveAndEnabled)) { StopListening(); return; }
+        if (!waiting || !listener.Poll(out KeyCode key)) return;
+        if (listeningHunter != null)
+        {
+            BindHunter(listeningHunter, key);
+            listeningHunter = null;
+            UISound.Play(UISound.Kind.Confirm);
+            return;
+        }
         Bind(listening, key);
         listening = null;
         UISound.Play(UISound.Kind.Confirm);
@@ -221,7 +233,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         builtFor.Abilities.LoadoutChanged += BuildAbilities;
 
         var handler = builtFor.Abilities;
-        for (int t = 1; t < tabs.Count; t++)
+        for (int t = 1; t <= 4; t++) // The four ability slots (the Hunter tab is built by BuildHunter)
         {
             var slot = (AbilitySlot)(t - 1);
             var equipped = handler.GetEquipped(slot);
@@ -325,6 +337,114 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
         foreach (var (slider, get) in row.Sliders) SettingsPanel.ShowValue(slider, get());
     }
 
+    // ─── Hunter tools ─────────────────────────────────────────────────────────
+
+    private const int HunterTab = 5;
+
+    private sealed class HunterRow
+    {
+        public HunterClasses.Class Cls;
+        public HunterClasses.Tool Tool;
+        public TMP_Text KeyLabel, EquipLabel;
+        public UIButtonFx EquipFx;
+    }
+
+    private readonly List<HunterRow> hunterRows = new();
+    private TMP_Text hunterKeyLabel;
+    private string listeningHunter; // A tool id, "" for the hunter tool key itself; null when not listening
+
+    private void BuildHunter(RectTransform list)
+    {
+        var intro = UIKit.Text(list, "<b>Use as Tool</b> makes it your hunter tool (Tag, Protect the President). <b>Bind</b> puts any tool on a key of its own, usable in any role while cheats are on.",
+            20f, UIKit.Font.Body, Theme.textMuted);
+        UIKit.Size(intro, height: 56f);
+
+        var keyRow = UIKit.Panel(list, Theme.card, 18f, "Hunter Tool Key");
+        UIKit.Size(keyRow, height: 72f);
+        UIKit.HStack(keyRow.transform, 14f, UIKit.Pad(18, 10), TextAnchor.MiddleLeft, expandHeight: false);
+        var keyTitle = UIKit.Text(keyRow.transform, "Hunter tool key", 26f, UIKit.Font.Display, Theme.text);
+        UIKit.Size(keyTitle, height: 40f, flexWidth: 1f);
+        var keyButton = UIKit.Button(keyRow.transform, "", UIKit.Style.Ghost, () => ListenHunter(""), 48f, 22f);
+        UIKit.Size(keyButton, 170f, 48f);
+        hunterKeyLabel = UIKit.Label(keyButton);
+        hunterKeyLabel.font = UIKit.FontAsset(UIKit.Font.Bold);
+
+        foreach (var cls in HunterClasses.All)
+        {
+            string hex = ColorUtility.ToHtmlStringRGB(cls.Color);
+            var head = UIKit.Text(list, $"<color=#{hex}>{cls.Name.ToUpperInvariant()}</color>  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(Theme.textMuted)}>passive: {cls.Passive}</color></size>",
+                26f, UIKit.Font.Display, Theme.text);
+            UIKit.Size(head, height: 44f);
+            foreach (var tool in cls.Tools)
+            {
+                var row = new HunterRow { Cls = cls, Tool = tool };
+                var card = UIKit.Panel(list, Theme.card, 18f, tool.Name);
+                UIKit.Size(card, height: 86f);
+                UIKit.HStack(card.transform, 14f, UIKit.Pad(18, 10), TextAnchor.MiddleLeft, expandHeight: false);
+                var name = UIKit.OneLine(UIKit.Text(card.transform, tool.Name, 26f, UIKit.Font.Display, cls.Color));
+                UIKit.Size(name, 200f);
+                var desc = UIKit.Text(card.transform, $"{tool.Description}  ({tool.Cooldown:0}s)", 18f, UIKit.Font.Body, Theme.textMuted);
+                desc.enableAutoSizing = true;
+                desc.fontSizeMin = 14f;
+                desc.fontSizeMax = 18f;
+                UIKit.Size(desc, height: 66f, flexWidth: 1f);
+                var (c, t) = (cls, tool);
+                var equip = UIKit.Button(card.transform, "Use as Tool", UIKit.Style.Ghost, () => { HunterClasses.Choose(c, t); RefreshHunter(); }, 48f, 20f);
+                UIKit.Size(equip, 180f, 48f);
+                row.EquipLabel = UIKit.Label(equip);
+                row.EquipFx = equip.GetComponent<UIButtonFx>();
+                var bind = UIKit.Button(card.transform, "", UIKit.Style.Ghost, () => ListenHunter(t.Id), 48f, 22f);
+                UIKit.Size(bind, 150f, 48f);
+                row.KeyLabel = UIKit.Label(bind);
+                row.KeyLabel.font = UIKit.FontAsset(UIKit.Font.Bold);
+                var clear = UIKit.RoundButton(card.transform, "×", () => { HunterKit.SetCheatBinding(t.Id, KeyCode.None); RefreshHunter(); }, 44f);
+                clear.GetComponent<UIButtonFx>().ClickSound = UISound.Kind.Back;
+                hunterRows.Add(row);
+            }
+        }
+    }
+
+    private void ListenHunter(string id)
+    {
+        if (!Cheats.Enabled) return;
+        StopListening();
+        listeningHunter = id;
+        var label = id == "" ? hunterKeyLabel : hunterRows.Find(r => r.Tool.Id == id)?.KeyLabel;
+        if (label != null) { label.text = "Press a key…"; label.color = Theme.primary; }
+        listener.Start();
+    }
+
+    private void BindHunter(string id, KeyCode key)
+    {
+        if (id == "") Keybinds.Set(InputAction.HunterTool, key, forMatch: true);
+        else HunterKit.SetCheatBinding(id, key);
+        RefreshHunter();
+    }
+
+    // The tab shows only where the tools work; rows show your tool and each tool's cheat key
+    private void RefreshHunter()
+    {
+        if (tabs.Count <= HunterTab || hunterKeyLabel == null) return;
+        bool allowed = HunterKit.CheatToolsAllowed();
+        tabs[HunterTab].tab.gameObject.SetActive(allowed);
+        if (!allowed && current == HunterTab) Show(0);
+
+        KeyCode main = Keybinds.Get(InputAction.HunterTool);
+        hunterKeyLabel.text = main == KeyCode.None ? "Bind key" : Keybinds.Label(main);
+        hunterKeyLabel.color = Theme.text;
+        var chosen = HunterClasses.ChosenTool;
+        foreach (var row in hunterRows)
+        {
+            bool mine = row.Tool == chosen;
+            row.EquipLabel.text = mine ? "Your Tool" : "Use as Tool";
+            if (row.EquipFx != null) row.EquipFx.FaceColor = mine ? Theme.lime : Theme.card;
+            row.EquipLabel.color = mine ? Theme.textDark : Theme.text;
+            HunterKit.CheatBindings.TryGetValue(row.Tool.Id, out KeyCode key);
+            row.KeyLabel.text = key == KeyCode.None ? "Bind key" : Keybinds.Label(key);
+            row.KeyLabel.color = key == KeyCode.None ? Theme.textMuted : Theme.text;
+        }
+    }
+
     // ─── Binding ──────────────────────────────────────────────────────────────
 
     private void Listen(AbilityRow row)
@@ -339,6 +459,12 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
 
     private void StopListening()
     {
+        if (listeningHunter != null)
+        {
+            listener.Stop();
+            listeningHunter = null;
+            RefreshHunter();
+        }
         if (listening == null) return;
         listener.Stop();
         listening = null;

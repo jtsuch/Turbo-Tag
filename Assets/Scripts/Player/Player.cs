@@ -358,6 +358,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (!TryGetComponent(out HitFlinch _)) gameObject.AddComponent<HitFlinch>();       // Shot reactions on the body
         if (!TryGetComponent(out PlayerEmotes _)) gameObject.AddComponent<PlayerEmotes>(); // Emote bubbles and moves
         if (!TryGetComponent(out PlayerCallouts _)) gameObject.AddComponent<PlayerCallouts>(); // Taunts and team pings
+        if (!TryGetComponent(out HunterKit _)) gameObject.AddComponent<HunterKit>();           // Hunter classes and their tools
         if (!TryGetComponent(out GhostBody _)) gameObject.AddComponent<GhostBody>();       // Hunter: ghosts pass through players
         if (!TryGetComponent(out DonutNet _)) gameObject.AddComponent<DonutNet>();         // Donut effects others see
 
@@ -710,4 +711,5 @@ public enum PlayerFlag
     Unstealable = 1 << 6, // Keep Away: the disc can't be stolen from you
     DoubleScore = 1 << 7, // Keep Away: your team scores double while you hold the disc
     Jetpack     = 1 << 8, // Flames under your feet while flying
+    Jammed      = 1 << 9, // Hunter tools and the radar can't find you (Jammer donut)
 }

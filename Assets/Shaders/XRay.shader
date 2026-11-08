@@ -1,11 +1,15 @@
-// See-through-walls pass for URP: draws the mesh again in a flat colour, only where something is in front of
-// it (ZTest Greater), with a brighter rim. Used as an extra material on other players' bodies while the
-// X-Ray Vision effect is on (PlayerAppearance.XRay); Resources/Cosmetics/XRay keeps the shader in builds.
+// See-through-walls pass for URP: draws the mesh again in a flat colour, only where something is well in front of
+// it, with a brighter rim. The mesh is pulled _Margin towards the camera along each view ray (same spot on screen,
+// nearer depth) before the ZTest Greater, so only cover at least that much in front counts: the player's own outfit,
+// hat or flippers don't (a hunter in a onesie looked red all the time). Used as an extra material on other players'
+// bodies by PlayerAppearance (teammates, hunters for hiders, X-Ray donut, hunter reveals); Resources/Cosmetics/XRay
+// keeps the shader in builds.
 Shader "TurboTag/XRay"
 {
     Properties
     {
         _Color ("Colour", Color) = (1, 0.25, 0.3, 0.75)
+        _Margin ("Cover In Front (m)", Float) = 0.6
     }
 
     SubShader
@@ -28,6 +32,7 @@ Shader "TurboTag/XRay"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _Color;
+                float _Margin;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
@@ -37,7 +42,11 @@ Shader "TurboTag/XRay"
             {
                 Varyings output;
                 float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-                output.positionCS = TransformWorldToHClip(positionWS);
+                // Slide towards the camera along the view ray: the same pixel, _Margin nearer
+                float3 positionVS = TransformWorldToView(positionWS);
+                float distance = length(positionVS);
+                positionVS *= max(distance - _Margin, 0.05) / max(distance, 0.0001);
+                output.positionCS = TransformWViewToHClip(positionVS);
                 output.normalWS   = TransformObjectToWorldNormal(input.normalOS);
                 output.viewWS     = GetWorldSpaceViewDir(positionWS);
                 return output;

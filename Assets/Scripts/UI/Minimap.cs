@@ -27,6 +27,31 @@ public class Minimap : MonoBehaviour
     private RenderTexture texture;
     private RectTransform card, markers, arrow, frame, radarLayer;
     private TMPro.TMP_Text mapLabel;
+    private Image pulse;
+    private Color pulseColor;
+    private float pulseAt = -99f;
+    private static Minimap instance;
+
+    /// <summary>
+    /// A quiet alert: the map's border glows <paramref name="color"/> in two quick pulses (with a soft ping). Used
+    /// instead of banners for things that happen often (radar sweeps, hunter tools finding you).
+    /// </summary>
+    public static void Pulse(Color color, bool ping = true)
+    {
+        if (instance == null) return;
+        instance.pulseColor = color;
+        instance.pulseAt = Time.unscaledTime;
+        if (ping) Sfx.Here(SfxKind.Tick, 0.45f, 1.7f);
+    }
+
+    private void UpdatePulse()
+    {
+        float t = Time.unscaledTime - pulseAt;
+        float a = t < 1.4f ? Mathf.Abs(Mathf.Sin(t / 1.4f * Mathf.PI * 2f)) * (1f - t / 1.4f) : 0f; // Two pulses, fading
+        var c = pulseColor;
+        c.a = a * 0.95f;
+        pulse.color = c;
+    }
     private bool big;
     private float radius = ViewRadius, mapSize = MapSize;
     private readonly List<Image> dots = new();
@@ -50,6 +75,14 @@ public class Minimap : MonoBehaviour
         UIKit.Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(18f, -8f), new Vector2(200f, 26f));
         var key = UIKit.Chip(card, Keybinds.Label(Keybinds.Get(InputAction.Map)), theme.card, theme.text, 16f);
         UIKit.Place(key.rectTransform, new Vector2(1f, 1f), new Vector2(-14f, -8f), new Vector2(44f, 26f));
+
+        // A glow round the map that pulses for quiet alerts (radar sweeps, being spotted): see Pulse
+        pulse = UIKit.Panel(card, new Color(1f, 0.25f, 0.3f, 0f), 22f, "Pulse");
+        pulse.rectTransform.anchorMin = Vector2.zero;
+        pulse.rectTransform.anchorMax = Vector2.one;
+        pulse.rectTransform.offsetMin = new Vector2(4f, 4f);
+        pulse.rectTransform.offsetMax = new Vector2(-4f, -36f);
+        pulse.raycastTarget = false;
 
         // The view: the rendered texture inside a rounded mask
         var frameImage = UIKit.Panel(card, theme.field, 18f, "Frame");
@@ -109,6 +142,7 @@ public class Minimap : MonoBehaviour
 
     private void OnEnable()
     {
+        instance = this;
         RenderPipelineManager.beginCameraRendering += BeforeRender;
         RenderPipelineManager.endCameraRendering   += AfterRender;
     }
@@ -171,6 +205,7 @@ public class Minimap : MonoBehaviour
 
         DrawOthers(local);
         UpdateRadar(local);
+        UpdatePulse();
     }
 
     // ─── Hunter radar (Tag, Protect the President) ────────────────────────────
@@ -204,11 +239,7 @@ public class Minimap : MonoBehaviour
         if (target)
         {
             int sweep = (int)(now / interval);
-            if (radarSweep >= 0 && sweep != radarSweep)
-            {
-                Sfx.Here(SfxKind.ZapDown, 0.6f, 1.2f);
-                if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner("<size=70%>RADAR</size>\nYOU'VE BEEN SPOTTED!", 1.6f);
-            }
+            if (radarSweep >= 0 && sweep != radarSweep) Pulse(new Color(1f, 0.25f, 0.3f)); // Spotted: a red pulse and a ping
             radarSweep = sweep;
         }
         if (on)
@@ -223,6 +254,7 @@ public class Minimap : MonoBehaviour
                 {
                     if (p == null || p == local || p.IsDownAfterTag) continue;
                     if (p.Role == PlayerRole.Hunter || p.Role == PlayerRole.None || p.Role == PlayerRole.Ghost) continue;
+                    if (p.Has(PlayerFlag.Jammed)) continue; // The Jammer donut hides them from the radar
                     var rng = new System.Random(sweep * 7919 + p.ActorNumber);
                     float angle = (float)rng.NextDouble() * Mathf.PI * 2f;
                     float r = Mathf.Sqrt((float)rng.NextDouble()) * RadarRadius * 0.8f;
@@ -231,8 +263,8 @@ public class Minimap : MonoBehaviour
                 if (!first && radarPings.Count > 0)
                 {
                     radarShownAt = Time.time;
-                    Sfx.Here(SfxKind.Shimmer, 0.7f, 0.7f);
-                    if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner("<size=70%>RADAR</size>\nHIDERS SPOTTED", 1.6f);
+                    Pulse(new Color(1f, 0.3f, 0.35f), ping: false);
+                    Sfx.Here(SfxKind.Shimmer, 0.5f, 0.7f);
                 }
             }
         }

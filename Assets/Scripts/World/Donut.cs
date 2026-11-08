@@ -80,6 +80,7 @@ public class Donut : MonoBehaviour
         new(typeof(SecondLifeEffect),      90f, 0.8f, Kind.Good, Where.Guns),
         // Boons for getting away
         new(typeof(PhantomEffect),          6f, 0.8f, Kind.Good, Where.Escape),
+        new(typeof(JammerEffect),          20f, 1f,   Kind.Good, Where.Escape),
         new(typeof(DecoysEffect),           3f, 1f,   Kind.Good, Where.Escape),
         new(typeof(SmokeBombEffect),        3f, 1f,   Kind.Good, Where.Escape),
         new(typeof(SuperSpeedEffect),       5f, 1f,   Kind.Good, Where.Escape),

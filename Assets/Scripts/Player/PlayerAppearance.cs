@@ -303,6 +303,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         var local = Player.Local;
         int kind = 0;
         if (XRay || player.IsBeacon) kind = IsTeammateOfLocal() ? 1 : 2;
+        else if (HunterReveal.IsRevealed(player.ActorNumber)) kind = 2; // Lit up by a hunter's tool (cloak or not)
         else if (local != null && local != player && manager != null && manager.Mode != null)
         {
             kind = manager.Mode.SeesThroughWalls(local.Role, player.Role);

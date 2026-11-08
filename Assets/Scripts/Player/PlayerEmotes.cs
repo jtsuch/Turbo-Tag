@@ -3,25 +3,27 @@ using TMPro;
 using UnityEngine;
 
 /// <summary>
-/// Emotes: a speech bubble over the penguin's head plus a little move (hop, spin dance, wiggle), seen by everyone.
-/// The emote menu (<see cref="EmoteMenu"/>, the Emote key, default T) calls <see cref="Play"/> on the local player;
+/// Emotes: a speech bubble over the penguin's head plus a move, seen by everyone: a real animation (Justin's
+/// WaveFriendly and DanceShuffle, on the Animator's "Emote Layer" built by Editor/EmoteAnimationSetup; it fades out
+/// early if the player starts moving) or a procedural one (hop, spin, wiggle).
+/// The emote wheel (<see cref="EmoteMenu"/>, the Emote key, default T) calls <see cref="Play"/> on the local player;
 /// one small RPC tells every screen. Added to every player copy by Player, so the RPC lines up.
 /// </summary>
 [RequireComponent(typeof(Player))]
 public class PlayerEmotes : MonoBehaviourPun
 {
     /// <summary>The emotes: menu label, bubble text, move.</summary>
-    public static readonly (string label, string bubble, Move move)[] All =
+    public static readonly (string label, string bubble, Move move, string anim, float seconds)[] All =
     {
-        ("Wave",       "Hi!",        Move.Hop),
-        ("Dance",      "Let's go!",  Move.Dance),
-        ("GG",         "GG!",        Move.Hop),
-        ("Laugh",      "Haha!",      Move.Wiggle),
-        ("Over here",  "Over here!", Move.Hop),
-        ("Taunt",      "Catch me!",  Move.Dance),
+        ("Wave",       "Hi!",        Move.Anim,   "WaveFriendly", 2f),
+        ("Dance",      "Let's go!",  Move.Anim,   "DanceShuffle", 4f),
+        ("GG",         "GG!",        Move.Hop,    null, 0f),
+        ("Laugh",      "Haha!",      Move.Wiggle, null, 0f),
+        ("Over here",  "Over here!", Move.Hop,    null, 0f),
+        ("Taunt",      "Catch me!",  Move.Dance,  null, 0f),
     };
 
-    public enum Move { Hop, Dance, Wiggle }
+    public enum Move { Hop, Dance, Wiggle, Anim }
 
     private const float Cooldown = 1.2f;
 
@@ -57,7 +59,8 @@ public class PlayerEmotes : MonoBehaviourPun
         ShowBubble(emote.bubble);
         move = emote.move;
         moveAt = Time.time;
-        if (move != Move.Wiggle && TryGetComponent(out Animator animator))
+        if (move == Move.Anim) PlayAnim(emote.anim, emote.seconds);
+        else if (move != Move.Wiggle && TryGetComponent(out Animator animator))
             foreach (var p in animator.parameters)
                 if (p.name == "Jump" && p.type == AnimatorControllerParameterType.Trigger) animator.SetTrigger("Jump");
         Sfx.At(SfxKind.Pop, transform.position + Vector3.up * 2f, 0.5f, 30f, 1.5f);
@@ -94,6 +97,33 @@ public class PlayerEmotes : MonoBehaviourPun
     {
         UpdateBubble();
         UpdateMove();
+        UpdateAnim();
+    }
+
+    // ─── Animated emotes (the Emote Layer) ────────────────────────────────────
+
+    private Animator emoteAnimator;
+    private int emoteLayer = -2; // -2: not looked up yet
+    private float animUntil, animStarted, animWeight;
+
+    private void PlayAnim(string state, float seconds)
+    {
+        if (emoteAnimator == null) emoteAnimator = GetComponentInChildren<Animator>();
+        if (emoteAnimator == null) return;
+        if (emoteLayer == -2) emoteLayer = emoteAnimator.GetLayerIndex("Emote Layer");
+        if (emoteLayer < 0) return;
+        emoteAnimator.CrossFadeInFixedTime(state, 0.15f, emoteLayer, 0f);
+        animStarted = Time.time;
+        animUntil = Time.time + seconds;
+    }
+
+    // The layer blends in for the emote's length, and out early once the player moves off
+    private void UpdateAnim()
+    {
+        if (emoteLayer < 0 || emoteAnimator == null) return;
+        if (Time.time - animStarted > 0.3f && player.Velocity.magnitude > 3f) animUntil = Mathf.Min(animUntil, Time.time);
+        animWeight = Mathf.MoveTowards(animWeight, Time.time < animUntil ? 1f : 0f, Time.deltaTime * 5f);
+        emoteAnimator.SetLayerWeight(emoteLayer, animWeight);
     }
 
     private void UpdateBubble()

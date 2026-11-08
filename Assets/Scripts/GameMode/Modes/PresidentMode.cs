@@ -27,6 +27,7 @@ public class PresidentMode : GameMode
 
     public override string DisplayName => "Protect the President";
     public override bool HunterRadar => true;
+    public override bool HasHunterClasses => true;
     public override bool   UsesRoles   => true;
 
     // Tagging the President ends the match: they stay down, watching, until the scoreboard
@@ -97,6 +98,7 @@ public class PresidentMode : GameMode
 
         MatchStats.Add(tagger, PlayerKeys.StatTags);
         MatchStats.Add(target, PlayerKeys.StatTimesTagged);
+        HunterStats.RecordCatch(tagger, Clock.Elapsed);
         Manager.BroadcastTag(tagger, target);
         EndMatch(HuntersTeam);
     }

@@ -14,6 +14,9 @@ public enum InputAction
     Emote,
     Taunt,
     Ping,
+    HunterClass,
+    HunterTool,
+    Spectate,
 }
 
 /// <summary>
@@ -51,6 +54,9 @@ public static class Keybinds
         [InputAction.Emote]        = KeyCode.T,
         [InputAction.Taunt]        = KeyCode.G,
         [InputAction.Ping]         = KeyCode.Mouse2,
+        [InputAction.HunterClass]  = KeyCode.B,
+        [InputAction.HunterTool]   = KeyCode.Mouse0,
+        [InputAction.Spectate]     = KeyCode.V,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,

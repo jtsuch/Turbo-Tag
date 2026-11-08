@@ -109,6 +109,10 @@ public static class PlayerKeys
     public const string RoundSurvived = "Round_Survived";
     public const string RoundClose    = "Round_Close";
 
+    /// <summary>The hunter class and left-click tool this player picked (strings; own write; see HunterClasses).</summary>
+    public const string HunterClass = "HunterClass";
+    public const string HunterTool  = "HunterTool";
+
     // Match stats for the scoreboard (floats; see MatchStats). Reset when a level loads.
     public const string StatTags           = "Stat_Tags";           // Master: players this one tagged
     public const string StatTimesTagged    = "Stat_TimesTagged";    // Master

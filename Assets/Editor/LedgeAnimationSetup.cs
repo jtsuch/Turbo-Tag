@@ -27,12 +27,12 @@ public static class LedgeAnimationSetup
     private const string OutFolder = "Assets/Animations/Ledge";
     private const float  ClimbSeconds = 0.75f; // PlayerMovement.ClimbOntoLedge's duration
 
-    // Jimmy's armature scale ÷ the clip's (1 when they already match)
-    private static float UnitFactor(AnimationClip source)
+    // Jimmy's armature scale ÷ the clip's (1 when they already match). `root` is the clip's path to the Armature
+    private static float UnitFactor(AnimationClip source, string root = "")
     {
         var prefab = Resources.Load<GameObject>("Player/ThePlayer");
         var armature = prefab != null ? prefab.transform.Find("Armature") : null;
-        var binding = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalScale.x");
+        var binding = EditorCurveBinding.FloatCurve(root, typeof(Transform), "m_LocalScale.x");
         var curve = AnimationUtility.GetEditorCurve(source, binding);
         if (armature == null || curve == null) return 1f;
         float clipScale = curve.Evaluate(0f);
@@ -51,18 +51,27 @@ public static class LedgeAnimationSetup
         return new AnimationCurve(keys) { preWrapMode = curve.preWrapMode, postWrapMode = curve.postWrapMode };
     }
 
-    // A copy of the FBX clip that binds to Jimmy's hierarchy ("" → Armature, "Stomach/…" → "Armature/Stomach/…")
-    private static AnimationClip Remapped(AnimationClip source, string name, bool loop, bool straightenStomach)
+    /// <summary>
+    /// A copy of an FBX clip that binds to Jimmy's hierarchy, saved as {folder}/{name}.anim. Clips exported with the
+    /// Armature as their root ("" → Armature, "Stomach/…" → "Armature/Stomach/…") are re-pathed; clips that already
+    /// start at "Armature" keep their paths. Either way the units are matched to Jimmy (see UnitFactor). Shared with
+    /// the emote clips (EmoteAnimationSetup).
+    /// </summary>
+    internal static AnimationClip Remapped(AnimationClip source, string name, bool loop, bool straightenStomach, string folder = OutFolder)
     {
-        if (!AssetDatabase.IsValidFolder(OutFolder)) AssetDatabase.CreateFolder("Assets/Animations", "Ledge");
+        if (!AssetDatabase.IsValidFolder(folder))
+            AssetDatabase.CreateFolder(Path.GetDirectoryName(folder).Replace(Path.DirectorySeparatorChar, '/'), Path.GetFileName(folder));
         var clip = new AnimationClip { name = name, frameRate = source.frameRate };
+        var bindings = AnimationUtility.GetCurveBindings(source);
+        bool armatureRooted = bindings.Any(b => b.path == "Armature" || b.path.StartsWith("Armature/"));
+        string rootPath = armatureRooted ? "Armature" : "";
         // Units: these FBX files have the Armature scaled 100× smaller than Jimmy's (0.595 vs 59.5) and every bone
         // offset 100× bigger, which collapsed him to a speck. Rescale both to Jimmy's armature.
-        float factor = UnitFactor(source);
-        foreach (var b in AnimationUtility.GetCurveBindings(source))
+        float factor = UnitFactor(source, rootPath);
+        foreach (var b in bindings)
         {
             var curve = AnimationUtility.GetEditorCurve(source, b);
-            bool root = string.IsNullOrEmpty(b.path);
+            bool root = b.path == rootPath;
             if (root && b.propertyName.StartsWith("m_LocalScale")) curve = Scaled(curve, factor);
             else if (!root && b.propertyName.StartsWith("m_LocalPosition")) curve = Scaled(curve, 1f / factor);
             // Climb-up: physics lifts the body in a straight line over the clip's length, so take the clip's own
@@ -71,14 +80,14 @@ public static class LedgeAnimationSetup
             if (straightenStomach && b.path == "Stomach" && b.propertyName.StartsWith("m_LocalPosition"))
                 curve = Ramped(curve, -(curve.Evaluate(source.length) - curve.Evaluate(0f)), 0f, source.length);
             var to = b;
-            to.path = root ? "Armature" : "Armature/" + b.path;
+            to.path = armatureRooted ? b.path : root ? "Armature" : "Armature/" + b.path;
             AnimationUtility.SetEditorCurve(clip, to, curve);
         }
         var settings = AnimationUtility.GetAnimationClipSettings(clip);
         settings.loopTime = loop;
         AnimationUtility.SetAnimationClipSettings(clip, settings);
 
-        string path = $"{OutFolder}/{name}.anim";
+        string path = $"{folder}/{name}.anim";
         var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
         if (existing != null) { EditorUtility.CopySerialized(clip, existing); EditorUtility.SetDirty(existing); return existing; }
         AssetDatabase.CreateAsset(clip, path);

@@ -33,6 +33,7 @@ public class AdminCommands : MonoBehaviourPun
         ("speed",   "<x>",       "Move speed multiplier"),
         ("jump",    "<x>",       "Jump multiplier"),
         ("gravity", "<x>",       "Gravity multiplier (0.2 = moon)"),
+        ("cooldown", "<x>",      "Cooldown multiplier: 0 = no cooldowns (abilities, Basic meters, hunter tools), 1 = normal"),
         ("invert",  "0|1",       "Backwards controls"),
         ("blind",   "[sec]",     "White screen (default 3 s)"),
         ("dizzy",   "[sec]",     "Wobbly, drunk camera (default 8 s)"),
@@ -163,6 +164,7 @@ public class AdminCommands : MonoBehaviourPun
             case "size":    SetStat(me, Stat.Size, Number(args, 1f), 0.05f, 20f); break;
             case "speed":   SetStat(me, Stat.Speed, Number(args, 1f), 0f, 20f); break;
             case "jump":    SetStat(me, Stat.Jump, Number(args, 1f), 0f, 20f); break;
+            case "cooldown": SetStat(me, Stat.Cooldown, Number(args, 1f), 0f, 10f); break;
             case "gravity": SetStat(me, Stat.Gravity, Number(args, 1f), -2f, 10f); break;
             case "invert":  SetStat(me, Stat.ControlDirection, Number(args, 1f) >= 0.5f ? -1f : 1f, -1f, 1f); break;
             case "blind":   ScreenFlash.Apply(1f, Number(args, 3f)); break;

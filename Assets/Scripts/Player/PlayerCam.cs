@@ -143,7 +143,7 @@ public class PlayerCam : MonoBehaviour
         bool paused = PauseMenuManager.IsPaused;
 
         // The gun picker frees the mouse to click a gun, the admin console to scroll its log (and the view stops turning)
-        if ((GunPicker.IsOpen && !paused) || AdminConsole.IsOpen)
+        if ((GunPicker.IsOpen && !paused) || AdminConsole.IsOpen || HunterClassPicker.IsOpen)
         {
             if (Cursor.lockState != CursorLockMode.None || !Cursor.visible)
             {
@@ -441,7 +441,7 @@ public class PlayerCam : MonoBehaviour
             xRotation = Mathf.Clamp(SimInput.Pitch, -90f, 90f);
             return;
         }
-        if (PingWheel.IsOpen) return; // The mouse is choosing a ping
+        if (PingWheel.IsOpen || EmoteMenu.IsOpen) return; // The mouse is choosing a ping or an emote
 
         // Sensitivity 100 = raw 1:1 mouse delta
         float scale = sensitivity / 100f;
