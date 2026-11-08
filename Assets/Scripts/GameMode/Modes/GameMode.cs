@@ -62,6 +62,18 @@ public abstract class GameMode
     public virtual bool RespawnsAfterTag => true;
 
     /// <summary>
+    /// While true, a dead player stays down even once their respawn delay is over (Search &amp; Destroy: one life per
+    /// round, back at the next round's countdown). Checked on every client, so must follow synced state.
+    /// </summary>
+    public virtual bool KeepsDead(MatchPhase phase) => false;
+
+    /// <summary>
+    /// Team spawns at the start of a round: the spawn points this team uses, or null for the default (the level's
+    /// points split in half along its longer side). Search &amp; Destroy: the attack and defence ends.
+    /// </summary>
+    public virtual System.Collections.Generic.List<SpawnPoint> TeamSpawns(System.Collections.Generic.List<SpawnPoint> points, PlayerRole role) => null;
+
+    /// <summary>
     /// Seconds a tagged/killed player waits before respawning. <paramref name="tagger"/> is who got them
     /// (the victim themself for a fall). The wait can be cut short (<see cref="Player.EndRespawnWait"/>, killcam skip).
     /// </summary>
@@ -81,6 +93,9 @@ public abstract class GameMode
 
     /// <summary>Gun modes: whether <paramref name="attacker"/>'s bullets hurt <paramref name="target"/> (no friendly fire; bullets pass through).</summary>
     public virtual bool CanDamage(PlayerRole attacker, PlayerRole target) => true;
+
+    /// <summary>Gun modes: whether guns fire in <paramref name="phase"/> (default: only while the match is live; Search &amp; Destroy also in its pre-round).</summary>
+    public virtual bool CanShoot(MatchPhase phase) => phase == MatchPhase.Active;
 
     /// <summary>Gun modes: shot players drop a health pack (with the Health Drops rule).</summary>
     public virtual bool AllowsHealthDrops => true;

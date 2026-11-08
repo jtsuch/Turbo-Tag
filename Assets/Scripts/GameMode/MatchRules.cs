@@ -109,6 +109,13 @@ public static class MatchRules
     /// <summary>Guns get less accurate in the air (off by default: flip and snipe with perfect aim).</summary>
     public static bool  MovementSpread => NetProps.Room(RuleKeys.MovementSpread, false);
 
+    // ─── Search & Destroy ──────────────────────────────────────────────────────
+    public static int   RoundsToWin => System.Math.Max(1, NetProps.Room(RuleKeys.RoundsToWin, 4));
+    public static float RoundTime   => UnityEngine.Mathf.Max(20f, NetProps.Room(RuleKeys.RoundTime, 120f));
+    public static float BombTimer   => UnityEngine.Mathf.Max(5f, NetProps.Room(RuleKeys.BombTimer, 40f));
+    public static float PlantTime   => UnityEngine.Mathf.Max(0.5f, NetProps.Room(RuleKeys.PlantTime, 4f));
+    public static float DefuseTime  => UnityEngine.Mathf.Max(0.5f, NetProps.Room(RuleKeys.DefuseTime, 7f));
+
     // ─── Host helpers ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -120,6 +127,13 @@ public static class MatchRules
         if (definition == null || !PhotonNetwork.IsMasterClient) return;
 
         var props = new Hashtable { [RoomKeys.GameMode] = definition.gameModeKey };
+        // Each mode plays its own set of maps: switch to one of them if the current map isn't
+        string category = definition.mapCategory ?? "";
+        if (SceneNames.Category(Map) != category)
+        {
+            string first = SceneNames.FirstMap(category);
+            if (first != null) props[RoomKeys.Map] = first;
+        }
         if (definition.cheatsAutoEnabled && (overwrite || !NetProps.RoomHas(RuleKeys.CheatsEnabled)))
             props[RuleKeys.CheatsEnabled] = true;
 

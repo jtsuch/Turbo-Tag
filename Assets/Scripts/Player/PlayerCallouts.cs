@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// Taunts and pings for one player copy (added to every copy by Player, so the RPCs line up):
-///   - Taunt (<see cref="InputAction.Taunt"/>, default G): a loud, silly call everyone hears from where you stand
+///   - Taunt (<see cref="InputAction.Taunt"/>, default 5): a loud, silly call everyone hears from where you stand
 ///     (and the sound visualizer shows it). Hold the key and let go to throw it instead: the call comes from where
 ///     you're looking (up to 25 m away), a decoy nobody can tell from the real thing. A few seconds' cooldown. No points.
 ///   - Pings (the <see cref="PingWheel"/>): a marker at a spot ("Hide here", "Hunter there", "Let's meet there",

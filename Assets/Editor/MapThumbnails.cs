@@ -19,7 +19,7 @@ public static class MapThumbnails
     public static void Build()
     {
         Directory.CreateDirectory(OutFolder);
-        foreach (string path in Directory.GetFiles(LevelsFolder, "*.unity"))
+        foreach (string path in Directory.GetFiles(LevelsFolder, "*.unity", SearchOption.AllDirectories)) // Map categories are subfolders
         {
             string map = Path.GetFileNameWithoutExtension(path);
             if (map.StartsWith("_")) continue;

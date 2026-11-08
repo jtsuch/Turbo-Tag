@@ -27,6 +27,9 @@ public class GameModeDefinition : ScriptableObject
     [Tooltip("When true, starting from the lobby skips Pregame and loads the map directly with each player's last loadout.")]
     public bool skipAbilitySelection;
 
+    [Tooltip("Which maps this mode plays: the subfolder of Assets/Scenes/Levels they're in (empty = the standard maps directly in it; 'SearchDestroy' = Search & Destroy maps). Choosing the mode switches to a map of its category.")]
+    public string mapCategory = "";
+
     [Tooltip("Rules for this mode and their defaults. Written to room properties when the mode is selected.")]
     public RuleSetting[] settings;
 }

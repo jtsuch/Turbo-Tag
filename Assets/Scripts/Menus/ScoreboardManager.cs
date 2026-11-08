@@ -12,6 +12,10 @@ using PhotonPlayer = Photon.Realtime.Player;
 ///   - a podium of the top three: live 3D penguins in their colours dancing on gold, silver and bronze steps,
 ///     with their names and headline stat (the mode's first scoreboard column);
 ///   - the full table below, with columns, order and headline from the game mode (<see cref="GameMode.ScoreboardColumns"/>).
+/// Team modes (<see cref="TeamMode"/>: Team Deathmatch, Keep Away, Search &amp; Destroy) get a team layout instead: the
+/// winning team in its colour, both teams' final scores in big cards either side of the MVP (the winning team's best
+/// scorer, dancing on a gold step, with their numbers), and a table per team side by side so each side's players
+/// can be compared.
 /// The host picks Play Again (same mode, map and rules; through Pregame unless the mode skips it) or Back to Lobby;
 /// if they do neither, everyone returns to the lobby after <see cref="AutoReturnSeconds"/>.
 /// Attach to: one GameObject in the Scoreboard scene (the screen makes its own canvas).
@@ -37,6 +41,12 @@ public class ScoreboardManager : MenuScreen
     private string        podiumKey;
     private readonly List<PenguinPreview> previews = new();
 
+    // Team layout
+    private static readonly Color RedInk  = new(1f, 0.3f, 0.43f);
+    private static readonly Color BlueInk = new(0.2f, 0.65f, 1f);
+    private RectTransform redCard, blueCard, redList, blueList;
+    private TMP_Text redHeader, blueHeader;
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     protected override void Build()
@@ -55,13 +65,8 @@ public class ScoreboardManager : MenuScreen
         podium = UIKit.Rect("Podium", Root);
         UIKit.Place(podium, new Vector2(0.5f, 1f), new Vector2(0f, -170f), new Vector2(1100f, 400f));
 
-        tableCard = UIKit.Card(Root, UIKit.WithAlpha(Theme.panel, 0.94f), 26f, 0.45f, "Table");
-        tableCard.anchorMin = new Vector2(0.5f, 0f);
-        tableCard.anchorMax = new Vector2(0.5f, 1f);
-        tableCard.pivot = new Vector2(0.5f, 1f);
-        tableCard.offsetMin = new Vector2(-700f, 150f);
-        tableCard.offsetMax = new Vector2(700f, -590f);
-        tableList = UIKit.ScrollList(tableCard, 6f, UIKit.Pad(18, 14));
+        if (mode is TeamMode) BuildTeamTables();
+        else BuildTable();
 
         // Buttons and the countdown along the bottom
         playAgainButton = UIKit.Button(Root, "Play Again", UIKit.Style.Primary, PlayAgain, 72f, 30f);
@@ -73,6 +78,46 @@ public class ScoreboardManager : MenuScreen
 
         Rebuild();
         Sfx.Here(SfxKind.Fanfare, 0.7f);
+    }
+
+    private void BuildTable()
+    {
+        tableCard = UIKit.Card(Root, UIKit.WithAlpha(Theme.panel, 0.94f), 26f, 0.45f, "Table");
+        tableCard.anchorMin = new Vector2(0.5f, 0f);
+        tableCard.anchorMax = new Vector2(0.5f, 1f);
+        tableCard.pivot = new Vector2(0.5f, 1f);
+        tableCard.offsetMin = new Vector2(-700f, 150f);
+        tableCard.offsetMax = new Vector2(700f, -590f);
+        tableList = UIKit.ScrollList(tableCard, 6f, UIKit.Pad(18, 14));
+    }
+
+    // Two tables side by side, one per team, each under a strip in the team's colour
+    private void BuildTeamTables()
+    {
+        (RectTransform card, RectTransform list, TMP_Text header) Make(string name, float x, Color ink)
+        {
+            var card = UIKit.Card(Root, UIKit.WithAlpha(Theme.panel, 0.94f), 26f, 0.45f, name);
+            card.anchorMin = new Vector2(0.5f, 0f);
+            card.anchorMax = new Vector2(0.5f, 1f);
+            card.pivot = new Vector2(0.5f, 1f);
+            card.offsetMin = new Vector2(x - 460f, 150f);
+            card.offsetMax = new Vector2(x + 460f, -540f);
+            var strip = UIKit.Panel(card, UIKit.WithAlpha(ink, 0.9f), 20f, "Strip");
+            strip.rectTransform.anchorMin = new Vector2(0f, 1f);
+            strip.rectTransform.anchorMax = new Vector2(1f, 1f);
+            strip.rectTransform.pivot = new Vector2(0.5f, 1f);
+            strip.rectTransform.offsetMin = new Vector2(10f, -58f);
+            strip.rectTransform.offsetMax = new Vector2(-10f, -10f);
+            var header = UIKit.OneLine(UIKit.Text(strip.transform, "", 28f, UIKit.Font.Display, Theme.textDark, TextAlignmentOptions.Center));
+            UIKit.Stretch(header.rectTransform);
+            var holder = UIKit.Rect("Rows", card);
+            UIKit.Stretch(holder, 0f, 0f, 62f, 0f);
+            var list = UIKit.ScrollList(holder, 5f, UIKit.Pad(14, 8));
+            return (card, list, header);
+        }
+        (redCard, redList, redHeader) = Make("Red Team", -470f, RedInk);
+        (blueCard, blueList, blueHeader) = Make("Blue Team", 470f, BlueInk);
+        tableList = redList; // Rebuild's "built yet" check
     }
 
     private void Update()
@@ -116,6 +161,7 @@ public class ScoreboardManager : MenuScreen
         ranked.Sort(mode.CompareForScoreboard);
         titleText.text = mode.ScoreboardTitle(ranked);
         var columns = mode.ScoreboardColumns;
+        if (mode is TeamMode teams) { RebuildTeams(teams, ranked, columns); return; }
 
         BuildPodium(ranked, columns);
         BuildAwards(ranked);
@@ -194,6 +240,150 @@ public class ScoreboardManager : MenuScreen
             UIKit.Place(name.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f), new Vector2(300f, 38f));
             name.rectTransform.pivot = new Vector2(0.5f, 0f);
             name.rectTransform.anchoredPosition = Vector2.zero;
+        }
+    }
+
+    // ─── Team layout ──────────────────────────────────────────────────────────
+
+    private void RebuildTeams(TeamMode teams, List<PhotonPlayer> ranked, IReadOnlyList<ScoreboardColumn> columns)
+    {
+        string winner = TeamMode.WinningTeam;
+        titleText.text = winner == TeamMode.Red ? "RED TEAM WINS!" : winner == TeamMode.Blue ? "BLUE TEAM WINS!" : "IT'S A DRAW!";
+        titleText.color = winner == TeamMode.Red ? RedInk : winner == TeamMode.Blue ? BlueInk : Theme.primary;
+
+        // Columns per team table: the mode's, minus the team (the table says it)
+        var shown = new List<ScoreboardColumn>();
+        foreach (var c in columns) if (c.Header != "Team") shown.Add(c);
+
+        var mvp = teams.Mvp(ranked);
+        BuildTeamTop(teams, winner, mvp, shown);
+        FillTeam(redList, redHeader, PlayerRole.TeamRed, "RED TEAM", winner == TeamMode.Red, teams, ranked, shown, mvp);
+        FillTeam(blueList, blueHeader, PlayerRole.TeamBlue, "BLUE TEAM", winner == TeamMode.Blue, teams, ranked, shown, mvp);
+        RequestLayout();
+    }
+
+    // Both final scores either side of the MVP; rebuilt only when they change, so the MVP's dance doesn't restart
+    private void BuildTeamTop(TeamMode teams, string winner, PhotonPlayer mvp, List<ScoreboardColumn> shown)
+    {
+        string red = teams.FinalScore(PlayerRole.TeamRed), blue = teams.FinalScore(PlayerRole.TeamBlue);
+        string key = $"{winner}|{red}|{blue}|{(mvp != null ? mvp.ActorNumber : -1)}|{(mvp != null && shown.Count > 0 ? shown[0].Value(mvp) : "")}";
+        if (key == podiumKey) return;
+        podiumKey = key;
+        for (int i = podium.childCount - 1; i >= 0; i--) Destroy(podium.GetChild(i).gameObject);
+        previews.Clear();
+
+        void ScoreCard(string label, string score, Color ink, float x, bool won)
+        {
+            var card = UIKit.Card(podium, won ? UIKit.WithAlpha(ink, 0.95f) : UIKit.WithAlpha(Theme.panel, 0.94f), 26f, 0.45f, label);
+            card.anchorMin = card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.anchoredPosition = new Vector2(x, 0f);
+            card.sizeDelta = new Vector2(320f, 250f);
+            Color text = won ? Theme.textDark : ink;
+            var name = UIKit.OneLine(UIKit.Text(card, label, 30f, UIKit.Font.Display, text, TextAlignmentOptions.Center));
+            UIKit.Place(name.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(300f, 40f));
+            var number = UIKit.OneLine(UIKit.Text(card, score, 110f, UIKit.Font.Display, text, TextAlignmentOptions.Center));
+            UIKit.Place(number.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -4f), new Vector2(300f, 120f));
+            number.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            number.rectTransform.anchoredPosition = new Vector2(0f, -4f);
+            var unit = UIKit.OneLine(UIKit.Text(card, (won ? "WINNERS · " : "") + teams.FinalScoreUnit.ToUpperInvariant(), 18f, UIKit.Font.Display,
+                won ? UIKit.WithAlpha(Theme.textDark, 0.75f) : Theme.textMuted, TextAlignmentOptions.Center));
+            UIKit.Place(unit.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(300f, 28f));
+        }
+        ScoreCard("RED TEAM", red, RedInk, -440f, winner == TeamMode.Red);
+        ScoreCard("BLUE TEAM", blue, BlueInk, 440f, winner == TeamMode.Blue);
+
+        if (mvp == null) return;
+        Color mvpInk = PlayerRoles.Get(mvp) == PlayerRole.TeamBlue ? BlueInk : RedInk;
+        var column = UIKit.Rect("MVP", podium);
+        column.anchorMin = column.anchorMax = new Vector2(0.5f, 0f);
+        column.pivot = new Vector2(0.5f, 0f);
+        column.anchoredPosition = new Vector2(0f, 34f); // Its stat line clears the team tables below
+        column.sizeDelta = new Vector2(440f, 380f);
+
+        var step = UIKit.Card(column, Gold, 18f, 0.4f, "Step");
+        step.anchorMin = step.anchorMax = new Vector2(0.5f, 0f);
+        step.pivot = new Vector2(0.5f, 0f);
+        step.anchoredPosition = new Vector2(0f, 64f);
+        step.sizeDelta = new Vector2(240f, 70f);
+        var mvpText = UIKit.Text(step, "MVP", 46f, UIKit.Font.Display, Theme.textDark, TextAlignmentOptions.Center);
+        UIKit.Stretch(mvpText.rectTransform);
+
+        var holder = UIKit.Rect("Penguin", column);
+        holder.anchorMin = holder.anchorMax = new Vector2(0.5f, 0f);
+        holder.pivot = new Vector2(0.5f, 0f);
+        holder.anchoredPosition = new Vector2(0f, 120f);
+        holder.sizeDelta = new Vector2(230f, 230f);
+        var preview = PenguinPreview.Create(holder, 230f);
+        UIKit.Stretch((RectTransform)preview.transform);
+        preview.SetSkin(PenguinSkins.Of(mvp));
+        preview.SetCosmetics(mvp);
+        preview.Dance = true;
+        previews.Add(preview);
+
+        var name = UIKit.OneLine(UIKit.Text(column, Name(mvp), 32f, UIKit.Font.Display, mvpInk, TextAlignmentOptions.Center));
+        UIKit.Place(name.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 26f), new Vector2(440f, 40f));
+        name.rectTransform.pivot = new Vector2(0.5f, 0f);
+        name.rectTransform.anchoredPosition = new Vector2(0f, 26f);
+        var parts = new List<string>();
+        for (int i = 0; i < shown.Count && parts.Count < 3; i++) parts.Add($"{shown[i].Value(mvp)} {shown[i].Header.ToLowerInvariant()}");
+        var line = UIKit.OneLine(UIKit.Text(column, string.Join("  ·  ", parts), 20f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center));
+        UIKit.Place(line.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f), new Vector2(440f, 28f));
+        line.rectTransform.pivot = new Vector2(0.5f, 0f);
+        line.rectTransform.anchoredPosition = Vector2.zero;
+    }
+
+    private void FillTeam(RectTransform list, TMP_Text header, PlayerRole team, string label, bool won, TeamMode teams,
+                          List<PhotonPlayer> ranked, List<ScoreboardColumn> shown, PhotonPlayer mvp)
+    {
+        header.text = $"{label}  ·  {teams.FinalScore(team)}{(won ? "  ·  WINNERS" : "")}";
+        for (int i = list.childCount - 1; i >= 0; i--) Destroy(list.GetChild(i).gameObject);
+
+        // Name gets what's left after the columns; columns share the rest of the 890 px row
+        const float rowWidth = 860f, rankWidth = 44f, nameWidth = 230f;
+        float colWidth = Mathf.Clamp((rowWidth - rankWidth - nameWidth) / Mathf.Max(1, shown.Count), 64f, 170f);
+        var cells = new List<string> { "#", "PLAYER" };
+        foreach (var c in shown) cells.Add(c.Header.ToUpperInvariant());
+        TeamRow(list, cells, null, true, 0, rankWidth, nameWidth, colWidth, false);
+
+        int place = 0;
+        foreach (var p in ranked)
+        {
+            if (PlayerRoles.Get(p) != team) continue;
+            place++;
+            cells = new List<string> { place.ToString(), Name(p) + (p == mvp ? "  <size=70%><color=#FFC93C>MVP</color></size>" : "") };
+            foreach (var c in shown) cells.Add(c.Value(p));
+            TeamRow(list, cells, p, false, place, rankWidth, nameWidth, colWidth, p == mvp);
+        }
+        if (place == 0)
+        {
+            var empty = UIKit.Text(list, "Nobody", 22f, UIKit.Font.Body, Theme.textMuted, TextAlignmentOptions.Center);
+            UIKit.Size(empty, height: 48f);
+        }
+    }
+
+    private void TeamRow(RectTransform list, List<string> cells, PhotonPlayer player, bool isHeader, int rank,
+                         float rankWidth, float nameWidth, float colWidth, bool mvp)
+    {
+        bool own = player != null && player.IsLocal;
+        Color bg = isHeader ? Color.clear : own ? UIKit.WithAlpha(Theme.primary, 0.22f) : mvp ? UIKit.WithAlpha(Gold, 0.12f) : UIKit.WithAlpha(Theme.card, 0.8f);
+        float height = isHeader ? 40f : 46f;
+        var row = UIKit.Panel(list, bg, 12f, isHeader ? "Header" : "Row");
+        UIKit.Size(row, height: height);
+        var layout = UIKit.HStack(row.transform, 0f, new RectOffset(10, 10, 0, 0), TextAnchor.MiddleLeft);
+        layout.childForceExpandWidth = false;
+        layout.childControlWidth = true;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            float width = i == 0 ? rankWidth : i == 1 ? nameWidth : colWidth;
+            var align = i == 1 ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center;
+            Color ink = isHeader ? Theme.textMuted : Theme.text;
+            var text = UIKit.Text(row.transform, cells[i], isHeader ? 14f : 22f,
+                isHeader || i == 0 ? UIKit.Font.Display : i == 1 ? UIKit.Font.Bold : UIKit.Font.Body, ink, align);
+            if (!isHeader) UIKit.OneLine(text); // Headers may wrap to two lines ("ABILITIES / USED")
+            text.enableAutoSizing = isHeader;
+            if (isHeader) { text.fontSizeMin = 10f; text.fontSizeMax = 14f; }
+            UIKit.Size(text, width, height);
         }
     }
 

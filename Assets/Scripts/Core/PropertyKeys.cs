@@ -25,6 +25,20 @@ public static class RoomKeys
     /// <summary>The starting roles were dealt in Pregame (so players chose abilities knowing them): the level keeps them.</summary>
     public const string RolesDealt = "Match_RolesDealt";
 
+    // Search & Destroy (master-written; see SearchDestroyMode)
+    public const string SnDAttack      = "Match_SnDAttack";   // "Red"/"Blue": the team attacking this round
+    public const string SnDRedWins     = "Match_SnDRed";      // Rounds won (int)
+    public const string SnDBlueWins    = "Match_SnDBlue";
+    public const string SnDBomb        = "Match_SnDBomb";     // SearchDestroyMode.BombState (int)
+    public const string SnDCarrier     = "Match_SnDCarrier";  // Actor carrying the bomb (-1 none)
+    public const string SnDBombPos     = "Match_SnDBombPos";  // Where it lies or is planted (Vector3)
+    public const string SnDSite        = "Match_SnDSite";     // Letter of the site it was planted at
+    public const string SnDDead        = "Match_SnDDead";     // Actors out for the rest of this round (int[])
+    public const string SnDRoundWinner = "Match_SnDWinner";   // Last round's winner ("Red"/"Blue")
+    public const string SnDReason      = "Match_SnDReason";   // ...and how (SearchDestroyMode.Reason*)
+    public const string SnDHistory     = "Match_SnDHistory";  // Each finished round's winner, "R"/"B" per round
+    public const string SnDFirstAttack = "Match_SnDFirst";    // The team that attacked in round 1
+
     /// <summary>Keys exposed in the room listing so the Join List can show them.</summary>
     public static readonly string[] LobbyVisible = { Map, GameMode };
 }
@@ -74,6 +88,13 @@ public static class RuleKeys
     public const string GunPickTime        = "Rule_GunPickTime";
     public const string GunModeAbilities   = "Rule_GunModeAbilities";
     public const string MovementSpread     = "Rule_MovementSpread";
+
+    // Search & Destroy
+    public const string RoundsToWin        = "Rule_RoundsToWin";
+    public const string RoundTime          = "Rule_RoundTime";
+    public const string BombTimer          = "Rule_BombTimer";
+    public const string PlantTime          = "Rule_PlantTime";
+    public const string DefuseTime         = "Rule_DefuseTime";
 }
 
 /// <summary>Player custom-property keys.</summary>
@@ -127,6 +148,8 @@ public static class PlayerKeys
     public const string StatCatches        = "Stat_Catches";        // Master: Keep Away loose discs grabbed
     public const string StatKnockOffs      = "Stat_KnockOffs";      // Master: enemies who fell right after this player's push
     public const string StatDonuts         = "Stat_Donuts";         // Master: donuts eaten
+    public const string StatPlants         = "Stat_Plants";         // Master: Search & Destroy bombs planted
+    public const string StatDefuses        = "Stat_Defuses";        // Master: Search & Destroy bombs defused
 
     /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
     public const string Gun = "Gun";
@@ -163,6 +186,35 @@ public static class SceneNames
         }
         maps.Sort(string.CompareOrdinal);
         return maps;
+    }
+
+    /// <summary>
+    /// A map's category: the subfolder of <see cref="LevelFolder"/> it sits in ("" for maps directly in it, the
+    /// standard set every mode but Search &amp; Destroy uses; "SearchDestroy" for Search &amp; Destroy maps). A mode only
+    /// plays maps of its own category (<see cref="GameModeDefinition.mapCategory"/>).
+    /// </summary>
+    public static string Category(string map)
+    {
+        for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings; i++)
+        {
+            string path = UnityEngine.SceneManagement.SceneUtility.GetScenePathByBuildIndex(i);
+            if (!path.StartsWith(LevelFolder) || System.IO.Path.GetFileNameWithoutExtension(path) != map) continue;
+            string folder = System.IO.Path.GetDirectoryName(path.Substring(LevelFolder.Length)) ?? "";
+            return folder.Replace(System.IO.Path.DirectorySeparatorChar, '/').Replace('\\', '/').Trim('/');
+        }
+        return "";
+    }
+
+    /// <summary>Playable maps in one category, sorted.</summary>
+    public static System.Collections.Generic.List<string> Maps(string category) =>
+        Maps().FindAll(m => Category(m) == (category ?? ""));
+
+    /// <summary>The map a mode of <paramref name="category"/> starts on: the default map if it fits, else the first; null if none.</summary>
+    public static string FirstMap(string category)
+    {
+        var maps = Maps(category);
+        if (maps.Contains(DefaultMap)) return DefaultMap;
+        return maps.Count > 0 ? maps[0] : null;
     }
 
     /// <summary>True for any scene that is not a menu, i.e. a playable level.</summary>

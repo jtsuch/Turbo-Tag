@@ -23,6 +23,7 @@ public static class GameModeRegistry
         ["Hunter"]    = () => new HunterMode(),
         ["KeepAway"]  = () => new KeepAwayMode(),
         ["Tutorial"]  = () => new TutorialMode(),
+        ["SnD"]       = () => new SearchDestroyMode(),
     };
 
     private static GameModeDefinition[] definitions;

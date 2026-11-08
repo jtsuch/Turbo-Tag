@@ -86,6 +86,13 @@ public class DebugSceneBootstrapper : MonoBehaviour, IConnectionCallbacks, IMatc
             },
         };
 
+        // The mode's rule defaults, as the lobby would write them (so editor tests play like real matches)
+        var definition = GameModeRegistry.Find(ModeKey);
+        if (definition != null && definition.settings != null)
+            foreach (var setting in definition.settings)
+                if (!string.IsNullOrEmpty(setting.roomPropertyKey) && setting.roomPropertyKey != RuleKeys.CheatsEnabled)
+                    options.CustomRoomProperties[setting.roomPropertyKey] = setting.DefaultObject;
+
         if (PhotonNetwork.OfflineMode)
             PhotonNetwork.CreateRoom("DebugRoom", options);
         else

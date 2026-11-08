@@ -59,9 +59,9 @@ public class LevelTools : AssetPostprocessor
 
         bool changed = result.Count != current.Length
                     || result.Where((s, i) => s.path != current[i].path).Any();
+        if (changed) EditorBuildSettings.scenes = result.ToArray();
+        AssetDatabase.SaveAssets(); // Write ProjectSettings/EditorBuildSettings.asset now (an earlier change may still be unsaved)
         if (!changed) return;
-
-        EditorBuildSettings.scenes = result.ToArray();
         Debug.Log($"[LevelTools] Build Settings synced: {result.Count(s => s.path.StartsWith(LevelFolder))} maps.");
     }
 

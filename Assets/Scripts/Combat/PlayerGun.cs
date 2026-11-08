@@ -140,7 +140,7 @@ public class PlayerGun : MonoBehaviourPun
         get
         {
             var manager = GameModeManager.Instance;
-            return manager != null && manager.Phase == MatchPhase.Active && !manager.Clock.IsExpired
+            return manager != null && manager.Mode != null && manager.Mode.CanShoot(manager.Phase) && !manager.Clock.IsExpired
                 && !PauseMenuManager.IsPaused && !GunPicker.IsOpen && !Killcam.IsPlaying
                 && !player.IsHeld && !player.MovementLocked
                 && !player.Abilities.IsAwaitingAction

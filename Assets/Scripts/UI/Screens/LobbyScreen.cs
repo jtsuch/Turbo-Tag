@@ -347,8 +347,12 @@ public class LobbyScreen : MenuScreen
         playButton.interactable = !starting;
         waiting.gameObject.SetActive(!IsHost);
 
+        string category = mode != null ? mode.mapCategory ?? "" : "";
         foreach (var (m, bg) in mapCards)
+        {
             bg.GetComponent<UIButtonFx>().FaceColor = m == map ? Theme.secondary : Theme.card;
+            bg.gameObject.SetActive(SceneNames.Category(m) == category); // Only this mode's maps
+        }
         RequestLayout();
     }
 

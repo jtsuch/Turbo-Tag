@@ -580,6 +580,16 @@ public class Player : MonoBehaviourPun, IPunObservable
         }
     }
 
+    // The mode holds dead players down for now (Search & Destroy: until the next round's countdown)
+    private static bool ModeKeepsDead
+    {
+        get
+        {
+            var manager = GameModeManager.Instance;
+            return manager != null && manager.Mode != null && manager.Mode.KeepsDead(manager.Phase);
+        }
+    }
+
     /// <summary>True while this player's body is hidden after a tag (the ragdoll stands in for it).</summary>
     public bool IsDownAfterTag { get; private set; }
 
@@ -588,6 +598,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         respawnWaitEnded = false;
         float until = Time.time + delay;
         while (Time.time < until && !respawnWaitEnded) yield return null;
+        while (ModeKeepsDead) yield return null; // Search & Destroy: out until the next round
 
         if (Spawner.Instance != null) Spawner.Instance.RespawnLocalPlayer();
         IsCaught = false;
@@ -646,7 +657,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         // at the spawn point, not where it fell
         respawnSignal = false;
         float limit = Time.time + 30f;
-        while (!respawnSignal && Time.time < limit) yield return null;
+        while (!respawnSignal && (Time.time < limit || ModeKeepsDead)) yield return null;
         yield return new WaitForSeconds(0.3f);
 
         foreach (var r in hidden) if (r != null) r.enabled = true;

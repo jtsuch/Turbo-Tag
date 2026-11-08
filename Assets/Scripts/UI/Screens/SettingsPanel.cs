@@ -29,6 +29,7 @@ public class SettingsPanel : MonoBehaviour
         ("Hunter Class",  InputAction.HunterClass),
         ("Hunter Tool",   InputAction.HunterTool),
         ("Watch Last Hider", InputAction.Spectate),
+        ("Drop Bomb", InputAction.DropBomb),
         ("Ability 1",     InputAction.AbilityBasic),
         ("Ability 2",     InputAction.AbilityQuick),
         ("Ability 3",     InputAction.AbilityThrow),

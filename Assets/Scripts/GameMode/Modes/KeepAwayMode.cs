@@ -12,6 +12,7 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class KeepAwayMode : TeamMode
 {
+    public override string FinalScoreUnit => "seconds held";
     private const float FlushEvery = 0.5f;
 
     // Master: hold time not yet written to the holder's score

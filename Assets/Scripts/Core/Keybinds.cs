@@ -17,6 +17,7 @@ public enum InputAction
     HunterClass,
     HunterTool,
     Spectate,
+    DropBomb,
 }
 
 /// <summary>
@@ -52,7 +53,8 @@ public static class Keybinds
         [InputAction.Scores]       = KeyCode.Tab,
         [InputAction.Map]          = KeyCode.M,
         [InputAction.Emote]        = KeyCode.T,
-        [InputAction.Taunt]        = KeyCode.G,
+        [InputAction.Taunt]        = KeyCode.Alpha5,
+        [InputAction.DropBomb]     = KeyCode.G,
         [InputAction.Ping]         = KeyCode.Mouse2,
         [InputAction.HunterClass]  = KeyCode.B,
         [InputAction.HunterTool]   = KeyCode.Mouse0,
@@ -198,6 +200,7 @@ public static class Keybinds
         // Reload moved to R and Free Spin to 4: drop saved copies of the old defaults so the new ones apply
         any |= ForgetOldDefault(InputAction.FreeSpin, KeyCode.R);
         any |= ForgetOldDefault(InputAction.Reload, KeyCode.G);
+        any |= ForgetOldDefault(InputAction.Taunt, KeyCode.G);   // G drops the bomb now (Search & Destroy)
 
         // Core controls must always have a key: older settings screens could clear one (an unbound Shoot meant a
         // player simply couldn't fire). Anything saved as "None" gets its default back.

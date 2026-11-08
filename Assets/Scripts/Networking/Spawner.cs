@@ -174,7 +174,12 @@ public class Spawner : MonoBehaviour
         var phase = GameModeManager.Instance != null ? GameModeManager.Instance.Phase : MatchPhase.Waiting;
         if (phase == MatchPhase.Waiting || phase == MatchPhase.Countdown)
         {
-            if (team && points.Count >= 2) points = TeamHalf(points, role);
+            if (team && points.Count >= 2)
+            {
+                var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+                var chosen = mode?.TeamSpawns(points, role);
+                points = chosen != null && chosen.Count > 0 ? chosen : TeamHalf(points, role);
+            }
             double start = NetProps.Room(RoomKeys.PhaseStart, 0.0);
             var shuffle = new System.Random((int)(start * 1000.0 % int.MaxValue));
             for (int i = points.Count - 1; i > 0; i--)
@@ -210,7 +215,7 @@ public class Spawner : MonoBehaviour
     private const float SafeSpawnDistance = 20f; // Metres from the nearest other living player
 
     // The half of the spawn points on this team's end: sorted along the axis the points spread out on most
-    private static List<SpawnPoint> TeamHalf(List<SpawnPoint> points, PlayerRole role)
+    public static List<SpawnPoint> TeamHalf(List<SpawnPoint> points, PlayerRole role)
     {
         Bounds b = new(points[0].transform.position, Vector3.zero);
         foreach (var p in points) b.Encapsulate(p.transform.position);

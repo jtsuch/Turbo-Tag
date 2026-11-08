@@ -166,6 +166,37 @@ public abstract class TeamMode : GameMode
 
     protected static string Winner => NetProps.Room(RoomKeys.WinningTeam, "");
 
+    /// <summary>The team that won the match: <see cref="Red"/>, <see cref="Blue"/> or <see cref="Draw"/> ("" while it runs).</summary>
+    public static string WinningTeam => Winner;
+
+    // ─── Team results screen (read in the Scoreboard scene: synced properties only) ───
+
+    /// <summary>A team's final score as the results screen shows it (Search &amp; Destroy: rounds won).</summary>
+    public virtual string FinalScore(PlayerRole team) => FormatTeamScore(LiveTeamScore(team));
+
+    /// <summary>What the final score counts ("points", "rounds"...), under the number.</summary>
+    public virtual string FinalScoreUnit => "points";
+
+    /// <summary>
+    /// The match MVP: the best scorer on the winning team (anyone, after a draw), if they scored at all; null for none.
+    /// <paramref name="ranked"/> is in scoreboard order.
+    /// </summary>
+    public virtual PhotonPlayer Mvp(IReadOnlyList<PhotonPlayer> ranked)
+    {
+        PhotonPlayer best = null;
+        float top = 0f;
+        foreach (var p in ranked)
+        {
+            var role = PlayerRoles.Get(p);
+            if (!PlayerRoles.IsTeam(role)) continue;
+            if (Winner == Red && role != PlayerRole.TeamRed) continue;
+            if (Winner == Blue && role != PlayerRole.TeamBlue) continue;
+            float score = NetProps.Of(p, PlayerKeys.Score, 0f);
+            if (score > top) { top = score; best = p; }
+        }
+        return best;
+    }
+
     public override string GetPhaseLabel(MatchPhase phase) => phase == MatchPhase.MatchEnd
         ? Winner switch { Red => "Red Team Wins!", Blue => "Blue Team Wins!", _ => "Draw!" }
         : base.GetPhaseLabel(phase);

@@ -5,7 +5,7 @@ using Photon.Pun;
 /// Plays positional audio for a player's footsteps, jumps, lands, and sliding.
 /// Footsteps play on every screen from each copy's own (synced) movement, so you hear other players walking: they
 /// used to be played only for the local player, which made everyone else silent. Others' steps are louder and
-/// carry further (hunters listen for them); crouching and crawling are quieter (sneaking). The step is a sound made
+/// carry further (hunters listen for them); crouch walking makes no sound at all and crawling is quieter (sneaking). The step is a sound made
 /// in code (<see cref="SfxKind.Step"/>); tick <c>useClassicFootsteps</c> to go back to the old clips.
 /// Jumps, lands and the slide loop are sent to remote clients by RPC.
 /// Attach to: ThePlayer prefab — requires AudioSource and PhotonView on the same object.
@@ -116,8 +116,9 @@ public class PlayerAudio : MonoBehaviour
         if (footstepTimer > 0f) return;
         footstepTimer = interval;
 
-        // Sneaking is quieter: crouched about half, crawling a quarter; sprinting a little louder
-        float stance = state == Player.MovementState.Crouch ? 0.45f : state == Player.MovementState.Prone ? 0.25f : isSprinting ? 1.15f : 1f;
+        // Crouch walking is silent (sneaking); crawling is quiet, sprinting a little louder
+        if (state == Player.MovementState.Crouch) return;
+        float stance = state == Player.MovementState.Prone ? 0.25f : isSprinting ? 1.15f : 1f;
         if (useClassicFootsteps)
         {
             PlayRandomFromPool(footsteps, footstepVolume * stance * (mine ? 1f : 2f));

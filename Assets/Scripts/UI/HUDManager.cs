@@ -561,7 +561,9 @@ public class HUDManager : MonoBehaviour
         if (manager != null && manager.Clock != null && manager.Clock.HasLimit && !manager.Clock.IsPaused)
         {
             float left = manager.Clock.Remaining;
-            bool counting = manager.Phase == MatchPhase.Countdown || (manager.Phase == MatchPhase.Hiding && left <= 5f);
+            // Long pre-rounds (Search & Destroy's 40 s) only pop the last 5 s, like the hide phase
+            bool counting = (manager.Phase == MatchPhase.Countdown && (left <= 5f || manager.Clock.Duration <= 10f))
+                            || (manager.Phase == MatchPhase.Hiding && left <= 5f);
             if (counting && left > 0f) number = Mathf.CeilToInt(left);
         }
 
@@ -636,16 +638,16 @@ public class HUDManager : MonoBehaviour
         switch (phase)
         {
             case MatchPhase.Countdown:
-                if (manager.Mode.UsesRoles) ShowBanner($"Round {manager.Round}", 2.2f);
+                if (manager.Mode.UsesRoles && manager.Mode is not SearchDestroyMode) ShowBanner($"Round {manager.Round}", 2.2f); // S&D has its own
                 break;
             case MatchPhase.Hiding:
             case MatchPhase.Active:
                 goUntil = Time.unscaledTime + 0.9f;
                 Sfx.Here(SfxKind.Horn, 0.7f);
-                if (phase == MatchPhase.Active && manager.Mode.UsesRoles) ShowBanner("Hunters released!", 2f);
+                if (phase == MatchPhase.Active && manager.Mode.UsesRoles && manager.Mode is not TeamMode) ShowBanner("Hunters released!", 2f);
                 break;
             case MatchPhase.RoundEnd:
-                ShowBanner("Round over!", 4f);
+                if (manager.Mode is not SearchDestroyMode) ShowBanner("Round over!", 4f); // S&D says who won and how
                 Sfx.Here(SfxKind.Horn, 0.6f, 0.8f);
                 break;
             case MatchPhase.MatchEnd:
