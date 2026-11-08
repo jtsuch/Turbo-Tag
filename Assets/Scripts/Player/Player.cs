@@ -357,6 +357,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (!TryGetComponent(out ShieldBubble _)) gameObject.AddComponent<ShieldBubble>(); // Shield / Bubble, every screen
         if (!TryGetComponent(out HitFlinch _)) gameObject.AddComponent<HitFlinch>();       // Shot reactions on the body
         if (!TryGetComponent(out PlayerEmotes _)) gameObject.AddComponent<PlayerEmotes>(); // Emote bubbles and moves
+        if (!TryGetComponent(out PlayerCallouts _)) gameObject.AddComponent<PlayerCallouts>(); // Taunts and team pings
         if (!TryGetComponent(out GhostBody _)) gameObject.AddComponent<GhostBody>();       // Hunter: ghosts pass through players
         if (!TryGetComponent(out DonutNet _)) gameObject.AddComponent<DonutNet>();         // Donut effects others see
 

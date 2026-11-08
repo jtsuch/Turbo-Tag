@@ -97,8 +97,17 @@ public static class PlayerKeys
     /// <summary>Penguin colour (<see cref="PenguinSkins"/> name). Written by the player themself.</summary>
     public const string Skin = "Skin";
 
-    /// <summary>Banked score in seconds (float). Written by the master client.</summary>
+    /// <summary>Banked score (float: Tag points, kills…). Written by the master client.</summary>
     public const string Score = "Score";
+
+    /// <summary>Tag's danger points (float): extra points a hider earns while a hunter is close. The player's own write.</summary>
+    public const string DangerPoints = "DangerPts";
+
+    // Tag's between-rounds summary (this round only): tags made and seconds survived (master), the closest a
+    // hunter got without catching you (m, the player's own write; 0 = none)
+    public const string RoundTags     = "Round_Tags";
+    public const string RoundSurvived = "Round_Survived";
+    public const string RoundClose    = "Round_Close";
 
     // Match stats for the scoreboard (floats; see MatchStats). Reset when a level loads.
     public const string StatTags           = "Stat_Tags";           // Master: players this one tagged

@@ -34,6 +34,10 @@ public class TagMode : GameMode
     public override bool   ShowsScores => true;
     public override bool   HasRounds   => true;
     public override bool   HunterRadar => true;
+    public override float  DangerPointsPerSecond => 1f; // 2 points a second in all while a hunter is within 12 m
+
+    // Points: 1 a second hiding (2 with a hunter close), 10 a tag
+    public override string FormatScore(float score) => Mathf.FloorToInt(score).ToString();
 
     // ─── Master: match flow ───────────────────────────────────────────────────
 
@@ -96,6 +100,12 @@ public class TagMode : GameMode
     {
         caughtThisRound.Clear();
         becameHunterAt.Clear();
+        roundTags.Clear();
+        foreach (var p in PhotonNetwork.PlayerList)
+        {
+            NetProps.SetPlayer(p, PlayerKeys.RoundTags, 0);
+            NetProps.SetPlayer(p, PlayerKeys.RoundSurvived, 0f);
+        }
         if (!keepRoles) AssignRoles();
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = round });
     }
@@ -144,6 +154,7 @@ public class TagMode : GameMode
 
     private void EndRound()
     {
+        foreach (var hider in RemainingHiders()) RecordSurvived(hider); // Lasted the whole round
         BankRemainingHiders();
         Manager.SetPhase(MatchPhase.RoundEnd, RoundEndSeconds);
     }
@@ -211,6 +222,10 @@ public class TagMode : GameMode
             && PhotonNetwork.Time - since < MatchRules.TagCooldown)
             return;
 
+        RecordSurvived(target);
+        roundTags.TryGetValue(tagger.ActorNumber, out int tags);
+        roundTags[tagger.ActorNumber] = tags + 1;
+        NetProps.SetPlayer(tagger, PlayerKeys.RoundTags, tags + 1);
         BankHider(target);
         MatchStats.Add(tagger, PlayerKeys.StatTags);
         MatchStats.Add(target, PlayerKeys.StatTimesTagged);
@@ -223,6 +238,14 @@ public class TagMode : GameMode
         Manager.BroadcastTag(tagger, target);
     }
 
+    // ─── Round summary (master) ───
+
+    private readonly Dictionary<int, int> roundTags = new();
+
+    // How long a hider lasted in this round's hunt (for the summary card)
+    private void RecordSurvived(PhotonPlayer hider) =>
+        NetProps.SetPlayer(hider, PlayerKeys.RoundSurvived, Phase == MatchPhase.Active ? Clock.Elapsed : 0f);
+
     // A hider who falls off the edge during the hunt is caught, as if tagged by nobody (in the hide phase they
     // just respawn: the Spawner has already put them back)
     public override void HandleFall(PhotonPlayer player)
@@ -230,6 +253,7 @@ public class TagMode : GameMode
         if (Phase != MatchPhase.Active || player == null) return;
         if (PlayerRoles.Get(player) != PlayerRole.Hider || caughtThisRound.Contains(player.ActorNumber)) return;
 
+        RecordSurvived(player);
         BankHider(player);
         MatchStats.Add(player, PlayerKeys.StatTimesTagged);
         caughtThisRound.Add(player.ActorNumber);
@@ -317,7 +341,7 @@ public class TagMode : GameMode
 
     public override IReadOnlyList<ScoreboardColumn> ScoreboardColumns => new[]
     {
-        new ScoreboardColumn("Survival Time",   p => MatchStats.FormatTime(NetProps.Of(p, PlayerKeys.Score, 0f))),
+        new ScoreboardColumn("Points",          p => Mathf.FloorToInt(ScoreController.Total(p)).ToString()),
         new ScoreboardColumn("Tags",            p => MatchStats.Count(p, PlayerKeys.StatTags)),
         new ScoreboardColumn("Times Tagged",    p => MatchStats.Count(p, PlayerKeys.StatTimesTagged)),
         new ScoreboardColumn("Longest Hide",    p => MatchStats.FormatTime(MatchStats.Get(p, PlayerKeys.StatLongestHide))),
@@ -329,15 +353,15 @@ public class TagMode : GameMode
     public override IReadOnlyList<ScoreboardColumn> LiveScoreColumns => new[]
     {
         new ScoreboardColumn("Role",          p => RoleName(PlayerRoles.Get(p))),
-        new ScoreboardColumn("Survival Time", p => MatchStats.FormatTime(Manager != null ? Scores.GetLive(p) : NetProps.Of(p, PlayerKeys.Score, 0f))),
+        new ScoreboardColumn("Points",        p => Mathf.FloorToInt(Manager != null ? Scores.GetLive(p) : ScoreController.Total(p)).ToString()),
         new ScoreboardColumn("Tags",          p => MatchStats.Count(p, PlayerKeys.StatTags)),
         new ScoreboardColumn("Times Tagged",  p => MatchStats.Count(p, PlayerKeys.StatTimesTagged)),
     };
 
-    // Most survival time first; ties go to more tags
+    // Most points first; ties go to more tags
     public override int CompareForScoreboard(PhotonPlayer a, PhotonPlayer b)
     {
-        int byScore = NetProps.Of(b, PlayerKeys.Score, 0f).CompareTo(NetProps.Of(a, PlayerKeys.Score, 0f));
+        int byScore = ScoreController.Total(b).CompareTo(ScoreController.Total(a));
         return byScore != 0 ? byScore : MatchStats.Get(b, PlayerKeys.StatTags).CompareTo(MatchStats.Get(a, PlayerKeys.StatTags));
     }
 

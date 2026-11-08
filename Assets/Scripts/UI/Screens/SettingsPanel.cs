@@ -24,6 +24,8 @@ public class SettingsPanel : MonoBehaviour
         ("Scores",        InputAction.Scores),
         ("Map",           InputAction.Map),
         ("Emotes",        InputAction.Emote),
+        ("Taunt",         InputAction.Taunt),
+        ("Ping Wheel",    InputAction.Ping),
         ("Ability 1",     InputAction.AbilityBasic),
         ("Ability 2",     InputAction.AbilityQuick),
         ("Ability 3",     InputAction.AbilityThrow),

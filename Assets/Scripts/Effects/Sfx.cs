@@ -7,7 +7,7 @@ public enum SfxKind
     Pistol, Rifle, Shotgun, Sniper, Reload, Empty,
     Hit, Headshot, Kill, Hurt, Heal,
     Whoosh, Thwip, Warp, ZapUp, ZapDown, Heartbeat, Shimmer, Toss, Place, Flap, Blow, Pop,
-    Explosion, Boing, Land, Jump, Tag, Respawn, Ice, Snap, Splat, Horn, Fanfare, Honk, Plop, Wind, Tick, Step,
+    Explosion, Boing, Land, Jump, Tag, Respawn, Ice, Snap, Splat, Horn, Fanfare, Honk, Plop, Wind, Tick, Step, Taunt,
 }
 
 /// <summary>
@@ -137,6 +137,8 @@ public static class Sfx
             SfxKind.Wind      => WindLoop(3f),
             SfxKind.Tick      => Mix(Click(0.03f, 1800f), Tone(0.06f, 1200f, 1200f, 0.35f, 40f)),
             // A penguin footstep: a soft low thud with a little wet slap on top (pitch varies per step)
+            // A cheeky up-down penguin call (taunts): carries across the map
+            SfxKind.Taunt     => Concat(Vibrato(0.22f, 520f, 980f, 0.4f), Vibrato(0.3f, 980f, 430f, 0.4f)),
             SfxKind.Step      => Mix(Tone(0.09f, 150f, 75f, 0.9f, decay: 38f), Filtered(Noise(0.07f), 0.3f, 0.55f, decay: 55f)),
             _                 => Silence(0.05f),
         };

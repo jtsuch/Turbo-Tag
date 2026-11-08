@@ -26,6 +26,7 @@ public class Minimap : MonoBehaviour
     private Camera cam;
     private RenderTexture texture;
     private RectTransform card, markers, arrow, frame, radarLayer;
+    private TMPro.TMP_Text mapLabel;
     private bool big;
     private float radius = ViewRadius, mapSize = MapSize;
     private readonly List<Image> dots = new();
@@ -45,7 +46,7 @@ public class Minimap : MonoBehaviour
     private void Build()
     {
         var theme = UITheme.Current;
-        var label = UIKit.Text(card, "MAP", 18f, UIKit.Font.Bold, theme.textMuted);
+        var label = mapLabel = UIKit.Text(card, "MAP", 18f, UIKit.Font.Bold, theme.textMuted);
         UIKit.Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(18f, -8f), new Vector2(200f, 26f));
         var key = UIKit.Chip(card, Keybinds.Label(Keybinds.Get(InputAction.Map)), theme.card, theme.text, 16f);
         UIKit.Place(key.rectTransform, new Vector2(1f, 1f), new Vector2(-14f, -8f), new Vector2(44f, 26f));
@@ -189,11 +190,30 @@ public class Minimap : MonoBehaviour
     {
         var manager = GameModeManager.Instance;
         var mode = manager != null ? manager.Mode : null;
-        bool on = mode != null && mode.HunterRadar && local.Role == PlayerRole.Hunter && !local.IsCaught
-                  && manager.Phase == MatchPhase.Active && Photon.Pun.PhotonNetwork.InRoom;
+        bool radarMode = mode != null && mode.HunterRadar && manager.Phase == MatchPhase.Active && Photon.Pun.PhotonNetwork.InRoom;
+        bool on = radarMode && local.Role == PlayerRole.Hunter && !local.IsCaught;
+        bool target = radarMode && !local.IsCaught && local.Role != PlayerRole.Hunter && local.Role != PlayerRole.None && local.Role != PlayerRole.Ghost;
+
+        // The last hider in Tag gets swept twice as often
+        float interval = TagRoundSummary.HidersLeft() == 1 ? RadarInterval * 0.5f : RadarInterval;
+        double now = Photon.Pun.PhotonNetwork.Time;
+        int secondsLeft = Mathf.CeilToInt(interval - (float)(now % interval));
+        mapLabel.text = radarMode && (on || target) ? $"MAP  <color=#FF5A6E>RADAR {secondsLeft}s</color>" : "MAP";
+
+        // Hiders are warned when a sweep finds them, so they can move
+        if (target)
+        {
+            int sweep = (int)(now / interval);
+            if (radarSweep >= 0 && sweep != radarSweep)
+            {
+                Sfx.Here(SfxKind.ZapDown, 0.6f, 1.2f);
+                if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner("<size=70%>RADAR</size>\nYOU'VE BEEN SPOTTED!", 1.6f);
+            }
+            radarSweep = sweep;
+        }
         if (on)
         {
-            int sweep = (int)(Photon.Pun.PhotonNetwork.Time / RadarInterval);
+            int sweep = (int)(now / interval);
             if (sweep != radarSweep)
             {
                 bool first = radarSweep < 0; // Not the moment the hunt starts: the first sweep is a full interval in
@@ -216,7 +236,7 @@ public class Minimap : MonoBehaviour
                 }
             }
         }
-        else radarSweep = -1;
+        else if (!target) radarSweep = -1;
 
         float age = Time.time - radarShownAt;
         float alpha = on && age < RadarShow ? Mathf.Clamp01((RadarShow - age) / 2f) : 0f; // Fades out over the last 2 s
@@ -295,6 +315,9 @@ public class Minimap : MonoBehaviour
             foreach (var donut in DonutManager.Instance.Donuts)
                 if (donut != null) Mark(ref used, donut.transform.position, local, donut.Golden ? new Color(1f, 0.8f, 0.2f) : new Color(1f, 0.45f, 0.8f), pulse);
         }
+
+        // Team pings
+        foreach (var (point, color) in PingMarkers.Active) Mark(ref used, point, local, color, 14f + Mathf.PingPong(Time.unscaledTime * 16f, 6f));
 
         // Keep Away: the disc, always (it's the whole game)
         if (KeepAwayDisc.Instance != null)

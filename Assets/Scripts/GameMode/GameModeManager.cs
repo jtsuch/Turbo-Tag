@@ -80,6 +80,11 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out DonutManager _)) gameObject.AddComponent<DonutManager>();   // Random-effect donuts
         if (!TryGetComponent(out TrailHistory _)) gameObject.AddComponent<TrailHistory>();   // Bloodhound's footprints
         if (!TryGetComponent(out RoundModifiers _)) gameObject.AddComponent<RoundModifiers>(); // Round Modifiers rule
+        if (!TryGetComponent(out DangerScore _)) gameObject.AddComponent<DangerScore>();       // Tag's points for a hunter close by
+        if (!TryGetComponent(out TagRoundSummary _)) gameObject.AddComponent<TagRoundSummary>(); // Tag's card between rounds
+        if (!TryGetComponent(out PingWheel _)) gameObject.AddComponent<PingWheel>();             // Middle mouse: team pings
+        if (!TryGetComponent(out PingMarkers _)) gameObject.AddComponent<PingMarkers>();         // ...and where they are
+        if (!TryGetComponent(out SoundVisualizer _)) gameObject.AddComponent<SoundVisualizer>(); // Faint edge glows for loud sounds
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
@@ -236,7 +241,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         bool keepRoles = NetProps.Room(RoomKeys.RolesDealt, false); // Dealt in Pregame: StartMatch keeps them
         foreach (var player in PhotonNetwork.PlayerList)
         {
-            var props = new Hashtable { [PlayerKeys.Score] = 0f };
+            var props = new Hashtable { [PlayerKeys.Score] = 0f, [PlayerKeys.DangerPoints] = 0f };
             if (!keepRoles) props[PlayerKeys.Role] = (int)PlayerRole.None;
             foreach (string stat in MatchStats.All) props[stat] = 0f;
             player.SetCustomProperties(props);

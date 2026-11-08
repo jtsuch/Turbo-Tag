@@ -622,7 +622,12 @@ public class HUDManager : MonoBehaviour
         if (target == null || target.IsLocal) return; // The caught player gets their own banner
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         if (mode != null && !mode.AnnouncesTags) return;
-        ShowBanner(tagger != null ? $"{tagger.NickName} tagged {target.NickName}!" : $"{target.NickName} fell off the edge!", 2f);
+        string what = tagger != null ? $"{tagger.NickName} tagged {target.NickName}!" : $"{target.NickName} fell off the edge!";
+        // Tag: how many hiders are still out (the tagged one's role may not have arrived yet)
+        int left = TagRoundSummary.HidersLeft();
+        if (PlayerRoles.Get(target) == PlayerRole.Hider) left--;
+        if (mode is TagMode && left >= 0) what += left == 0 ? "\n<size=60%>Everyone's caught!</size>" : $"\n<size=60%>{left} left</size>";
+        ShowBanner(what, 2f);
     }
 
     private void HandlePhaseChanged(MatchPhase phase)

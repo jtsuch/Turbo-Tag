@@ -441,6 +441,7 @@ public class PlayerCam : MonoBehaviour
             xRotation = Mathf.Clamp(SimInput.Pitch, -90f, 90f);
             return;
         }
+        if (PingWheel.IsOpen) return; // The mouse is choosing a ping
 
         // Sensitivity 100 = raw 1:1 mouse delta
         float scale = sensitivity / 100f;

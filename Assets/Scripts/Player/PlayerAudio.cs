@@ -126,6 +126,8 @@ public class PlayerAudio : MonoBehaviour
         leftFoot = !leftFoot;
         float pitch = (leftFoot ? 0.96f : 1.06f) * Random.Range(0.92f, 1.08f) / Mathf.Sqrt(Mathf.Max(0.3f, player.Size));
         float volume = (mine ? footstepVolume * 1.5f : remoteStepVolume) * stance;
+        if (!mine && isSprinting && state != Player.MovementState.Crouch && state != Player.MovementState.Prone)
+            SoundVisualizer.Notify(transform.position, 0.8f, player.ActorNumber); // Full running shows on the edge
         Sfx.At(SfxKind.Step, transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
     }
 

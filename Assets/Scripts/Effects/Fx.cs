@@ -33,6 +33,8 @@ public static class Fx
         Vector3 feet  = player.transform.position;
         Vector3 chest = feet + Vector3.up * Mathf.Max(0.8f, player.EyeHeight * 0.6f);
         bool    mine  = player.IsLocal;
+        // Loud abilities show on others' sound visualizers (not the quiet, sneaky ones)
+        if (!mine && id != nameof(Chameleon) && id != nameof(Cloak)) SoundVisualizer.Notify(feet, 1f, player.ActorNumber);
 
         switch (id)
         {

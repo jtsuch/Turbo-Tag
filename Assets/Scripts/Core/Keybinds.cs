@@ -12,6 +12,8 @@ public enum InputAction
     Scores,
     Map,
     Emote,
+    Taunt,
+    Ping,
 }
 
 /// <summary>
@@ -47,6 +49,8 @@ public static class Keybinds
         [InputAction.Scores]       = KeyCode.Tab,
         [InputAction.Map]          = KeyCode.M,
         [InputAction.Emote]        = KeyCode.T,
+        [InputAction.Taunt]        = KeyCode.G,
+        [InputAction.Ping]         = KeyCode.Mouse2,
         [InputAction.Pause]        = KeyCode.Escape,
         [InputAction.AbilityBasic] = KeyCode.Mouse1,
         [InputAction.AbilityQuick] = KeyCode.E,

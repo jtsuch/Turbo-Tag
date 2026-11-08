@@ -212,6 +212,10 @@ public abstract class GameMode
     /// </summary>
     public virtual bool HunterRadar => false;
 
+    /// <summary>Extra points per second a hider earns while a hunter is within <see cref="DangerRange"/> (Tag: 1, so 2 a second in all).</summary>
+    public virtual float DangerPointsPerSecond => 0f;
+    public virtual float DangerRange => 12f;
+
     // ─── Roles dealt in Pregame ───────────────────────────────────────────────
 
     /// <summary>Master, when Pregame opens: deals the starting roles now, so everyone picks abilities knowing them.</summary>

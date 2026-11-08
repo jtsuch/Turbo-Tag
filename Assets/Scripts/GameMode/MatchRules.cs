@@ -17,7 +17,7 @@ public static class MatchRules
     public const float DefaultGlobalCooldown = 100f;  // %
     public const float DefaultGravity        = 100f;  // %
     public const float DefaultEffectsRespawn = 25f;   // seconds between donuts
-    public const float DefaultTagBonus       = 0f;    // seconds
+    public const float DefaultTagBonus       = 10f;   // points
     public const float DefaultScoreLimit     = 600f;   // seconds
     public const float DefaultCountdownTime  = 3f;     // seconds frozen before each round
     public const float DefaultRespawnDelay   = 3f;     // seconds a tagged player lies there
