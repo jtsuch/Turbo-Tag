@@ -46,6 +46,7 @@ public class PlayerGun : MonoBehaviourPun
     private readonly RaycastHit[] hits = new RaycastHit[32];
     private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
     private bool lastTraceHit; // The last Trace stopped on something (for impact sparks)
+    private Shootable lastShootable; // ...and it was a breakable ability object
     private Vector3 lastTraceNormal = Vector3.up;
     private readonly Dictionary<Player, (float damage, bool head, Vector3 point)> pending = new();
 
@@ -57,6 +58,9 @@ public class PlayerGun : MonoBehaviourPun
     private string killcamGun;         // Owner: gun shown on the killcam view (the killer's)
 
     private static bool GunsActive => CombatManager.Instance != null;
+
+    // Something else is in the right hand (the S&D bomb): the gun is put away and can't fire
+    private bool Stowed => player != null && player.Has(PlayerFlag.HoldingBomb);
 
     private void Awake() => player = GetComponent<Player>();
 
@@ -97,7 +101,7 @@ public class PlayerGun : MonoBehaviourPun
         if (!photonView.IsMine)
             Current = GunsActive ? GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, "")) : null;
 
-        bool shown = GunsActive && Current != null && !player.IsCaught && !player.IsDownAfterTag;
+        bool shown = GunsActive && Current != null && !player.IsCaught && !player.IsDownAfterTag && !Stowed;
         if (player.Animation != null)
         {
             player.Animation.HoldingGun    = shown;
@@ -205,7 +209,12 @@ public class PlayerGun : MonoBehaviourPun
                 end = end2;
             }
 
-            if (target == null) continue;
+            if (target == null)
+            {
+                // Ability objects bullets can break (Recon Bolt, Drone, Turret, Ice Wall)
+                if (lastShootable != null) { lastShootable.Hit(damage); anyHit = true; }
+                continue;
+            }
             anyHit = true;
             anyHead |= head;
             float amount = damage * (head ? gun.HeadshotMultiplier : 1f);
@@ -271,7 +280,10 @@ public class PlayerGun : MonoBehaviourPun
             hitIndex = i;
         }
         lastTraceHit = hitIndex >= 0;
+        lastShootable = null;
         if (hitIndex < 0) return origin + dir * range;
+        if (hits[hitIndex].collider.GetComponentInParent<Player>() == null)
+            lastShootable = hits[hitIndex].collider.GetComponentInParent<Shootable>();
         lastTraceNormal = hits[hitIndex].normal;
 
         var hit = hits[hitIndex];
@@ -345,7 +357,7 @@ public class PlayerGun : MonoBehaviourPun
     {
         // Watching a Spy Camera moves the main camera onto it: the first-person gun mustn't come along
         bool watchingCamera = killcamGun == null && PlayerCam.Local != null && PlayerCam.Local.HasViewOverride;
-        bool alive = GunsActive && Current != null && !player.IsCaught && !watchingCamera;
+        bool alive = GunsActive && Current != null && !player.IsCaught && !watchingCamera && !Stowed;
         string id  = killcamGun ?? (alive ? Current.Id : null);
         var gun    = GunCatalog.Find(id);
 
@@ -361,7 +373,7 @@ public class PlayerGun : MonoBehaviourPun
     // Others: the gun in the right hand
     private void UpdateThirdPerson()
     {
-        bool shown = GunsActive && Current != null && !player.IsDownAfterTag && !player.IsCaught;
+        bool shown = GunsActive && Current != null && !player.IsDownAfterTag && !player.IsCaught && !Stowed;
         string id  = shown ? Current.Id : null;
         foreach (var pair in worldModels)
             if (pair.Value != null) pair.Value.SetActive(pair.Key == id && !Killcam.IsPlaying);

@@ -8,7 +8,7 @@ using UnityEngine;
 /// tools' effects (beacons, traps, darts, sonar), and hunters' screens light up the hiders they find
 /// (<see cref="HunterReveal"/>).
 ///   Speed:   +15% speed (climbing too) · Lunge · Sprint Burst · Pounce
-///   Intel:   recent footprints · X-Ray Scan (cone, scanned walls blue) · Beacon · Sonar Pulse
+///   Intel:   recent footprints · X-Ray Scan (cone, scanned walls blue) · Recon Bolt · Sonar Pulse
 ///   Trapper: hiders' ability objects glow red · Alarm Trap · Snare · Tracker Dart
 /// Everything placed is cleared when a round starts (<see cref="ClearAll"/>). The tool key is
 /// <see cref="InputAction.HunterTool"/> (default left click). Cooldowns scale with the player's cooldown multiplier
@@ -224,8 +224,9 @@ public class HunterKit : MonoBehaviourPun
                 scanUntil = Time.time + 3f;
                 nextScanWalls = 0f;
                 break;
-            case "Beacon":
-                photonView.RPC(nameof(RPC_Beacon), RpcTarget.All, cam.position + cam.forward * 0.8f, cam.forward * 55f + Vector3.up * 4f);
+            case "Beacon": // The Recon Bolt: the same networked bolt as the Recon Bolt ability (ReconBoltObject)
+                PhotonNetwork.Instantiate(Ability.ObjectResourceFolder + "ReconBolt", cam.position + cam.forward * 0.8f, Quaternion.LookRotation(cam.forward), 0,
+                    SpawnData.Create(cam.forward * 55f + Vector3.up * 4f, 1f, photonView.ViewID));
                 break;
             case "Sonar":
                 photonView.RPC(nameof(RPC_Sonar), RpcTarget.All, transform.position);
@@ -589,28 +590,7 @@ public class HunterKit : MonoBehaviourPun
         }
     }
 
-    // ─── Beacon, Sonar, Dart (every screen) ───────────────────────────────────
-
-    private static readonly List<GameObject> beacons = new();
-
-    [PunRPC]
-    private void RPC_Beacon(Vector3 origin, Vector3 velocity)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        go.name = "Beacon";
-        go.transform.position = origin;
-        go.transform.localScale = Vector3.one * 0.3f;
-        go.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Sprites/Default")) { color = new Color(0.4f, 0.75f, 1f) };
-        var rb = go.AddComponent<Rigidbody>();
-        rb.mass = 0.3f;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-        rb.linearVelocity = velocity;
-        var col = go.GetComponent<Collider>();
-        foreach (var p in Player.All) if (p != null) foreach (var c in p.GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(col, c);
-        go.AddComponent<BeaconDevice>().Mine = photonView.IsMine;
-        beacons.Add(go);
-        Destroy(go, 8f);
-    }
+    // ─── Sonar, Dart (every screen; the Recon Bolt is a networked object, ReconBoltObject) ───────────────────────────────────
 
     [PunRPC]
     private void RPC_Sonar(Vector3 at)
@@ -662,8 +642,6 @@ public class HunterKit : MonoBehaviourPun
     {
         foreach (var trap in traps.Values) if (trap.Visual != null) Destroy(trap.Visual);
         traps.Clear();
-        foreach (var b in beacons) if (b != null) Destroy(b);
-        beacons.Clear();
         HunterReveal.Clear();
         if (Local != null) { Local.readyAt = 0f; Local.scanUntil = 0f; Local.myTraps.Clear(); }
     }
@@ -697,71 +675,5 @@ public class HunterKit : MonoBehaviourPun
             foreach (var pair in originals) if (pair.Key != null) pair.Key.sharedMaterials = pair.Value;
             originals.Clear();
         }
-    }
-}
-
-/// <summary>
-/// An Intel hunter's thrown beacon (a local copy on every screen): sticks to the first surface, then after a beat
-/// flashes, and on hunters' screens every hider it can see lights up for 2 s.
-/// </summary>
-public class BeaconDevice : MonoBehaviour
-{
-    /// <summary>Thrown from this screen: its thrower always sees what it finds (cheat tools in any role).</summary>
-    public bool Mine;
-    private bool stuck;
-    private Light glow;
-
-    private void Start()
-    {
-        glow = gameObject.AddComponent<Light>();
-        glow.type = LightType.Point;
-        glow.color = new Color(0.4f, 0.75f, 1f);
-        glow.range = 5f;
-        glow.intensity = 2f;
-        glow.shadows = LightShadows.None;
-    }
-
-    // Blinks (faster once stuck and about to go off)
-    private void Update()
-    {
-        if (glow == null) return;
-        float rate = stuck ? 14f : 6f;
-        glow.intensity = Mathf.Sin(Time.time * rate) > 0f ? 2.5f : 0.4f;
-    }
-
-    private void OnCollisionEnter(Collision collision)
-    {
-        if (stuck || collision.collider.GetComponentInParent<Player>() != null) return;
-        stuck = true;
-        var rb = GetComponent<Rigidbody>();
-        rb.isKinematic = true;
-        Sfx.At(SfxKind.Place, transform.position, 0.7f, 25f, 1.4f);
-        // A hider near where it lands gets a moment's warning (a blue map pulse) before it goes off
-        var local = Player.Local;
-        if (!Mine && local != null && local.Role != PlayerRole.Hunter && Vector3.Distance(local.transform.position, transform.position) < 20f)
-            Minimap.Pulse(new Color(0.4f, 0.75f, 1f));
-        Invoke(nameof(Activate), 0.6f);
-    }
-
-    private void Activate()
-    {
-        Vector3 at = transform.position;
-        Vfx.Ring(at, new Color(0.4f, 0.75f, 1f), 36, 10f, 0.35f, 0.7f);
-        if (glow != null) { glow.range = 18f; glow.intensity = 8f; enabled = false; } // One bright flash
-        Sfx.At(SfxKind.Shimmer, at, 1f, 50f, 0.8f);
-        var local = Player.Local;
-        if (local != null && (local.Role == PlayerRole.Hunter || Mine))
-            foreach (var p in Player.All)
-            {
-                if (p == null || p == local || p.Role == PlayerRole.Hunter || p.Role == PlayerRole.Ghost || p.IsDownAfterTag) continue;
-                Vector3 chest = p.transform.position + Vector3.up * 1.2f;
-                if (Vector3.Distance(chest, at) > 40f) continue;
-                // In its line of sight: nothing but the hider between them
-                bool seen = true;
-                foreach (var hit in Physics.RaycastAll(at, (chest - at).normalized, Vector3.Distance(chest, at), Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    if (hit.collider.GetComponentInParent<Player>() == null && hit.collider.gameObject != gameObject) { seen = false; break; }
-                if (seen) HunterReveal.Reveal(p.ActorNumber, 2f);
-            }
-        Destroy(gameObject, 1.2f);
     }
 }

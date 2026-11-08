@@ -64,7 +64,7 @@ public class IceTrapObject : MonoBehaviourPun
         if (triggered) return;
         var local = Player.Local;
         if (local == null || local.IsCaught || local.ActorNumber == photonView.OwnerActorNr) return;
-        if (!local.AffectedBy(photonView.OwnerActorNr)) return; // Shielded: walks right over it
+        if (!local.AffectedByTrap(photonView.OwnerActorNr)) return; // Shielded or a teammate: walks right over it
         if (DistanceToBody(local) > triggerRadius * power) return;
 
         triggered = true;

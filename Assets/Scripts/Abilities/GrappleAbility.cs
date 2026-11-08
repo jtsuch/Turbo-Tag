@@ -186,7 +186,10 @@ public abstract class GrappleAbility : BasicAbility, IPunObservable
             lr.positionCount = 2;
         }
 
-        Transform tip = view.IsMine ? gunTip : remoteGunTip;
+        // From the grapple pistol in the left hand (guns stay in the right); the old right-hand tips are the fallback
+        var anim = Owner != null ? Owner.Animation : null;
+        Transform tip = anim != null ? anim.GrappleTip(view.IsMine) : null;
+        if (tip == null) tip = view.IsMine ? gunTip : remoteGunTip;
         if (tip != null) lr.SetPosition(0, tip.position);
         lr.SetPosition(1, swingPoint);
     }

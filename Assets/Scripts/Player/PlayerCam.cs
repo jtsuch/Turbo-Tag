@@ -200,7 +200,7 @@ public class PlayerCam : MonoBehaviour
         if (cam != null)
             cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size) + shakeOffset;
 
-        // Free Spin (hold the Free Spin key, default 4): the mouse turns the whole body on every axis (backflips, barrel turns)
+        // Free Spin (hold the Free Spin key, default 3): the mouse turns the whole body on every axis (backflips, barrel turns)
         bool spinHeld = !paused && player.CanMove && !IsLured && !EmoteMenu.IsOpen && !player.IsMagnetized && player.SurfaceFrame == Quaternion.identity
                      && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
         if (spinHeld)

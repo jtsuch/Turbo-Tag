@@ -185,6 +185,22 @@ public class Player : MonoBehaviourPun, IPunObservable
     public bool AffectedBy(int sourceActor) =>
         Role != PlayerRole.Ghost && (!IsShielded || sourceActor == 0 || sourceActor == ActorNumber);
 
+    /// <summary>
+    /// For harmful traps (Mouse Trap, Ice Trap, Gravity Well, Nuke): <see cref="AffectedBy"/>, and never the placer's
+    /// teammates (the mode's <see cref="GameMode.SameTeam"/>; modes without teams: everyone else is fair game).
+    /// Other abilities still hit teammates for now.
+    /// </summary>
+    public bool AffectedByTrap(int sourceActor) => AffectedBy(sourceActor) && !IsTeammateOf(sourceActor);
+
+    /// <summary>True if <paramref name="actor"/> is someone else on this player's side in the current mode.</summary>
+    public bool IsTeammateOf(int actor)
+    {
+        if (actor <= 0 || actor == ActorNumber) return false;
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        var other = PhotonNetwork.CurrentRoom?.GetPlayer(actor);
+        return mode != null && other != null && mode.SameTeam(PlayerRoles.Get(other), Role);
+    }
+
     /// <summary>Climb speed that never runs out while above 0 (Infinite Climb); 0 = normal climbing.</summary>
     public float SteadyClimbSpeed { get; set; }
 
@@ -358,6 +374,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (!TryGetComponent(out HitFlinch _)) gameObject.AddComponent<HitFlinch>();       // Shot reactions on the body
         if (!TryGetComponent(out PlayerEmotes _)) gameObject.AddComponent<PlayerEmotes>(); // Emote bubbles and moves
         if (!TryGetComponent(out PlayerCallouts _)) gameObject.AddComponent<PlayerCallouts>(); // Taunts and team pings
+        if (!TryGetComponent(out TacticalNet _)) gameObject.AddComponent<TacticalNet>();       // Tactical abilities' statuses and reveals
         if (!TryGetComponent(out HunterKit _)) gameObject.AddComponent<HunterKit>();           // Hunter classes and their tools
         if (!TryGetComponent(out GhostBody _)) gameObject.AddComponent<GhostBody>();       // Hunter: ghosts pass through players
         if (!TryGetComponent(out DonutNet _)) gameObject.AddComponent<DonutNet>();         // Donut effects others see
@@ -723,4 +740,5 @@ public enum PlayerFlag
     DoubleScore = 1 << 7, // Keep Away: your team scores double while you hold the disc
     Jetpack     = 1 << 8, // Flames under your feet while flying
     Jammed      = 1 << 9, // Hunter tools and the radar can't find you (Jammer donut)
+    HoldingBomb = 1 << 10, // Search & Destroy: the bomb is out in the right hand (the gun is put away)
 }

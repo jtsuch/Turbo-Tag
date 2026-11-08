@@ -224,7 +224,8 @@ public class NukeSequence : MonoBehaviourPun
     private void Blast(Vector3 centre)
     {
         var local = Player.Local;
-        if (local != null && local.Body != null && !local.IsCaught) Throw(local.Body, centre);
+        // The placer is thrown too; their teammates aren't (traps spare the placer's team)
+        if (local != null && local.Body != null && !local.IsCaught && !local.IsTeammateOf(photonView.OwnerActorNr)) Throw(local.Body, centre);
 
         int layers = affectedLayers.value != 0 ? affectedLayers.value : Physics.AllLayers;
         int count = Physics.OverlapSphereNonAlloc(centre, explosionRadius, overlapBuffer, layers, QueryTriggerInteraction.Ignore);

@@ -116,7 +116,7 @@ public class PregameScreen : MenuScreen
         var list = UIKit.ScrollList(area, 12f);
 
         foreach (string id in AbilityCatalog.InSlot(slot))
-            if (AbilityCatalog.IsAvailable(id)) AddCard(list, slot, id, accent);
+            if (AbilityCatalog.IsUsable(id)) AddCard(list, slot, id, accent); // Only this mode's abilities
     }
 
     private void AddCard(Transform list, AbilitySlot slot, string id, Color accent)

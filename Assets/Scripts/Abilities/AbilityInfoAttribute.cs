@@ -11,5 +11,8 @@ public class AbilityInfoAttribute : Attribute
     public readonly string Description;
     public string DisplayName { get; set; }
 
+    /// <summary>Only offered in modes where players have health (gun modes): damage, blinds, smokes, healing.</summary>
+    public bool HealthModesOnly { get; set; }
+
     public AbilityInfoAttribute(string description) => Description = description;
 }

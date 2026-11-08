@@ -29,6 +29,7 @@ public class SettingsPanel : MonoBehaviour
         ("Hunter Class",  InputAction.HunterClass),
         ("Hunter Tool",   InputAction.HunterTool),
         ("Watch Last Hider", InputAction.Spectate),
+        ("Bomb (tap: hold it, hold: plant/defuse)", InputAction.Bomb),
         ("Drop Bomb", InputAction.DropBomb),
         ("Ability 1",     InputAction.AbilityBasic),
         ("Ability 2",     InputAction.AbilityQuick),
@@ -119,6 +120,7 @@ public class SettingsPanel : MonoBehaviour
         SliderRow(list, "Field of View", "Vertical degrees. Higher sees more around you", 50f, 100f, S.FieldOfView, true,
             v => S.FieldOfView = v, v => $"{v:0}°");
         SwitchRow(list, "Invert Mouse Y", "Moving the mouse up looks down", S.InvertY, v => S.InvertY = v);
+        SwitchRow(list, "Control Hints", "List the less obvious keys on the right of the screen", ControlsHint.Enabled, v => ControlsHint.Enabled = v);
         SelectorRow(list, "Crosshair", "The mark in the middle of the screen", CrosshairSettings.Styles, CrosshairSettings.Style,
             i => CrosshairSettings.Style = i);
         SelectorRow(list, "Crosshair Colour", null, CrosshairSettings.ColorNames, CrosshairSettings.ColorIndex,

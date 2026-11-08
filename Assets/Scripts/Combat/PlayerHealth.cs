@@ -25,6 +25,9 @@ public class PlayerHealth : MonoBehaviourPun
     private Player player;
     private bool   dead;
 
+    /// <summary>Owner: damage soaked up before health (Shield Bubble). 0 = none.</summary>
+    public float Shield { get; set; }
+
     private void Awake() => player = GetComponent<Player>();
 
     // ─── Owner ────────────────────────────────────────────────────────────────
@@ -32,6 +35,7 @@ public class PlayerHealth : MonoBehaviourPun
     /// <summary>Owner: back to full (respawn, health drop).</summary>
     public void Refill()
     {
+        Shield  = 0f;
         Current = Max;
         dead    = false;
     }
@@ -71,6 +75,14 @@ public class PlayerHealth : MonoBehaviourPun
         // Only while the match is live: not once the clock has run out (the winner screen follows)
         if (combat == null || manager == null || manager.Phase != MatchPhase.Active || manager.Clock.IsExpired) return;
 
+        if (Shield > 0f)
+        {
+            float soaked = Mathf.Min(Shield, amount);
+            Shield -= soaked;
+            amount -= soaked;
+            Sfx.Here(SfxKind.Snap, 0.4f, 1.5f);
+            if (amount <= 0f) return; // All of it into the shield
+        }
         Current          = Mathf.Max(0f, Current - amount);
         LastAttacker     = attacker;
         LastDamageTime   = Time.time;

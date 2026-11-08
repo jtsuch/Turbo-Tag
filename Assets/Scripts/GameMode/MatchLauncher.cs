@@ -19,10 +19,25 @@ public static class MatchLauncher
         // the Scoreboard: the new level read MatchEnd with an expired clock before its own reset arrived)
         NetProps.SetRoom(RoomKeys.Phase, (int)MatchPhase.Waiting);
 
+        // The map must belong to the mode's category (Search & Destroy maps only for Search & Destroy, and the
+        // reverse) and exist in this build: the lobby keeps them matched, but nothing else may load a wrong one
+        var    mode     = GameModeRegistry.Find(MatchRules.GameModeKey);
+        string map      = MatchRules.Map;
+        string category = mode != null ? mode.mapCategory ?? "" : "";
+        if (SceneNames.Category(map) != category || !CanLoad(map))
+        {
+            string fix = SceneNames.FirstMap(category);
+            if (fix != null && fix != map)
+            {
+                Debug.LogWarning($"[MatchLauncher] {map} isn't a {(category == "" ? "standard" : category)} map: playing {fix}");
+                map = fix;
+                NetProps.SetRoom(RoomKeys.Map, map);
+            }
+        }
+
         // Modes like Freeplay go straight to the map with everyone's last loadout
-        var  mode        = GameModeRegistry.Find(MatchRules.GameModeKey);
-        bool skipPregame = mode != null && mode.skipAbilitySelection && CanLoad(MatchRules.Map);
-        PhotonNetwork.LoadLevel(skipPregame ? MatchRules.Map : SceneNames.Pregame);
+        bool skipPregame = mode != null && mode.skipAbilitySelection && CanLoad(map);
+        PhotonNetwork.LoadLevel(skipPregame ? map : SceneNames.Pregame);
     }
 
     /// <summary>Host: reopens the room and takes everyone back to the lobby.</summary>

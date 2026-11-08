@@ -3,10 +3,12 @@ using UnityEngine;
 
 /// <summary>
 /// Hold to blow: pushes the player directly away from where they're looking, hard enough to lift
-/// them off the ground when looking down. The leaf blower is held while blowing: a first-person model
-/// under the camera, and a third-person model in the right hand (raised by the Right Arm layer via
-/// <see cref="RaisesArm"/>). The blowing flag is synced so others see it.
+/// them off the ground when looking down. The leaf blower is held while blowing, in the LEFT hand (abilities use the
+/// left, guns the right): a first-person model under the camera, mirrored to the left at start, and a third-person
+/// model held at the left hand (raised by <see cref="RaisesArm"/>, pointed where the player aims). The blowing flag
+/// is synced so others see it.
 /// </summary>
+[DefaultExecutionOrder(100)] // After PlayerAnimatorController has posed the left arm
 [AbilityInfo("Hold to blast air: it pushes you the opposite way you look. Look down to hover and fly.")]
 public class LeafBlower : BasicAbility, IPunObservable
 {
@@ -42,6 +44,14 @@ public class LeafBlower : BasicAbility, IPunObservable
         if (!GetComponent<PhotonView>().ObservedComponents.Contains(this))
             GetComponent<PhotonView>().ObservedComponents.Add(this);
         ShowBlower(false);
+        // Into the left hand: the first-person model mirrors to the left of the view
+        if (firstPersonModel != null)
+        {
+            var t = firstPersonModel.transform;
+            Vector3 p = t.localPosition;
+            Quaternion r = t.localRotation;
+            if (p.x > 0f) { t.localPosition = new Vector3(-p.x, p.y, p.z); t.localRotation = new Quaternion(r.x, -r.y, -r.z, r.w); }
+        }
     }
 
     protected override void OnPress()
@@ -81,9 +91,15 @@ public class LeafBlower : BasicAbility, IPunObservable
     {
         ShowBlower(enabled && blowing);
 
-        // The hand model points where the player faces (the hand bone's own angle varies with the animation)
+        // Held at the left hand, pointing where the player aims (the hand bone's own angle varies with the animation)
         if (blowing && thirdPersonModel != null)
-            thirdPersonModel.transform.rotation = Quaternion.LookRotation(transform.forward, Vector3.up);
+        {
+            var anim = Owner != null ? Owner.Animation : null;
+            if (anim != null && anim.LeftHand != null)
+                thirdPersonModel.transform.SetPositionAndRotation(anim.LeftHand.position, anim.AimRotation);
+            else
+                thirdPersonModel.transform.rotation = Quaternion.LookRotation(transform.forward, Vector3.up);
+        }
     }
 
     private void ShowBlower(bool show)

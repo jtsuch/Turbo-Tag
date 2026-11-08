@@ -45,7 +45,7 @@ public class MouseTrapObject : MonoBehaviourPun
         var player = other.GetComponentInParent<Player>();
         if (player == null || !player.IsLocal || player.IsCaught) return;
         if (player.ActorNumber == photonView.OwnerActorNr) return; // The placer knows where it is
-        if (!player.AffectedBy(photonView.OwnerActorNr)) return; // Shielded
+        if (!player.AffectedByTrap(photonView.OwnerActorNr)) return; // Shielded, or on the placer's team
 
         sprung = true;
         player.HoldFor(holdSeconds);

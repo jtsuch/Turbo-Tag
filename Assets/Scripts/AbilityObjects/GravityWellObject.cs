@@ -62,7 +62,7 @@ public class GravityWellObject : MonoBehaviourPun
         // This client's own player (never the placer)
         var local = Player.Local;
         if (local != null && local.Body != null && local.ActorNumber != photonView.OwnerActorNr && !local.IsCaught
-            && local.AffectedBy(photonView.OwnerActorNr) && InColumn(local.Body.position))
+            && local.AffectedByTrap(photonView.OwnerActorNr) && InColumn(local.Body.position))
             Yank(local.Body);
 
         // Loose props this client simulates

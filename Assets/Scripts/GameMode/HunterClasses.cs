@@ -47,7 +47,7 @@ public static class HunterClasses
             Tools = new[]
             {
                 new Tool { Id = "XRayScan", Name = "X-Ray Scan",  Cooldown = 18f, Description = "For 3 s, see hiders through walls in a cone ahead of you (30 m). Scanned walls glow blue." },
-                new Tool { Id = "Beacon",   Name = "Beacon",      Cooldown = 20f, Description = "Throw a device that sticks to walls. Hiders it can see light up for 2 s." },
+                new Tool { Id = "Beacon",   Name = "Recon Bolt",  Cooldown = 20f, Description = "Fire a bolt that sticks to walls and scans twice: hiders it can see light up for 2 s each time. It blinks and chirps, so hiders know." },
                 new Tool { Id = "Sonar",    Name = "Sonar Pulse", Cooldown = 25f, Description = "Every hider within 15 m lights up for 2.5 s. They hear it too." },
             },
         },

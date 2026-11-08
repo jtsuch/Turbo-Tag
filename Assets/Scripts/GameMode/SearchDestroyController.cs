@@ -12,9 +12,12 @@ using BombState = SearchDestroyMode.BombState;
 ///     spawn; attackers walk over it to pick it up, the carrier drops it with <see cref="InputAction.DropBomb"/>, G;
 ///     only the one who picks it up is told), or planted, blinking and
 ///     beeping faster as its clock runs down; the explosion (everyone within <see cref="SearchDestroyMode.ExplosionRadius"/> dies);
-///   - planting (the carrier, inside a site, on the ground, holding the Grab key) and defusing (a defender at the
-///     planted bomb, holding it): the player stands still meanwhile and a bar fills; letting go or getting hit away
-///     cancels it; the master checks and decides (<see cref="SearchDestroyMode.MasterPlant"/>, MasterDefuse);
+///   - the Bomb key (<see cref="InputAction.Bomb"/>, 4, like Valorant): the carrier taps it to take the bomb out in
+///     the right hand instead of the gun (tap again for the gun back; the gun can't fire meanwhile; synced as
+///     <see cref="PlayerFlag.HoldingBomb"/>, so everyone sees it in hand), and holds it inside a site to plant; a
+///     defender holds it at the planted bomb to defuse. Planting/defusing: the player stands still and a bar fills;
+///     letting go or getting knocked away cancels it; the master checks and decides
+///     (<see cref="SearchDestroyMode.MasterPlant"/>, MasterDefuse). Drop Bomb (G) tosses it, only while it's in hand;
 ///   - the HUD (own canvas): alive counts under the clock ("3 v 2"), the plant/defuse bar, markers on the sites and on
 ///     the bomb (the dropped/carried bomb for attackers, the planted one for everyone), banners for plants, defuses,
 ///     round wins and side swaps;
@@ -40,6 +43,19 @@ public class SearchDestroyController : MonoBehaviourPun
     private float progress;
     private bool lockedMovement;
     private float nextPickupAsk, nextBeep, nextBusyTick;
+
+    // The Bomb key: a tap takes the bomb out / puts it away, a hold plants or defuses
+    private const float TapTime = 0.2f;
+    private float bombKeyDownAt = -1f;
+    private bool bombOut;
+    private Transform heldFirstPerson;
+    private readonly Dictionary<int, Transform> heldThirdPerson = new();
+
+    /// <summary>The local player carries the bomb (the controls hint shows the Bomb key).</summary>
+    public static bool LocalCarrying => Instance != null && Instance.carryingNow;
+    /// <summary>The local player has the bomb out in hand (the controls hint shows Drop).</summary>
+    public static bool LocalBombOut => Instance != null && Instance.bombOut;
+    private bool carryingNow;
     private int lastCarrier = -1;
     private bool droppedHere; // Dropped it: no picking it back up until you've stepped away from it
 
@@ -116,6 +132,7 @@ public class SearchDestroyController : MonoBehaviourPun
 
         Announce((MatchPhase)NetProps.Room(RoomKeys.Phase, (int)MatchPhase.Waiting)); // The room's phase: its round and winner arrive with it
         UpdateBomb(phase);
+        UpdateBombInHand(local, phase);
         UpdateTask(local, phase);
         UpdatePickup(local, phase);
         UpdateDrop(local, phase);
@@ -191,38 +208,8 @@ public class SearchDestroyController : MonoBehaviourPun
 
     private void BuildBomb()
     {
-        bombModel = new GameObject("SnD Bomb").transform;
-        bombModel.SetParent(transform, false);
-        var lit = Shader.Find("Universal Render Pipeline/Lit");
-
-        var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        Destroy(body.GetComponent<Collider>());
-        body.name = "Body";
-        body.transform.SetParent(bombModel, false);
-        body.transform.localPosition = new Vector3(0f, 0.15f, 0f);
-        body.transform.localScale = new Vector3(0.6f, 0.3f, 0.4f);
-        var bodyMat = new Material(lit);
-        bodyMat.SetColor("_BaseColor", new Color(0.18f, 0.18f, 0.2f));
-        body.GetComponent<Renderer>().sharedMaterial = bodyMat;
-
-        var panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        Destroy(panel.GetComponent<Collider>());
-        panel.name = "Panel";
-        panel.transform.SetParent(bombModel, false);
-        panel.transform.localPosition = new Vector3(-0.08f, 0.31f, 0f);
-        panel.transform.localScale = new Vector3(0.3f, 0.03f, 0.28f);
-        var panelMat = new Material(lit);
-        panelMat.SetColor("_BaseColor", new Color(0.9f, 0.75f, 0.2f));
-        panel.GetComponent<Renderer>().sharedMaterial = panelMat;
-
-        var bulb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        Destroy(bulb.GetComponent<Collider>());
-        bulb.name = "Light";
-        bulb.transform.SetParent(bombModel, false);
-        bulb.transform.localPosition = new Vector3(0.18f, 0.34f, 0f);
-        bulb.transform.localScale = Vector3.one * 0.12f;
+        bombModel = BombMesh("SnD Bomb", transform, out bombLight);
         lightMaterial = new Material(Shader.Find("Sprites/Default"));
-        bombLight = bulb.GetComponent<Renderer>();
         bombLight.sharedMaterial = lightMaterial;
 
         var glow = new GameObject("Glow");
@@ -234,6 +221,101 @@ public class SearchDestroyController : MonoBehaviourPun
         bombGlow.intensity = 0f;
         bombGlow.color = new Color(1f, 0.2f, 0.2f);
         bombModel.gameObject.SetActive(false);
+    }
+
+    private static Material bodyMat, panelMat, heldLightMat;
+
+    // The bomb's shape, built from primitives (no colliders): a dark case, a yellow panel and a red bulb on top
+    private static Transform BombMesh(string name, Transform parent, out Renderer bulbRenderer)
+    {
+        var lit = Shader.Find("Universal Render Pipeline/Lit");
+        if (bodyMat == null) { bodyMat = new Material(lit); bodyMat.SetColor("_BaseColor", new Color(0.18f, 0.18f, 0.2f)); }
+        if (panelMat == null) { panelMat = new Material(lit); panelMat.SetColor("_BaseColor", new Color(0.9f, 0.75f, 0.2f)); }
+        var root = new GameObject(name).transform;
+        root.SetParent(parent, false);
+
+        GameObject Part(PrimitiveType type, string partName, Vector3 at, Vector3 size, Material mat)
+        {
+            var go = GameObject.CreatePrimitive(type);
+            Destroy(go.GetComponent<Collider>());
+            go.name = partName;
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = at;
+            go.transform.localScale = size;
+            var r = go.GetComponent<Renderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return go;
+        }
+        Part(PrimitiveType.Cube, "Body", new Vector3(0f, 0.15f, 0f), new Vector3(0.6f, 0.3f, 0.4f), bodyMat);
+        Part(PrimitiveType.Cube, "Panel", new Vector3(-0.08f, 0.31f, 0f), new Vector3(0.3f, 0.03f, 0.28f), panelMat);
+        bulbRenderer = Part(PrimitiveType.Sphere, "Light", new Vector3(0.18f, 0.34f, 0f), Vector3.one * 0.12f, panelMat).GetComponent<Renderer>();
+        return root;
+    }
+
+    // ─── The bomb in hand (Bomb key) ──────────────────────────────────────────
+
+    private void UpdateBombInHand(Player local, MatchPhase phase)
+    {
+        int me = PhotonNetwork.LocalPlayer.ActorNumber;
+        bool live = phase == MatchPhase.Countdown || phase == MatchPhase.Active;
+        carryingNow = local != null && !local.IsCaught && live && SearchDestroyMode.Bomb == BombState.Carried && SearchDestroyMode.Carrier == me;
+        if (!carryingNow) bombOut = false;
+        if (local != null) local.SetFlag(PlayerFlag.HoldingBomb, bombOut);
+    }
+
+    // Where held bombs sit: in front of your view (bottom right), or in another player's right hand
+    private void PlaceHeldBombs()
+    {
+        if (heldLightMat == null) heldLightMat = new Material(Shader.Find("Sprites/Default")) { color = new Color(1f, 0.2f, 0.15f) };
+        var cam = PlayerCam.Local != null ? PlayerCam.Local.Camera.transform : null;
+        bool fp = bombOut && cam != null && !PlayerCam.Local.HasViewOverride;
+        if (fp && heldFirstPerson == null)
+        {
+            heldFirstPerson = BombMesh("Held Bomb (first person)", cam, out var bulb);
+            bulb.sharedMaterial = heldLightMat;
+            heldFirstPerson.localScale = Vector3.one * 0.4f;
+            heldFirstPerson.localPosition = new Vector3(0.36f, -0.36f, 0.68f);
+            heldFirstPerson.localRotation = Quaternion.Euler(-15f, -20f, 0f);
+        }
+        if (heldFirstPerson != null && heldFirstPerson.gameObject.activeSelf != fp) heldFirstPerson.gameObject.SetActive(fp);
+
+        foreach (var p in Player.All)
+        {
+            if (p == null || p.IsLocal) continue;
+            int actor = p.photonView.OwnerActorNr;
+            bool show = p.Has(PlayerFlag.HoldingBomb) && !p.IsDownAfterTag;
+            heldThirdPerson.TryGetValue(actor, out var model);
+            if (show && model == null)
+            {
+                model = BombMesh("Held Bomb", transform, out var bulb);
+                bulb.sharedMaterial = heldLightMat;
+                model.localScale = Vector3.one * 0.6f;
+                heldThirdPerson[actor] = model;
+            }
+            if (model == null) continue;
+            if (model.gameObject.activeSelf != show) model.gameObject.SetActive(show);
+            if (!show) continue;
+            var hand = RightHand(p);
+            Vector3 at = hand != null ? hand.position : p.transform.position + Vector3.up * (p.EyeHeight * 0.55f) + p.transform.right * 0.45f;
+            model.SetPositionAndRotation(at - p.transform.up * 0.1f, p.transform.rotation);
+        }
+    }
+
+    private readonly Dictionary<int, Transform> hands = new();
+
+    private Transform RightHand(Player p)
+    {
+        int actor = p.photonView.OwnerActorNr;
+        if (hands.TryGetValue(actor, out var hand) && hand != null) return hand;
+        Transform best = null;
+        foreach (var t in p.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == "RightArm4_end") { best = t; break; }
+            if (t.name == "RightArm3") best = t;
+        }
+        hands[actor] = best;
+        return best;
     }
 
     private void UpdateBomb(MatchPhase phase)
@@ -308,7 +390,22 @@ public class SearchDestroyController : MonoBehaviourPun
     {
         Task can = Task.None;
         string letter = "";
-        KeyCode key = Keybinds.Get(InputAction.Grab);
+        KeyCode key = Keybinds.Get(InputAction.Bomb);
+        // Menus that use the number keys own them while open (the gun picker's 4 is the Sniper)
+        bool menus = GunPicker.IsOpen || EmoteMenu.IsOpen || PingWheel.IsOpen || PauseMenuManager.IsPaused;
+        if (Input.GetKeyDown(key)) bombKeyDownAt = menus ? -1f : Time.time;
+        bool keyHeld = bombKeyDownAt >= 0f && Input.GetKey(key);
+        bool longHold = keyHeld && Time.time - bombKeyDownAt >= TapTime;
+        if (Input.GetKeyUp(key))
+        {
+            // A tap (not the end of a plant or defuse): the bomb in or out of hand
+            if (bombKeyDownAt >= 0f && Time.time - bombKeyDownAt < TapTime && busy == Task.None && carryingNow)
+            {
+                bombOut = !bombOut;
+                Sfx.Here(SfxKind.Place, 0.4f, bombOut ? 1.1f : 0.9f);
+            }
+            bombKeyDownAt = -1f;
+        }
         if (local != null && phase == MatchPhase.Active && !local.IsCaught && !PauseMenuManager.IsPaused && !manager.Clock.IsExpired)
         {
             var bomb = SearchDestroyMode.Bomb;
@@ -324,12 +421,9 @@ public class SearchDestroyController : MonoBehaviourPun
                 can = Task.Defuse;
         }
 
-        bool holding = can != Task.None && Input.GetKey(key) && (can != Task.Plant || local.Movement.OnGround);
-        if (can != Task.None)
-        {
-            local.ClaimGrabKey(); // The key belongs to the bomb here, not ledges or objects
-            if (!holding) HUDManager.Prompt(key, can == Task.Plant ? $"Hold to plant the bomb at {letter}" : "Hold to defuse the bomb");
-        }
+        bool holding = can != Task.None && longHold && (can != Task.Plant || local.Movement.OnGround);
+        if (can != Task.None && !holding)
+            HUDManager.Prompt(key, can == Task.Plant ? $"Hold to plant the bomb at {letter}" : "Hold to defuse the bomb");
 
         if (!holding || (busy != Task.None && busy != can))
         {
@@ -341,6 +435,7 @@ public class SearchDestroyController : MonoBehaviourPun
         {
             busy = can;
             progress = 0f;
+            if (can == Task.Plant) bombOut = true; // Planting takes it out
             if (!local.MovementLocked) { local.MovementLocked = true; lockedMovement = true; }
             photonView.RPC(nameof(RPC_SnDBusy), RpcTarget.All, local.transform.position, can == Task.Defuse);
         }
@@ -416,7 +511,7 @@ public class SearchDestroyController : MonoBehaviourPun
         if (local == null || local.IsCaught || PauseMenuManager.IsPaused || busy != Task.None) return;
         if (phase != MatchPhase.Active && phase != MatchPhase.Countdown) return;
         if (SearchDestroyMode.Bomb != BombState.Carried || SearchDestroyMode.Carrier != PhotonNetwork.LocalPlayer.ActorNumber) return;
-        if (!Input.GetKeyDown(Keybinds.Get(InputAction.DropBomb))) return;
+        if (!bombOut || !Input.GetKeyDown(Keybinds.Get(InputAction.DropBomb))) return; // Only a bomb in hand drops
 
         // Tossed a short way where you look, like the Boom Bomb: worked out here, flown on every screen
         var view = PlayerCam.Local != null ? PlayerCam.Local.Camera.transform : local.transform;
@@ -670,7 +765,9 @@ public class SearchDestroyController : MonoBehaviourPun
 
         bool carrying = local != null && !local.IsCaught && round && SearchDestroyMode.Bomb == BombState.Carried
                         && SearchDestroyMode.Carrier == PhotonNetwork.LocalPlayer.ActorNumber;
-        carrierText.text = carrying ? "YOU HAVE THE BOMB" : "";
+        carrierText.text = carrying
+            ? (bombOut ? "BOMB IN HAND" : $"YOU HAVE THE BOMB  <size=75%><color=#B9B2E0>{Keybinds.Label(Keybinds.Get(InputAction.Bomb))}: take it out</color></size>")
+            : "";
 
         // Progress bar
         bool showBar = busy != Task.None;
@@ -786,6 +883,7 @@ public class SearchDestroyController : MonoBehaviourPun
     // Behind and above the teammate, looking where they look
     private void LateUpdate()
     {
+        if (Mode != null) PlaceHeldBombs();
         if (!spectateOn || spectating == null) return;
         Vector3 back = Vector3.ProjectOnPlane(-spectating.transform.forward, Vector3.up);
         if (back.sqrMagnitude < 0.01f) back = Vector3.back;

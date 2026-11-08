@@ -478,11 +478,11 @@ public class SearchDestroyMode : TeamMode
         if (IsAttacker(role))
         {
             if (planted) return "Guard the bomb until it goes off!";
-            if (Carrier == PhotonNetwork.LocalPlayer.ActorNumber) return $"You have the bomb! Plant it at {sites} (hold {Keybinds.Label(Keybinds.Get(InputAction.Grab))}; {Keybinds.Label(Keybinds.Get(InputAction.DropBomb))} drops it).";
+            if (Carrier == PhotonNetwork.LocalPlayer.ActorNumber) return $"You have the bomb! Plant it at {sites} (hold {Keybinds.Label(Keybinds.Get(InputAction.Bomb))}).";
             if (phase == MatchPhase.Countdown) return $"Pre-round: pick a gun and plan. Grab the bomb, then plant it at {sites}.";
             return $"Plant the bomb at {sites}, or take out every defender.";
         }
-        if (planted) return $"Bomb planted at {Site}! Defuse it (hold {Keybinds.Label(Keybinds.Get(InputAction.Grab))}).";
+        if (planted) return $"Bomb planted at {Site}! Defuse it (hold {Keybinds.Label(Keybinds.Get(InputAction.Bomb))}).";
         if (phase == MatchPhase.Countdown) return $"Pre-round: pick a gun and plan how to hold {sites}.";
         return $"Defend {sites}: stop the plant, or take out every attacker.";
     }

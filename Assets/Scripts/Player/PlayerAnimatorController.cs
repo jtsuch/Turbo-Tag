@@ -23,8 +23,12 @@ using UnityEngine;
 /// view is turned more than 90° from the wall (the side flips as the view passes straight behind). The body
 /// faces the wall (PlayerCam). The pose is chosen by the owner and synced.
 ///
-/// The gun: hands are empty except while grappling. Both pistols (the first-person one under the camera
-/// and the third-person one in the right hand) are shown only then, on every client.
+/// Hands: guns and held objects (gun-mode guns, the S&D bomb, the Keep Away disc) go in the RIGHT hand (the Right
+/// Arm layer raises it while a gun is out); abilities use the LEFT hand. The grapple's pistol is a mirrored copy of
+/// the built-in pistol made at Start: under the camera on the left for the owner, and in the left hand for everyone
+/// else, where the left arm is raised procedurally toward the aim (<see cref="AimLeftArm"/>, after the Animator; no
+/// clip yet, so it works with any pose). <see cref="Ability.ShowsGrappleGun"/> brings it out; <see cref="Ability.RaisesArm"/>
+/// raises the left arm for abilities with their own model (Leaf Blower: <see cref="LeftHand"/>, <see cref="AimRotation"/>).
 ///
 /// MovementSpeed convention:
 ///   Wall-run: -1 left wall / +1 right wall · Climb: -1 down / +1 up · Ground: 0 idle, 0.5 walk, 1 sprint/slide
@@ -155,6 +159,7 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     private void Start()
     {
         CacheAnimatorInfo();
+        BuildLeftHand();
 
         if (!photonView.ObservedComponents.Contains(this))
             photonView.ObservedComponents.Add(this);
@@ -302,6 +307,7 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     // Uses synced values, so every client sees the same tilt.
     private void LateUpdate()
     {
+        AimLeftArm();
         if (headBone == null) return;
 
         // Prone with the "fast" speed value is a slide (see ComputeMovementSpeed)
@@ -369,17 +375,21 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         return tip != null ? tip.transform : gun.transform;
     }
 
-    // Only an equipped (enabled) ability brings the gun out or raises the arm; Flappy and others never do.
-    // The arm can rise without the gun (the leaf blower carries its own model).
+    // The right arm rises for a gun; the left for an ability that shows its gun (grapples) or raises the arm
+    // (Leaf Blower). Only an equipped (enabled) ability counts; Flappy and others never do.
     private void UpdateGun()
     {
         bool armUp = HoldingGun, gunOut = HoldingGun && HoldingPistol;
+        bool leftUp = false, leftGun = false;
         foreach (var ability in abilities)
         {
             if (ability == null || !ability.enabled) continue;
-            armUp  |= ability.RaisesArm;
-            gunOut |= ability.ShowsGrappleGun;
+            leftUp  |= ability.RaisesArm || ability.ShowsGrappleGun;
+            leftGun |= ability.ShowsGrappleGun;
         }
+        leftWeight = Mathf.MoveTowards(leftWeight, leftUp ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
+        leftGunWasOut = leftGun || (leftGunWasOut && leftWeight > 0.4f);
+        ShowLeftGun(leftGunWasOut);
 
         // The arm raises as the gun comes out and lowers before it is put away
         gunWeight = Mathf.MoveTowards(gunWeight, armUp ? 1f : 0f, gunBlendSpeed * Time.deltaTime);
@@ -395,6 +405,104 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         bool firstPerson = (show || ForceFirstPersonGun) && !watchingCamera;
         if (firstPersonGun != null && firstPersonGun.activeSelf != firstPerson) firstPersonGun.SetActive(firstPerson);
         if (thirdPersonGun != null && thirdPersonGun.activeSelf != show) thirdPersonGun.SetActive(show);
+    }
+
+    // ─── Left hand (abilities) ────────────────────────────────────────────────
+
+    private GameObject leftGunFirstPerson, leftGunThirdPerson;
+    private Transform  leftUpperArm, leftForearm, leftHandEnd;
+    private Quaternion leftGunViewRotation = Quaternion.identity; // The pistol's angle relative to the view
+    private float      leftWeight;
+    private bool       leftGunWasOut;
+
+    /// <summary>How far the left arm is raised toward the aim (0–1).</summary>
+    public float LeftArmWeight => leftWeight;
+
+    /// <summary>The end of the left hand (null if the rig has none): where left-hand ability models sit.</summary>
+    public Transform LeftHand => leftHandEnd;
+
+    /// <summary>Where this player aims: the body's facing pitched by the synced look (every client).</summary>
+    public Quaternion AimRotation => transform.rotation * Quaternion.Euler(LookPitch, 0f, 0f);
+
+    /// <summary>The grapple pistol's muzzle (left hand): first person for the owner, third person for others.</summary>
+    public Transform GrappleTip(bool firstPerson)
+    {
+        var gun = firstPerson ? leftGunFirstPerson : leftGunThirdPerson;
+        if (gun == null) return null;
+        var tip = FindChild(gun.transform, "GunTip");
+        return tip != null ? tip.transform : gun.transform;
+    }
+
+    // Mirrored copies of the built-in pistol for the left hand, and the left arm's bones
+    private void BuildLeftHand()
+    {
+        var armature = transform.Find("Armature");
+        if (armature != null)
+        {
+            foreach (var t in armature.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == "LeftArm1") leftUpperArm = t;
+                else if (t.name == "LeftArm3") leftForearm = t;
+                else if (t.name == "LeftArm4_end") leftHandEnd = t;
+            }
+            if (leftHandEnd == null) leftHandEnd = leftForearm;
+        }
+
+        if (firstPersonGun != null)
+        {
+            leftGunFirstPerson = Instantiate(firstPersonGun, firstPersonGun.transform.parent, false);
+            leftGunFirstPerson.name = "Grapple Pistol (left)";
+            var t = leftGunFirstPerson.transform;
+            Vector3 p = firstPersonGun.transform.localPosition;
+            Quaternion r = firstPersonGun.transform.localRotation;
+            t.localPosition = new Vector3(-p.x, p.y, p.z);
+            t.localRotation = new Quaternion(r.x, -r.y, -r.z, r.w); // Mirrored across the view's middle
+            leftGunViewRotation = t.localRotation;
+            leftGunFirstPerson.SetActive(false);
+        }
+        if (thirdPersonGun != null && leftHandEnd != null)
+        {
+            leftGunThirdPerson = Instantiate(thirdPersonGun, leftHandEnd, false);
+            leftGunThirdPerson.name = "Grapple Pistol (left hand)";
+            leftGunThirdPerson.transform.localScale = Vector3.one;
+            float scale = thirdPersonGun.transform.lossyScale.x / Mathf.Max(0.0001f, leftHandEnd.lossyScale.x);
+            leftGunThirdPerson.transform.localScale = Vector3.one * scale;
+            leftGunThirdPerson.SetActive(false);
+        }
+    }
+
+    private void ShowLeftGun(bool show)
+    {
+        bool watchingCamera = PlayerCam.Local != null && PlayerCam.Local.HasViewOverride && !Killcam.IsPlaying;
+        if (leftGunFirstPerson != null)
+        {
+            bool fp = show && photonView.IsMine && !watchingCamera;
+            if (leftGunFirstPerson.activeSelf != fp) leftGunFirstPerson.SetActive(fp);
+        }
+        if (leftGunThirdPerson != null && leftGunThirdPerson.activeSelf != show) leftGunThirdPerson.SetActive(show);
+    }
+
+    // After the Animator: swing the left arm (upper arm, then forearm) so the hand points along the aim, by the
+    // left arm's weight, and hold the pistol in that hand pointing where the player looks
+    private void AimLeftArm()
+    {
+        if (leftWeight <= 0.001f || leftUpperArm == null || leftHandEnd == null) return;
+        Quaternion aim = AimRotation;
+        Vector3 dir = aim * Vector3.forward;
+        Vector3 want = (dir + transform.right * -0.15f).normalized; // A little across the body, like holding it out
+
+        Vector3 now = leftHandEnd.position - leftUpperArm.position;
+        if (now.sqrMagnitude > 0.0001f)
+            leftUpperArm.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(now, want), leftWeight) * leftUpperArm.rotation;
+        if (leftForearm != null)
+        {
+            Vector3 fore = leftHandEnd.position - leftForearm.position;
+            if (fore.sqrMagnitude > 0.0001f)
+                leftForearm.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(fore, want), leftWeight) * leftForearm.rotation;
+        }
+
+        if (leftGunThirdPerson != null && leftGunThirdPerson.activeSelf)
+            leftGunThirdPerson.transform.SetPositionAndRotation(leftHandEnd.position, aim * leftGunViewRotation);
     }
 
     private void SetFloat(int hash, float value)

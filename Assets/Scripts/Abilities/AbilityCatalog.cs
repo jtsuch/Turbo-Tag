@@ -62,10 +62,33 @@ public static class AbilityCatalog
         if (ability is BasicAbility basic) return $"Hold up to {basic.BaseDuration:0.#}s, refills when let go";
 
         var parts = new List<string> { ability.BaseCooldown > 0f ? $"Cooldown {ability.BaseCooldown:0.#}s" : "No cooldown" };
+        if (HealthModesOnly(id)) parts.Add("health modes");
         if (ability.MaxCharges > 1) parts.Add($"{ability.MaxCharges} uses");
         if (ability is TrapAbility trap && trap.MaxPlaced > 0) parts.Add($"up to {trap.MaxPlaced} out");
         return string.Join("  ·  ", parts);
     }
+
+    /// <summary>True for abilities only offered in modes where players have health ([AbilityInfo] HealthModesOnly).</summary>
+    public static bool HealthModesOnly(string id) => Info(id)?.HealthModesOnly ?? false;
+
+    private static readonly Dictionary<string, bool> modeHasHealth = new();
+
+    /// <summary>Whether the mode <paramref name="modeKey"/> gives players health (it uses guns).</summary>
+    public static bool ModeHasHealth(string modeKey)
+    {
+        modeKey ??= "";
+        if (modeHasHealth.TryGetValue(modeKey, out bool has)) return has;
+        has = GameModeRegistry.Create(modeKey).UsesGuns;
+        modeHasHealth[modeKey] = has;
+        return has;
+    }
+
+    /// <summary>Whether the ability may be used in the room's current mode (health-only abilities need a health mode).</summary>
+    public static bool AllowedInMode(string id) =>
+        !HealthModesOnly(id) || (PhotonNetwork.InRoom && ModeHasHealth(MatchRules.GameModeKey));
+
+    /// <summary>Available (on the player prefab, objects present) and allowed in this room's mode: what Pregame, Cheats and loadouts offer.</summary>
+    public static bool IsUsable(string id) => IsAvailable(id) && AllowedInMode(id);
 
     /// <summary>Player-facing description from [AbilityInfo] ("" when none).</summary>
     public static string Description(string id) => Info(id)?.Description ?? "";
@@ -146,9 +169,9 @@ public readonly struct AbilityLoadout
     public static string Default(AbilitySlot slot)
     {
         string preferred = defaults[(int)slot];
-        if (AbilityCatalog.IsAvailable(preferred)) return preferred;
+        if (AbilityCatalog.IsUsable(preferred)) return preferred;
         foreach (string id in AbilityCatalog.InSlot(slot))
-            if (AbilityCatalog.IsAvailable(id)) return id;
+            if (AbilityCatalog.IsUsable(id)) return id;
         return preferred;
     }
 
@@ -162,7 +185,7 @@ public readonly struct AbilityLoadout
         foreach (AbilitySlot slot in Enum.GetValues(typeof(AbilitySlot)))
         {
             string current = props != null && props.TryGetValue(PropertyKey(slot), out object value) ? value as string : null;
-            if (AbilityCatalog.SlotOf(current) == slot && AbilityCatalog.IsAvailable(current)) continue;
+            if (AbilityCatalog.SlotOf(current) == slot && AbilityCatalog.IsUsable(current)) continue;
             SetLocal(slot, LastChoice(slot));
         }
     }
@@ -187,7 +210,7 @@ public readonly struct AbilityLoadout
         {
             var slot = (AbilitySlot)i;
             string id = NetProps.Of(player, PropertyKey(slot), Default(slot));
-            ids[i] = AbilityCatalog.SlotOf(id) == slot ? id : Default(slot);
+            ids[i] = AbilityCatalog.SlotOf(id) == slot && AbilityCatalog.AllowedInMode(id) ? id : Default(slot); // Not in this mode: the default
         }
         return new AbilityLoadout(ids);
     }
@@ -204,7 +227,7 @@ public readonly struct AbilityLoadout
     public static string LastChoice(AbilitySlot slot)
     {
         string id = Renamed(PlayerPrefs.GetString(LastChoicePrefsPrefix + slot, Default(slot)));
-        return AbilityCatalog.SlotOf(id) == slot && AbilityCatalog.IsAvailable(id) ? id : Default(slot);
+        return AbilityCatalog.SlotOf(id) == slot && AbilityCatalog.IsUsable(id) ? id : Default(slot);
     }
 
     // Abilities that were renamed: a saved choice of the old name picks the new one

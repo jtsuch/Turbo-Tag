@@ -88,6 +88,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out HunterClassPicker _)) gameObject.AddComponent<HunterClassPicker>(); // Hunters pick a class while hiders hide
         if (!TryGetComponent(out HunterToolHud _)) gameObject.AddComponent<HunterToolHud>();     // ...and its tool on the HUD
         if (!TryGetComponent(out LastHiderCam _)) gameObject.AddComponent<LastHiderCam>();       // Tag: hunters can watch the last hider
+        if (!TryGetComponent(out ControlsHint _)) gameObject.AddComponent<ControlsHint>();       // The less obvious keys, on the right
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();

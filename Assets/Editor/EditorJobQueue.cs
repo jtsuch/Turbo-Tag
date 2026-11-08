@@ -46,6 +46,7 @@ public static class EditorJobQueue
         ["BuildStandoffBarriers"] = SnDMapBuilder.StandoffBarriers,
         ["BuildSwitchbackBarriers"] = SnDMapBuilder.SwitchbackBarriers,
         ["BuildCitadelBarriers"] = SnDMapBuilder.CitadelBarriers,
+        ["SetupTacticalAbilities"] = TacticalAbilitySetup.Run,
         ["BuildMapThumbnails"] = MapThumbnails.Build,
         ["BuildWindows"] = BuildTools.BuildWindows,
         ["BuildCosmetics"] = CosmeticPrefabBuilder.Build,

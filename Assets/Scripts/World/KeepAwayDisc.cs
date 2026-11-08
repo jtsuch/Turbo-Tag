@@ -162,16 +162,16 @@ public class KeepAwayDisc : MonoBehaviourPun
 
         if (p.IsLocal && PlayerCam.Local != null)
         {
-            // Low in the bottom-left corner of your view, mostly out of the way
+            // Low in the bottom-right corner of your view (held objects go in the right hand), mostly out of the way
             var cam = PlayerCam.Local.Camera.transform;
-            Vector3 at = cam.position + cam.forward * 1.0f - cam.right * 0.62f - cam.up * 0.55f;
+            Vector3 at = cam.position + cam.forward * 1.0f + cam.right * 0.62f - cam.up * 0.55f;
             Place(at, cam.rotation * Quaternion.Euler(-70f, 0f, 0f));
         }
         else
         {
-            // In the left hand
+            // In the right hand (abilities use the left)
             if (handOf != holder) { hand = FindHand(p); handOf = holder; }
-            Vector3 at = hand != null ? hand.position : p.transform.position + Vector3.up * (p.EyeHeight * 0.6f) - p.transform.right * 0.45f;
+            Vector3 at = hand != null ? hand.position : p.transform.position + Vector3.up * (p.EyeHeight * 0.6f) + p.transform.right * 0.45f;
             Place(at, p.transform.rotation * Quaternion.Euler(-80f, 0f, 0f));
         }
     }
@@ -188,8 +188,8 @@ public class KeepAwayDisc : MonoBehaviourPun
         Transform best = null;
         foreach (var t in p.GetComponentsInChildren<Transform>(true))
         {
-            if (t.name == "LeftArm4_end") return t;
-            if (t.name == "LeftArm3") best = t;
+            if (t.name == "RightArm4_end") return t;
+            if (t.name == "RightArm3") best = t;
         }
         return best;
     }

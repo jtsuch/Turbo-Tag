@@ -240,7 +240,7 @@ public class CheatsPanel : MonoBehaviourPunCallbacks
             foreach (string id in AbilityCatalog.InSlot(slot))
             {
                 var ability = handler.Find(id);
-                if (ability == null || !AbilityCatalog.IsAvailable(id)) continue;
+                if (ability == null || !AbilityCatalog.IsUsable(id)) continue;
                 rows.Add(BuildRow(tabs[t].list, ability, ability == equipped));
             }
         }
