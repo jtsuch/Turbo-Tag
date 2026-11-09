@@ -20,9 +20,11 @@ public class SnowballObject : NetworkedProjectile
 
     private bool hasHit;
 
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
+
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || hasHit) return;
+        if (!IsAuthority || hasHit || !RealContact(collision)) return;
         hasHit = true;
 
         var target = collision.collider.GetComponentInParent<Player>();

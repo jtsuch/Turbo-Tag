@@ -274,7 +274,8 @@ public class CombatFeedback : MonoBehaviour
             Sfx.Here(SfxKind.Heartbeat, Mathf.Lerp(0.45f, 0.8f, severity));
         }
         float phase = low ? 1f - Mathf.Clamp01((nextBeat - Time.unscaledTime) / beatGap) : 0f;
-        float pulse = low ? Mathf.Lerp(0.35f, 0.6f, severity) * (0.7f + 0.3f * Mathf.Exp(-phase * 6f)) : 0f;
+        // Noticeable, not overwhelming: a soft edge that beats gently (it used to flash hard every heartbeat)
+        float pulse = low ? Mathf.Lerp(0.14f, 0.28f, severity) * (0.85f + 0.15f * Mathf.Exp(-phase * 6f)) : 0f;
         var c = vignette.color;
         c.a = Mathf.MoveTowards(c.a, pulse, Time.unscaledDeltaTime * 2f);
         vignette.color = c;

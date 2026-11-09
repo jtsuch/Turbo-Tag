@@ -51,6 +51,34 @@ public abstract class TacticalTrapObject : MonoBehaviourPun
         PlayerEffect.Apply(effect, player, seconds);
     }
 
+    // Which zones currently hold each zone effect on the local player (two overlapping zones: leaving one keeps it)
+    private static readonly System.Collections.Generic.Dictionary<Type, System.Collections.Generic.HashSet<object>> holders = new();
+
+    /// <summary>
+    /// A zone effect held on the local player while they're inside (no timer: the card stays up, "ON", and goes when
+    /// they leave every zone holding it). Call every frame with whether they're inside this zone.
+    /// </summary>
+    protected void Hold(Type effect, Player player, bool inside)
+    {
+        if (!holders.TryGetValue(effect, out var set)) holders[effect] = set = new System.Collections.Generic.HashSet<object>();
+        bool changed = inside ? set.Add(this) : set.Remove(this);
+        if (!changed || player == null) return;
+        var running = player.GetComponent(effect) as PlayerEffect;
+        if (set.Count > 0 && running == null) PlayerEffect.Apply(effect, player, 0f);
+        else if (set.Count == 0 && running != null) { running.CancelEffect(); Destroy(running); }
+    }
+
+    // A zone that goes (or the round ends) lets go of whatever it held
+    protected virtual void OnDestroy()
+    {
+        foreach (var pair in holders)
+        {
+            if (!pair.Value.Remove(this) || pair.Value.Count > 0) continue;
+            var local = Player.Local;
+            if (local != null && local.GetComponent(pair.Key) is PlayerEffect running) { running.CancelEffect(); Destroy(running); }
+        }
+    }
+
     /// <summary>A see-through material in one colour (unlit; drawn from both sides).</summary>
     protected static Material Glass(Color color) => new(Shader.Find("Sprites/Default")) { color = color };
 }

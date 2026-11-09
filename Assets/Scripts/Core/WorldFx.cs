@@ -101,7 +101,7 @@ public static class WorldFx
     /// <param name="sourceActor">Who caused it (0 = the world): a shielded player ignores other players' blasts.</param>
     /// <param name="cause">The ability id behind it (knock-offs name it in the kill feed).</param>
     public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f, int sourceActor = 0,
-                               string cause = null)
+                               string cause = null, float falloffPower = 1f)
     {
         int layers = mask.value != 0 ? mask.value : Physics.AllLayers;
         int count  = Physics.OverlapSphereNonAlloc(position, radius, overlapBuffer, layers, QueryTriggerInteraction.Ignore);
@@ -115,7 +115,16 @@ public static class WorldFx
             if (!HasAuthority(body)) continue;
             var player = body.GetComponent<Player>();
             if (player != null && !player.AffectedBy(sourceActor)) continue;
-            body.AddExplosionForce(force, position, radius, upwardsModifier, ForceMode.Impulse);
+            if (Mathf.Approximately(falloffPower, 1f))
+                body.AddExplosionForce(force, position, radius, upwardsModifier, ForceMode.Impulse); // Straight-line falloff
+            else
+            {
+                // A steeper falloff: full strength at the middle, very little near the edge
+                Vector3 from = position - Vector3.up * upwardsModifier;
+                Vector3 to = body.worldCenterOfMass - from;
+                float near = 1f - Mathf.Clamp01(Vector3.Distance(body.worldCenterOfMass, position) / radius);
+                body.AddForce((to.sqrMagnitude > 0.0001f ? to.normalized : Vector3.up) * force * Mathf.Pow(near, falloffPower), ForceMode.Impulse);
+            }
             if (player != null) player.NotePushed(sourceActor, cause);
         }
     }

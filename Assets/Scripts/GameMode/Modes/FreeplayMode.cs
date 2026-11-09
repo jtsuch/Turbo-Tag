@@ -23,6 +23,9 @@ public class FreeplayMode : GameMode
     // Practice: everyone on the map
     public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => true;
 
+    // The sandbox: every ability can be tried here, health-mode ones included (damage only lands in modes with health)
+    public override bool AllowsEveryAbility => true;
+
     // No objective text once playing
     public override string GetPhaseLabel(MatchPhase phase) =>
         phase == MatchPhase.Active ? "" : base.GetPhaseLabel(phase);

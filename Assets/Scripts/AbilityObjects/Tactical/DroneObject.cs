@@ -12,7 +12,7 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
 {
     [SerializeField] private float lifetime = 5f;
     [SerializeField] private float scanEvery = 0.5f;
-    [SerializeField] private float scanRadius = 10f;
+    [SerializeField] private float scanRadius = 15f;
     [SerializeField] private float revealSeconds = 2f;
 
     private Vector3 velocity;
@@ -29,6 +29,28 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
         var list = new System.Collections.Generic.List<Transform>();
         foreach (Transform t in GetComponentsInChildren<Transform>()) if (t.name.StartsWith("Rotor")) list.Add(t);
         rotors = list.ToArray();
+    }
+
+    private GroundRing reach;
+
+    // The reach on the floor below: where the scan sphere meets the ground
+    private void UpdateReach()
+    {
+        var hits = Physics.RaycastAll(transform.position, Vector3.down, scanRadius, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        Vector3 floor = Vector3.zero;
+        foreach (var h in hits)
+            if (h.distance < best && !h.transform.IsChildOf(transform) && h.collider.GetComponentInParent<Player>() == null) { best = h.distance; floor = h.point; }
+        if (best == float.MaxValue) { if (reach != null) reach.gameObject.SetActive(false); return; }
+        float r = Mathf.Sqrt(Mathf.Max(0f, scanRadius * scanRadius - best * best));
+        if (reach == null) reach = GroundRing.Held(floor, r, new Color(0.35f, 1f, 0.6f));
+        reach.gameObject.SetActive(true);
+        reach.Place(floor, r);
+    }
+
+    private void OnDestroy()
+    {
+        if (reach != null) Destroy(reach.gameObject);
     }
 
     private void Remove()
@@ -49,6 +71,7 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
             else transform.position += step;
         }
         transform.position += Vector3.up * Mathf.Sin((Time.time - spawnedAt) * 5f) * 0.15f * Time.deltaTime;
+        UpdateReach();
 
         if (Time.time < nextScan) return;
         nextScan = Time.time + scanEvery;

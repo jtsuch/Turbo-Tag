@@ -11,7 +11,7 @@ using UnityEngine;
 /// </summary>
 public class TacticalNet : MonoBehaviourPun
 {
-    public enum Status : byte { Ink, Suppress, Shock, Heal, Knock, Hold }
+    public enum Status : byte { Ink, Suppress, Shock, Heal, Knock, Hold, Stun }
 
     private Player player;
 
@@ -38,10 +38,56 @@ public class TacticalNet : MonoBehaviourPun
             case Status.Shock:    PlayerEffect.Apply(typeof(ShockedEffect), player, seconds); break;
             case Status.Heal:     PlayerEffect.Apply(typeof(HealingEffect), player, seconds); break;
             case Status.Hold:     player.HoldFor(seconds); break;
+            case Status.Stun:     PlayerEffect.Apply(typeof(StunnedEffect), player, seconds); break;
             case Status.Knock:
                 player.Body.linearVelocity += vector;
                 player.NotePushed(source, "BellySlide");
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Any client: removes a placed piece of utility (a trap ability's object), asking its owner (only they can destroy
+    /// it). The Bulldozer runs them over.
+    /// </summary>
+    public static void DestroyUtility(PhotonView utility)
+    {
+        if (utility == null) return;
+        var owner = Player.Find(utility.OwnerActorNr);
+        if (owner == null || !owner.TryGetComponent(out TacticalNet net)) return;
+        net.photonView.RPC(nameof(RPC_TDestroy), utility.Owner, utility.ViewID);
+    }
+
+    [PunRPC]
+    private void RPC_TDestroy(int viewId)
+    {
+        var view = PhotonView.Find(viewId);
+        if (view == null || !view.IsMine) return;
+        photonView.RPC(nameof(RPC_TSmashed), RpcTarget.All, view.transform.position);
+        PhotonNetwork.Destroy(view.gameObject);
+    }
+
+    [PunRPC]
+    private void RPC_TSmashed(Vector3 at)
+    {
+        Sfx.At(SfxKind.Snap, at, 1f, 40f, 0.7f);
+        Vfx.Burst(at + Vector3.up * 0.3f, new Color(0.85f, 0.85f, 0.9f), 26, 6f, 0.25f, 0.6f);
+    }
+
+    /// <summary>
+    /// A placed trap object near <paramref name="at"/> (within <paramref name="radius"/>): any networked ability object
+    /// spawned by a Trap-slot ability.
+    /// </summary>
+    public static void FindUtility(Vector3 at, float radius, System.Collections.Generic.HashSet<PhotonView> into)
+    {
+        foreach (var col in Physics.OverlapSphere(at, radius, Physics.AllLayers, QueryTriggerInteraction.Collide))
+        {
+            var view = col.GetComponentInParent<PhotonView>();
+            if (view == null || view.GetComponent<Player>() != null || into.Contains(view)) continue;
+            var data = view.InstantiationData;
+            if (data == null || data.Length < 3 || data[2] is not int) continue; // Not an ability object
+            string id = view.gameObject.name.Replace("(Clone)", "").Trim();
+            if (AbilityCatalog.SlotOf(id) == AbilitySlot.Trap) into.Add(view);
         }
     }
 

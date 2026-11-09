@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 ///   Cloak      — nearly invisible (see-through copies of the body materials, no shadow, no name tag);
 ///                the cloaked player sees a glow around their screen edges (ScreenVignette).
 ///   Camouflage — body painted one flat colour (Chameleon copies the surface it is stuck to).
-///   Ice        — tinted icy blue while standing on ice (<see cref="Player.IsOnIce"/>).
+///   Ice        — no tint now: Slick shows as ice cubes round the feet (<see cref="SlickFeet"/>).
 ///   Silhouette — solid black, no glow, when the game mode hides who this player is from the viewer
 ///                (<see cref="GameModeManager.HidesIdentityFromLocal"/>: hunters during Protect the President setup).
 ///   Skin       — the player's penguin colour (<see cref="PenguinSkins"/>): their colour map replaces the
@@ -46,10 +46,6 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     [Tooltip("How far the crown sinks into the top of the head (m, scaled by body size). Negative lifts it.")]
     [SerializeField] private float crownSink = 0.12f;
 
-    [Header("Ice")]
-    [SerializeField] private Color iceTint      = new(0.55f, 0.8f, 1f);
-    [SerializeField] private float iceFadeSpeed = 4f;
-
     /// <summary>Owner: nearly invisible while true.</summary>
     public bool Cloaked { get; set; }
 
@@ -77,7 +73,6 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     private Material[][]          clearMaterials; // Transparent copies, made the first time a cloak is shown
     private ShadowCastingMode[]   shadowModes;
     private bool                  showingClear;
-    private float                 iceAmount;
     private float                 camoAmount;
     private Color                 camoColor = Color.white;
 
@@ -154,7 +149,6 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         bool plain = !silhouette && !Camouflage.HasValue && ghostAmount < 0.05f && !player.IsDownAfterTag;
         UpdateCosmetics(plain, crowned);
 
-        iceAmount   = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * dt);
         camoAmount  = Mathf.MoveTowards(camoAmount, Camouflage.HasValue ? 1f : 0f, camouflageFadeSpeed * dt);
         if (Camouflage.HasValue) camoColor = Camouflage.Value;
 
@@ -172,7 +166,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
             var r = bodyRenderers[i];
             if (r == null) continue;
 
-            Color color = baseColors[i] * Color.Lerp(Color.white, iceTint, iceAmount);
+            Color color = baseColors[i]; // Slick (iced) shows as ice cubes round the feet now, not a blue tint
             color = Color.Lerp(color, camoColor, camoAmount);
             color = Color.Lerp(color, GhostTint, ghostAmount * 0.65f);
             color = Color.Lerp(color, new Color(1f, 0.82f, 0.25f), goldAmount * (0.6f + 0.25f * Mathf.Sin(Time.time * 8f))); // Invulnerable
@@ -251,6 +245,9 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
     // ─── Cosmetics ────────────────────────────────────────────────────────────
 
     private CosmeticWearer wearer;
+
+    /// <summary>The full-body outfit's renderers on this copy (empty if none), for glows (Armored).</summary>
+    public Renderer[] OutfitRenderers => wearer != null ? wearer.RenderersIn(CosmeticSlot.Outfit) : System.Array.Empty<Renderer>();
 
     // The owner's synced loadout, worn on this copy (children of the body, so the minimap hides them too). Hidden
     // whole while the body is disguised, hidden or see-through; head gear gives way to the crown. Everything rides

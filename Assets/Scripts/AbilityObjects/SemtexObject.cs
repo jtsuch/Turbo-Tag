@@ -91,9 +91,11 @@ public class SemtexObject : NetworkedProjectile
         if (instanced != null) foreach (var m in instanced) if (m != null) Destroy(m);
     }
 
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
+
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || stuck) return;
+        if (!IsAuthority || stuck || !RealContact(collision)) return;
         stuck = true;
 
         // Networked things (players, boxes) by view id; everything else by scene path

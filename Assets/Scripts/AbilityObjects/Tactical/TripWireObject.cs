@@ -9,7 +9,7 @@ using UnityEngine;
 public class TripWireObject : TacticalTrapObject
 {
     [TunableParam("Max Length", 2f, 30f)]
-    [SerializeField] private float maxLength = 12f;
+    [SerializeField] private float maxLength = 13.2f;
     [TunableParam("Hold Time", 0f, 6f)]
     [SerializeField] private float holdSeconds = 1.5f;
     [TunableParam("Reveal Time", 0f, 10f)]
@@ -25,8 +25,12 @@ public class TripWireObject : TacticalTrapObject
     {
         base.Start();
         start = transform.position + transform.forward * 0.1f;
-        end = Physics.Raycast(start, transform.forward, out RaycastHit hit, maxLength, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-            ? hit.point : start + transform.forward * maxLength;
+        // To the first wall across the gap (never to a player standing in the way)
+        end = start + transform.forward * maxLength;
+        float nearest = float.MaxValue;
+        foreach (var h in Physics.RaycastAll(start, transform.forward, maxLength, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            if (h.distance < nearest && !h.transform.IsChildOf(transform) && h.collider.GetComponentInParent<Player>() == null)
+            { nearest = h.distance; end = h.point; }
 
         line = gameObject.AddComponent<LineRenderer>();
         line.positionCount = 2;
@@ -49,12 +53,20 @@ public class TripWireObject : TacticalTrapObject
         tripped = true;
         enemy.HoldFor(holdSeconds);
         TacticalNet.Reveal(PlacerActor, enemy.ActorNumber, revealSeconds);
-        photonView.RPC(nameof(RPC_Tripped), RpcTarget.All, enemy.transform.position + Vector3.up);
+        photonView.RPC(nameof(RPC_Tripped), RpcTarget.All, enemy.transform.position + Vector3.up, enemy.ActorNumber);
     }
 
     [PunRPC]
-    private void RPC_Tripped(Vector3 at)
+    private void RPC_Tripped(Vector3 at, int caught)
     {
+        // The placer hears about it: a line in the feed, a map pulse and a ping where it happened
+        if (photonView.IsMine)
+        {
+            var who = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.GetPlayer(caught) : null;
+            CombatHud.Post($"<color=#FF5A5A>Trip Wire</color> caught {(who != null ? who.NickName : "someone")}!", 4f);
+            Minimap.Pulse(new Color(1f, 0.3f, 0.3f));
+            PingMarkers.Add(at, PingKind.HunterThere, "TripWire");
+        }
         tripped = true;
         if (line != null) line.enabled = false;
         Sfx.At(SfxKind.Snap, at, 1f, 40f, 1.3f);

@@ -4,8 +4,9 @@ using UnityEngine;
 
 /// <summary>
 /// Placed nuke: a <see cref="countdownTime"/> countdown, then a blast that reaches <see cref="explosionRadius"/>
-/// (70 m) and throws much harder the closer you are (cubic falloff: <see cref="centreSpeed"/> at the bomb down to
-/// <see cref="edgeSpeed"/> at the edge, as a velocity change so every body flies the same). Warnings so people can
+/// (70 m) and throws much harder the closer you are (a steep fifth-power falloff: <see cref="centreSpeed"/> at the bomb,
+/// dropping fast to a small but noticeable <see cref="edgeSpeed"/> nudge over the whole outer half, as a velocity change
+/// so every body flies the same). Warnings so people can
 /// react: a slow beep everyone hears wherever they are (quicker for the last few seconds), a red digital countdown
 /// floating on the bomb, and a faint blue ring on the ground marking its reach. Anyone standing next to it can
 /// disarm it with the Grab key.
@@ -30,7 +31,7 @@ public class NukeSequence : MonoBehaviourPun
     [SerializeField] private float     centreSpeed     = 85f;
     [Tooltip("Speed (m/s) at the very edge of the radius.")]
     [TunableParam("Edge Speed", 0f, 50f)]
-    [SerializeField] private float     edgeSpeed       = 6f;
+    [SerializeField] private float     edgeSpeed       = 4f;
     [SerializeField] private LayerMask affectedLayers;
 
     [Header("Audio")]
@@ -244,7 +245,8 @@ public class NukeSequence : MonoBehaviourPun
         float distance = away.magnitude;
         if (distance > explosionRadius) return;
         float t = 1f - distance / explosionRadius;
-        float speed = Mathf.Lerp(edgeSpeed, centreSpeed, t * t * t) * Mathf.Sqrt(power);
+        // Fifth power: half way out is barely above the edge nudge (~6.5 m/s), a quarter of the way in ~23 m/s
+        float speed = Mathf.Lerp(edgeSpeed, centreSpeed, t * t * t * t * t) * Mathf.Sqrt(power);
         Vector3 direction = distance > 0.5f ? away / distance : Vector3.up;
         direction = (direction + Vector3.up * 0.5f).normalized; // Up and away
         WorldFx.Push(body, direction * speed, ForceMode.VelocityChange, photonView.OwnerActorNr, "Nuke");

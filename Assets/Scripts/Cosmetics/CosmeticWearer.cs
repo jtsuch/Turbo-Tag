@@ -171,6 +171,10 @@ public class CosmeticWearer
     /// <summary>True if something is worn in the slot.</summary>
     public bool Wearing(CosmeticSlot slot) => worn.ContainsKey(slot);
 
+    /// <summary>The renderers of what's worn in <paramref name="slot"/> (empty if nothing).</summary>
+    public Renderer[] RenderersIn(CosmeticSlot slot) =>
+        worn.TryGetValue(slot, out var w) && w.instance != null ? w.instance.GetComponentsInChildren<Renderer>(true) : System.Array.Empty<Renderer>();
+
     // Outfit mesh → copy with bind poses that put it on Jimmy's rest skeleton. The outfit's vertices sit where its
     // renderer puts them (relative to the outfit's root, which lines up with the player's root, both exported from
     // Blender's origin), so for each bone: new = (Jimmy's rest bone)^-1 × (outfit renderer, relative to the body).

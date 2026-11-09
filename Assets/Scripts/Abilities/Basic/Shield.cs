@@ -6,7 +6,7 @@ using UnityEngine;
 /// <see cref="Player.IsShielded"/> and <see cref="ShieldBubble"/> draws it on every screen. Every effect checks it
 /// through <see cref="Player.AffectedBy"/>. Guns are not abilities: bullets still hit.
 /// </summary>
-[AbilityInfo("Hold to raise a bubble: other players' abilities can't touch you while it's up.")]
+[AbilityInfo("Hold to raise a bubble: other players' abilities can't touch you while it's up.", DisplayName = "Ability Shield")]
 public class Shield : BasicAbility
 {
     private bool held;

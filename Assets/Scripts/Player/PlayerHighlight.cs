@@ -17,16 +17,11 @@ public class PlayerHighlight : MonoBehaviour
     [Tooltip("Jimmy SkinnedMeshRenderer(s). Leave empty to auto-detect 'Jimmy' child.")]
     [SerializeField] private Renderer[] highlightRenderers;
 
-    [Header("Ice")]
-    [Tooltip("Faint glow added while on ice, so the tint reads in dark areas.")]
-    [SerializeField] private Color iceGlow      = new Color(0.1f, 0.3f, 0.5f);
-    [SerializeField] private float iceFadeSpeed = 4f;
 
     private PhotonView view;
     private Player     player;
     private static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
     private MaterialPropertyBlock block;
-    private float iceAmount;
 
     private void Awake()
     {
@@ -57,13 +52,35 @@ public class PlayerHighlight : MonoBehaviour
     private void Update()
     {
         if (player == null) return;
-        iceAmount = Mathf.MoveTowards(iceAmount, player.IsOnIce ? 1f : 0f, iceFadeSpeed * Time.deltaTime);
-        SetGlow(iceGlow * iceAmount);
+        // Armored: a soft blue glow, breathing, while it's up (on the body and on a full-body outfit over it)
+        barrierAmount = Mathf.MoveTowards(barrierAmount, player.Has(PlayerFlag.Barrier) ? 1f : 0f, 4f * Time.deltaTime);
+        Color barrier = new Color(0.2f, 0.5f, 1f) * (0.55f + 0.2f * Mathf.Sin(Time.time * 4f)) * barrierAmount;
+        SetGlow(barrier);
+        SetOutfitGlow(barrier * 1.3f);
     }
+
+    private float barrierAmount;
 
     private void OnDisable()
     {
-        if (block != null) SetGlow(Color.black);
+        if (block != null) { SetGlow(Color.black); SetOutfitGlow(Color.black); }
+    }
+
+    private readonly System.Collections.Generic.HashSet<Material> emissive = new();
+
+    private void SetOutfitGlow(Color glow)
+    {
+        if (player == null || player.Appearance == null) return;
+        foreach (var r in player.Appearance.OutfitRenderers)
+        {
+            if (r == null) continue;
+            if (glow.maxColorComponent > 0.001f)
+                foreach (var mat in r.sharedMaterials)
+                    if (mat != null && emissive.Add(mat) && !mat.IsKeywordEnabled("_EMISSION")) mat.EnableKeyword("_EMISSION");
+            r.GetPropertyBlock(block);
+            block.SetColor(EmissionId, glow);
+            r.SetPropertyBlock(block);
+        }
     }
 
     private void SetGlow(Color glow)

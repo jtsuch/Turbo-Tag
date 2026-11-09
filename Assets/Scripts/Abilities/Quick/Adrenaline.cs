@@ -10,6 +10,19 @@ public class Adrenaline : QuickAbility
     [TunableParam("Duration", 1f, 30f)]
     [SerializeField] private float duration = 5f;
 
-    protected override void Activate() =>
+    protected override void Activate()
+    {
         Owner.ApplyTimedModifier(Stat.Speed, nameof(Adrenaline), speedMultiplier, duration);
+        PlayerEffect.Apply(typeof(SwiftEffect), Owner, duration); // The "Swift" card at the side
+    }
+}
+
+/// <summary>Boon (Adrenaline): Swift, moving faster. The card only: the speed is a timed stat change.</summary>
+public class SwiftEffect : PlayerEffect
+{
+    public override string DisplayName => "Swift";
+    public override string Description => "Moving 75% faster";
+
+    protected override void OnEffectStart() { }
+    protected override void OnEffectEnd()   { }
 }

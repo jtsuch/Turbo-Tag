@@ -10,9 +10,9 @@ using UnityEngine;
 public class SmokeObject : NetworkedProjectile
 {
     [TunableParam("Radius", 1f, 15f)]
-    [SerializeField] private float radius = 5f;
+    [SerializeField] private float radius = 6f;
     [TunableParam("Lasts", 2f, 60f)]
-    [SerializeField] private float seconds = 14f;
+    [SerializeField] private float seconds = 21f;
 
     private Transform cloud;
     private Material puffMaterial;

@@ -77,6 +77,19 @@ public abstract class NetworkedProjectile : MonoBehaviourPun, IPunInstantiateMag
                 Physics.IgnoreCollision(other, mine);
     }
 
+    /// <summary>
+    /// True when the collision is an actual touch. Continuous speculative detection (needed to hit players' kinematic
+    /// copies at speed) reports contacts up to a step ahead, so a fast throw "hit" floors and walls it hadn't reached:
+    /// only contacts within <paramref name="maxSeparation"/> count. Handlers should also listen on OnCollisionStay so the
+    /// real touch that follows still counts.
+    /// </summary>
+    protected static bool RealContact(Collision collision, float maxSeparation = 0.05f)
+    {
+        for (int i = 0; i < collision.contactCount; i++)
+            if (collision.GetContact(i).separation <= maxSeparation) return true;
+        return false;
+    }
+
     /// <summary>Hides and freezes the object so it never lingers while the destroy propagates.</summary>
     protected void HideAndFreeze()
     {

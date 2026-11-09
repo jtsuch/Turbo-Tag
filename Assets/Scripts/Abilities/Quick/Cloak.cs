@@ -2,10 +2,10 @@ using UnityEngine;
 
 /// <summary>
 /// Turns the player nearly invisible (to others) while they stay still, for up to
-/// <see cref="cloakDuration"/> seconds. Moving at all (keys, jumping, being pushed) ends it early.
+/// <see cref="cloakDuration"/> seconds. Moving at all (keys, jumping, being pushed) or shooting ends it early.
 /// Looking around is fine. The look is synced by <see cref="PlayerAppearance"/>.
 /// </summary>
-[AbilityInfo("Turn nearly invisible for 5 seconds. Moving at all breaks it, so pick your spot first.")]
+[AbilityInfo("Turn nearly invisible for 5 seconds. Moving or shooting breaks it, so pick your spot first.")]
 public class Cloak : QuickAbility
 {
     [Header("Cloak")]
@@ -26,6 +26,7 @@ public class Cloak : QuickAbility
         cloaked   = true;
         Owner.Appearance.Cloaked = true;
         Owner.Caught += EndCloak;
+        if (Owner.Gun != null) Owner.Gun.Fired += EndCloak;
     }
 
     private void FixedUpdate()
@@ -58,6 +59,7 @@ public class Cloak : QuickAbility
         cloaked = false;
         if (Owner == null) return;
         Owner.Caught -= EndCloak;
+        if (Owner.Gun != null) Owner.Gun.Fired -= EndCloak;
         if (Owner.Appearance != null) Owner.Appearance.Cloaked = false;
     }
 }

@@ -79,6 +79,9 @@ public abstract class GameMode
     /// </summary>
     public virtual float RespawnDelayAfter(PhotonPlayer tagger, PhotonPlayer victim) => MatchRules.RespawnDelay;
 
+    /// <summary>Every ability is offered, health-mode ones included (Freeplay: the sandbox for trying them out).</summary>
+    public virtual bool AllowsEveryAbility => false;
+
     /// <summary>The player strictly in the lead wears a crown (Free for All).</summary>
     public virtual bool CrownsLeader => false;
 

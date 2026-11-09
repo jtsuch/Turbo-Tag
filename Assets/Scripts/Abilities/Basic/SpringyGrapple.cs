@@ -2,5 +2,5 @@
 [AbilityInfo("Hold to fire a bouncy rope that flings you around.")]
 public class SpringyGrapple : GrappleAbility
 {
-    protected override float InitialLengthFactor => 0.8f;
+    protected override float InitialLengthFactor => 0.6f; // Was 0.8: a much stronger first pull (Nov 9)
 }

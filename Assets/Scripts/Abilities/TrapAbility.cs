@@ -142,7 +142,7 @@ public abstract class TrapAbility : Ability
         Transform view = cameraHolder.transform;
         var ray = new Ray(view.position, view.forward);
 
-        if (!Physics.Raycast(ray, out RaycastHit hit, placingDistance, placementLayers, QueryTriggerInteraction.Ignore))
+        if (!FirstSurface(ray, placingDistance, placementLayers, out RaycastHit hit))
         {
             canPlace = false;
             hologram.transform.position = ray.origin + ray.direction * placingDistance;
@@ -169,6 +169,20 @@ public abstract class TrapAbility : Ability
         hologram.transform.SetPositionAndRotation(targetPosition, targetRotation);
         canPlace = IsValidSurface(hit.normal) && IsSpaceFree();
         ShowValidity(canPlace);
+    }
+
+    // The first surface along the ray that isn't a player (traps never stick to people, nor to the placer)
+    private static bool FirstSurface(Ray ray, float distance, LayerMask mask, out RaycastHit surface)
+    {
+        surface = default;
+        float nearest = float.MaxValue;
+        foreach (var h in Physics.RaycastAll(ray, distance, mask, QueryTriggerInteraction.Ignore))
+        {
+            if (h.distance >= nearest || h.collider.GetComponentInParent<Player>() != null) continue;
+            nearest = h.distance;
+            surface = h;
+        }
+        return nearest < float.MaxValue;
     }
 
     // A hair off the surface, so the free-space check never counts the surface itself

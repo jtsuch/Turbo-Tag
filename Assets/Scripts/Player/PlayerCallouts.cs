@@ -68,7 +68,6 @@ public class PlayerCallouts : MonoBehaviourPun
         Sfx.At(SfxKind.Taunt, at, 1f, 70f, 0.9f + variant * 0.12f);
         // The thrower sees where their decoy went; to everyone else it's just a taunt from over there
         if (!decoy || photonView.IsMine) Vfx.Burst(at, new Color(1f, 0.85f, 0.3f), 10, 3f, 0.2f, 0.5f, direction: Vector3.up, spread: 0.6f);
-        if (!decoy && player != null) player.SetBounce(0.4f);
         if (!photonView.IsMine) SoundVisualizer.Notify(at, 1f, photonView.OwnerActorNr);
     }
 

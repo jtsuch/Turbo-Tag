@@ -73,12 +73,13 @@ public static class AbilityCatalog
 
     private static readonly Dictionary<string, bool> modeHasHealth = new();
 
-    /// <summary>Whether the mode <paramref name="modeKey"/> gives players health (it uses guns).</summary>
+    /// <summary>Whether the mode <paramref name="modeKey"/> offers health-mode abilities (it uses guns, or it's the Freeplay sandbox).</summary>
     public static bool ModeHasHealth(string modeKey)
     {
         modeKey ??= "";
         if (modeHasHealth.TryGetValue(modeKey, out bool has)) return has;
-        has = GameModeRegistry.Create(modeKey).UsesGuns;
+        var mode = GameModeRegistry.Create(modeKey);
+        has = mode.UsesGuns || mode.AllowsEveryAbility;
         modeHasHealth[modeKey] = has;
         return has;
     }
@@ -235,6 +236,7 @@ public readonly struct AbilityLoadout
     {
         "BasicGrapple" => "SwingGrapple",
         "StiffGrapple" => "ZipGrapple",
+        "BellySlide"   => "Bulldozer",
         _              => id,
     };
 }

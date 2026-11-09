@@ -36,15 +36,18 @@ public class ReconBoltObject : NetworkedProjectile
         if (IsAuthority) StartCoroutine(Lifetime());
     }
 
+    // Never stuck anywhere: gone after a few seconds of flight
     private IEnumerator Lifetime()
     {
-        yield return new WaitForSeconds(9f);
-        DestroyNetworked();
+        yield return new WaitForSeconds(5f);
+        if (!stuck) DestroyNetworked();
     }
+
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || stuck || collision.contactCount == 0) return;
+        if (!IsAuthority || stuck || collision.contactCount == 0 || !RealContact(collision)) return;
         if (collision.collider.GetComponentInParent<Player>() != null) return;
         var contact = collision.GetContact(0);
         photonView.RPC(nameof(RPC_Stick), RpcTarget.All, contact.point + contact.normal * 0.05f, contact.normal);
@@ -85,8 +88,11 @@ public class ReconBoltObject : NetworkedProjectile
                 if (local != null && IsViewer(local)) HunterReveal.Reveal(p.ActorNumber, revealSeconds);
                 else if (p == local) Minimap.Pulse(new Color(1f, 0.35f, 0.3f)); // You've been scanned
             }
-            yield return new WaitForSeconds(1.2f);
+            if (i < Mathf.Max(1, scans) - 1) yield return new WaitForSeconds(1.2f);
         }
+        // Just past the last scan: it shuts off and goes (it used to blink on long after)
+        if (glow != null) glow.enabled = false;
+        if (IsAuthority) { yield return new WaitForSeconds(0.3f); DestroyNetworked(); }
     }
 
     // The thrower and their team see what it finds

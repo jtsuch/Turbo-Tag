@@ -210,8 +210,8 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>True for a moment after an outside force pushed this player; movement then doesn't brake.</summary>
     public bool IsBeingPushed => Time.time - lastPushTime < PushGrace;
 
-    /// <summary>Sliding on ice (iced and on the ground). Synced, so remote copies can show it (PlayerAppearance).</summary>
-    public bool IsOnIce => IsLocal ? Movement != null && Movement.OnIce : remoteOnIce;
+    /// <summary>Iced (Snowball, Ice Trap): "Slick", shown on every screen as ice cubes round the feet.</summary>
+    public bool IsSlick => IsLocal ? IsIced : remoteOnIce;
     private bool remoteOnIce;
     private float lastPushTime = float.NegativeInfinity;
     private const float PushGrace = 0.2f;
@@ -300,7 +300,11 @@ public class Player : MonoBehaviourPun, IPunObservable
     public void IceFor(float seconds)
     {
         if (!IsLocal) return;
+        float before = icedUntil;
         icedUntil = Mathf.Max(icedUntil, Time.time + seconds);
+        // The "Slick" card (not for the little top-ups a round modifier gives every moment)
+        if (seconds >= 1f && (GetComponent<SlickEffect>() == null || icedUntil - before > 0.5f))
+            PlayerEffect.Apply(typeof(SlickEffect), this, icedUntil - Time.time);
     }
 
     /// <summary>Any client: asks this player's owner to ice them.</summary>
@@ -378,6 +382,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         if (!TryGetComponent(out HunterKit _)) gameObject.AddComponent<HunterKit>();           // Hunter classes and their tools
         if (!TryGetComponent(out GhostBody _)) gameObject.AddComponent<GhostBody>();       // Hunter: ghosts pass through players
         if (!TryGetComponent(out DonutNet _)) gameObject.AddComponent<DonutNet>();         // Donut effects others see
+        if (!TryGetComponent(out SlickFeet _)) gameObject.AddComponent<SlickFeet>();       // Slick: ice cubes round the feet
 
         // Model roots are often imported with a non-unit scale; stance/size multiply it
         baseVisualScales    = new Vector3[visualRoots.Length];
@@ -705,7 +710,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         {
             stream.SendNext((byte)State);
             stream.SendNext(Size);
-            stream.SendNext(IsOnIce);
+            stream.SendNext(IsIced);
             stream.SendNext((IsShielded ? 1 : 0) | (IsBeacon ? 2 : 0) | localFlags);
         }
         else
@@ -741,4 +746,5 @@ public enum PlayerFlag
     Jetpack     = 1 << 8, // Flames under your feet while flying
     Jammed      = 1 << 9, // Hunter tools and the radar can't find you (Jammer donut)
     HoldingBomb = 1 << 10, // Search & Destroy: the bomb is out in the right hand (the gun is put away)
+    Barrier     = 1 << 11, // Shield Bubble is up: a blue glow on every screen (PlayerHighlight)
 }

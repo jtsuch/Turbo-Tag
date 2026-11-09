@@ -12,9 +12,11 @@ public class BoomStickObject : NetworkedProjectile
 {
     [Header("Explosion")]
     [TunableParam("Blast Radius", 1f, 30f)]
-    [SerializeField] private float     explosionRadius = 4f;
+    [SerializeField] private float     explosionRadius = 8f; // Twice the first 4 m, with a steep falloff (Nov 9)
     [TunableParam("Blast Force", 5f, 300f)]
     [SerializeField] private float     explosionForce  = 40f;
+    [Tooltip("How fast the push dies away toward the edge (1 = straight line; 2 = squared: the outer half gets a quarter or less).")]
+    [SerializeField] private float     falloffPower    = 2f;
     [Tooltip("Layers pushed by the blast. Nothing = everything.")]
     [SerializeField] private LayerMask affectedLayers  = ~0;
 
@@ -56,6 +58,7 @@ public class BoomStickObject : NetworkedProjectile
 
         WorldFx.PlayClip(explosionSFX, position, audioRadius, audioVolume);
         Fx.Explosion(position, explosionRadius * Mathf.Sqrt(Power));
-        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr, cause: "BoomStick");
+        WorldFx.Explode(position, explosionRadius * Mathf.Sqrt(Power), explosionForce * Power, affectedLayers, sourceActor: photonView.OwnerActorNr, cause: "BoomStick",
+                        falloffPower: falloffPower);
     }
 }

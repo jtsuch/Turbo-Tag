@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// A damage number that pops out of a hit on the shooter's screen, drifts up and fades (yellow; red and bigger for
-/// headshots). Local only. Quick hits on the same spot add up into one number instead of stacking.
+/// headshots). Local only, drawn on top of everything. Quick hits on the same spot add up into one number instead of stacking.
 /// </summary>
 public class DamageNumber : MonoBehaviour
 {
@@ -31,11 +31,27 @@ public class DamageNumber : MonoBehaviour
         number.text.font = UIKit.FontAsset(UIKit.Font.Display);
         number.text.alignment = TextAlignmentOptions.Center;
         number.text.textWrappingMode = TextWrappingModes.NoWrap;
+        number.text.fontSharedMaterial = OnTop();
         number.text.fontSize = 10f; // About a metre tall at scale 1 (the scale keeps it a steady size on screen)
         number.velocity = new Vector3(Random.Range(-0.6f, 0.6f), 2.2f, Random.Range(-0.6f, 0.6f));
         number.born = Time.time;
         number.Add(damage, headshot);
         last = number;
+    }
+
+    private static Material onTop;
+
+    // Drawn over everything (walls, players, fire) and last, so the shooter always sees the number
+    private static Material OnTop()
+    {
+        if (onTop != null) return onTop;
+        var font = UIKit.FontAsset(UIKit.Font.Display);
+        onTop = new Material(font.material) { name = "Damage Number (on top)" };
+        var overlay = Shader.Find("TextMeshPro/Distance Field Overlay");
+        if (overlay != null) onTop.shader = overlay;
+        onTop.SetFloat("unity_GUIZTestMode", (float)UnityEngine.Rendering.CompareFunction.Always);
+        onTop.renderQueue = 4000;
+        return onTop;
     }
 
     private void Add(float damage, bool head)

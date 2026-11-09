@@ -1,3 +1,3 @@
-/// <summary>Places a wall device that drags players and objects toward it through a cylindrical zone.</summary>
-[AbilityInfo("Place a device that slams anyone above it to the ground.")]
+/// <summary>Places a one-shot device on any surface that reels in the first player to cross the long column in front of it.</summary>
+[AbilityInfo("Place it on a floor or wall: the first enemy to cross its long beam is reeled straight in to it. Breaks after one catch.")]
 public class GravityWell : TrapAbility { }

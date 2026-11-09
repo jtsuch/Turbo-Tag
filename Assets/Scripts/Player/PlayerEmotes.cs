@@ -38,6 +38,7 @@ public class PlayerEmotes : MonoBehaviourPun
 
     // Move
     private Move  move;
+    private int   lastIndex = -1;
     private float moveAt = -10f;
 
     private void Awake() => player = GetComponent<Player>();
@@ -45,8 +46,11 @@ public class PlayerEmotes : MonoBehaviourPun
     /// <summary>Local player: plays emote <paramref name="index"/> on every screen (a short cooldown stops spam).</summary>
     public bool Play(int index)
     {
-        if (!player.IsLocal || index < 0 || index >= All.Length || Time.time - lastPlayed < Cooldown || player.IsCaught) return false;
+        // The cooldown only stops spamming the same emote: picking a different one switches to it at once
+        if (!player.IsLocal || index < 0 || index >= All.Length || player.IsCaught) return false;
+        if (index == lastIndex && Time.time - lastPlayed < Cooldown) return false;
         lastPlayed = Time.time;
+        lastIndex = index;
         photonView.RPC(nameof(RPC_Emote), RpcTarget.All, (byte)index);
         return true;
     }
@@ -60,7 +64,8 @@ public class PlayerEmotes : MonoBehaviourPun
         move = emote.move;
         moveAt = Time.time;
         if (move == Move.Anim) PlayAnim(emote.anim, emote.seconds);
-        else if (move != Move.Wiggle && TryGetComponent(out Animator animator))
+        else StopAnim(); // A procedural emote replaces an animated one straight away
+        if (move != Move.Anim && move != Move.Wiggle && TryGetComponent(out Animator animator))
             foreach (var p in animator.parameters)
                 if (p.name == "Jump" && p.type == AnimatorControllerParameterType.Trigger) animator.SetTrigger("Jump");
         Sfx.At(SfxKind.Pop, transform.position + Vector3.up * 2f, 0.5f, 30f, 1.5f);
@@ -112,9 +117,24 @@ public class PlayerEmotes : MonoBehaviourPun
         if (emoteAnimator == null) return;
         if (emoteLayer == -2) emoteLayer = emoteAnimator.GetLayerIndex("Emote Layer");
         if (emoteLayer < 0) return;
-        emoteAnimator.CrossFadeInFixedTime(state, 0.15f, emoteLayer, 0f);
+        emoteAnimator.CrossFadeInFixedTime(state, 0.1f, emoteLayer, 0f); // From another emote: straight into this one
         animStarted = Time.time;
         animUntil = Time.time + seconds;
+    }
+
+    /// <summary>Shooting cuts an emote short (the animated layer and the spin or wiggle; the bubble stays).</summary>
+    public void Interrupt()
+    {
+        StopAnim();
+        if (armature != null && Time.time - moveAt < 1.5f) armature.localRotation = armatureBase;
+        moveAt = -10f;
+    }
+
+    private void StopAnim()
+    {
+        animUntil = Time.time;
+        animWeight = 0f;
+        if (emoteAnimator != null && emoteLayer >= 0) emoteAnimator.SetLayerWeight(emoteLayer, 0f);
     }
 
     // The layer blends in for the emote's length, and out early once the player moves off

@@ -6,11 +6,11 @@ using UnityEngine;
 /// <see cref="PlayerHealth.Shield"/>. Health modes only. (Named BubbleShield: the Bubble donut's visual already owns
 /// the name ShieldBubble.)
 /// </summary>
-[AbilityInfo("A shield that soaks up the next 50 damage you take (up to 12 s).", DisplayName = "Shield Bubble", HealthModesOnly = true)]
+[AbilityInfo("A shield that soaks up the next 50 damage you take, for up to 10 s. You glow blue while it's up.", DisplayName = "Armored", HealthModesOnly = true)]
 public class BubbleShield : QuickAbility
 {
     [TunableParam("Lasts", 1f, 60f)]
-    [SerializeField] private float seconds = 12f;
+    [SerializeField] private float seconds = 10f;
 
     protected override void Activate()
     {

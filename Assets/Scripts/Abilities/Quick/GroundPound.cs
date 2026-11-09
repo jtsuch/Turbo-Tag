@@ -8,7 +8,7 @@ using UnityEngine;
 ///   pushes the bodies it has authority over.
 /// On the ground the key does nothing and the cooldown isn't spent.
 /// </summary>
-[AbilityInfo("In the air: slam into the ground. The landing knocks everyone nearby away.")]
+[AbilityInfo("In the air: slam into the ground. The landing knocks everyone nearby away and stuns anyone within 5 m.")]
 public class GroundPound : QuickAbility
 {
     [Header("Slam")]
@@ -24,6 +24,10 @@ public class GroundPound : QuickAbility
     [SerializeField] private float push = 18f;
     [TunableParam("Shockwave Lift", 0f, 40f)]
     [SerializeField] private float lift = 10f;
+    [TunableParam("Stun Radius", 0f, 15f)]
+    [SerializeField] private float stunRadius = 5f;
+    [TunableParam("Stun Time", 0f, 5f)]
+    [SerializeField] private float stunSeconds = 1.5f;
 
     private static readonly Collider[] overlap = new Collider[64];
     private bool  slamming;
@@ -78,6 +82,11 @@ public class GroundPound : QuickAbility
         var local = Player.Local;
         if (local != null)
             Fx.Shake(local == Owner ? 0.45f : Mathf.Clamp01(1f - Vector3.Distance(local.transform.position, at) / (radius * 3f)) * 0.5f);
+
+        // Anyone else within the stun radius is stunned (each screen checks its own player; a shield keeps it off)
+        if (local != null && local != Owner && !local.IsCaught && !local.IsShielded
+            && Vector3.Distance(local.transform.position, at) <= stunRadius)
+            PlayerEffect.Apply(typeof(StunnedEffect), local, stunSeconds);
 
         // Each client pushes what it simulates: its own player and its own or loose props
         int count = Physics.OverlapSphereNonAlloc(at, radius, overlap, Physics.AllLayers, QueryTriggerInteraction.Ignore);

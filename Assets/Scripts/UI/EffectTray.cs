@@ -75,10 +75,11 @@ public class EffectTray : MonoBehaviour
             card.Root.anchoredPosition += new Vector2((1f - slide) * 120f, 0f);
 
             float left = card.Effect.Remaining;
-            card.TimeText.text = left >= 10f ? $"{left:0}s" : $"{left:0.0}s";
-            float t = card.Effect.Duration > 0f ? left / card.Effect.Duration : 0f;
+            bool timeless = card.Effect.Duration <= 0f; // Held while something lasts (standing in a zone)
+            card.TimeText.text = timeless ? "ON" : left >= 10f ? $"{left:0}s" : $"{left:0.0}s";
+            float t = timeless ? 1f : left / card.Effect.Duration;
             card.Bar.anchorMax = new Vector2(Mathf.Clamp01(t), 1f);
-            card.TimeText.color = left <= 3f ? Color.Lerp(Theme.text, Theme.danger, Mathf.PingPong(Time.unscaledTime * 3f, 1f)) : Theme.text;
+            card.TimeText.color = !timeless && left <= 3f ? Color.Lerp(Theme.text, Theme.danger, Mathf.PingPong(Time.unscaledTime * 3f, 1f)) : Theme.text;
             y += CardHeight + Gap;
         }
 

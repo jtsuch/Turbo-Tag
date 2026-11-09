@@ -177,7 +177,8 @@ public class PlayerMovement : MonoBehaviourPun
     private void UpdateGravity()
     {
         bool off = player.IsDashing || player.IsAnchored || player.IsMagnetized || player.ZeroGravity
-                || State == Player.MovementState.WallRun || State == Player.MovementState.Hang;
+                || State == Player.MovementState.WallRun || State == Player.MovementState.Hang
+                || (State == Player.MovementState.Climb && onLadder); // Resting on a ladder doesn't slide down
         if (rb.useGravity == off) rb.useGravity = !off;
 
         // Gravity stat (cheats): add or remove the difference from normal gravity
@@ -339,7 +340,12 @@ public class PlayerMovement : MonoBehaviourPun
         Vector3 chest = transform.position + Vector3.up * (player.Height * 0.5f);
         // Infinite Climb looks further, so drifting off the wall or glancing sideways doesn't end the climb
         float reach = player.SteadyClimbSpeed > 0f ? SteadyClimbReach : 1f;
-        wallForward = Physics.Raycast(chest, transform.forward, reach, structureLayer);
+        wallForward = Physics.Raycast(chest, transform.forward, out RaycastHit ahead, reach, structureLayer);
+        // A placed Ladder (the only TippingProp) at any lean: climbed from a standstill, and you can rest on it
+        onLadder = wallForward && ahead.collider.GetComponentInParent<TippingProp>() != null;
+        if (!onLadder && State == Player.MovementState.Climb && ladderGrip > 0f && Time.time - ladderGrip < 0.15f)
+            onLadder = true; // A rung's gap for a moment doesn't drop you
+        if (onLadder && wallForward) ladderGrip = Time.time;
 
         WallLeft  = Physics.Raycast(transform.position, -transform.right, out RaycastHit hitLeft,  1f, structureLayer);
         WallRight = Physics.Raycast(transform.position,  transform.right, out RaycastHit hitRight, 1f, structureLayer);
@@ -459,8 +465,9 @@ public class PlayerMovement : MonoBehaviourPun
         // Jumps are buffered and done in the physics step (letting go of a ledge uses the key itself)
         if (input.JumpPressed && State != Player.MovementState.Hang)
         {
-            if (State == Player.MovementState.Prone) player.ToggleProne(); // Jump stands up from prone
-            else jumpPressedAt = Time.time;
+            // From prone: stand up and jump straight away (it used to only stand up)
+            if (State == Player.MovementState.Prone && CanChangeStance) player.ToggleProne();
+            jumpPressedAt = Time.time;
         }
         if (input.CrouchPressed) ToggleCrouch();
         if (input.PronePressed)  ToggleProne();
@@ -719,9 +726,18 @@ public class PlayerMovement : MonoBehaviourPun
 
     // ─── Climbing ─────────────────────────────────────────────────────────────
 
+    private bool  onLadder;
+    private float ladderGrip;
+
     private void StartClimb()
     {
         if (State == Player.MovementState.Prone || State == Player.MovementState.Crouch) return;
+        if (onLadder)
+        {
+            currentClimbSpeed = player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed);
+            player.SetState(Player.MovementState.Climb);
+            return;
+        }
 
         float speed = rb.linearVelocity.y < 0f
             ? 0f
@@ -741,12 +757,24 @@ public class PlayerMovement : MonoBehaviourPun
     // aren't actively climbing up (no forward input, or the climb has run out of speed). Never stuck on the floor.
     private bool ShouldStopClimbing(Vector2 move)
     {
+        if (onLadder) return move.y < -0.1f || (OnGround && move.y <= 0.1f); // Rest anywhere on it; S lets go
         if (!wallForward || move.y < -0.1f) return true;
         return OnGround && (move.y <= 0.1f || Mathf.Abs(move.x) > 0.1f || currentClimbSpeed <= MinClimbSpeed);
     }
 
     private void Climb()
     {
+        if (onLadder)
+        {
+            // Up while W is held, otherwise resting where you are: no sliding, no running out of climb.
+            // Only a light hold against it, so the climber doesn't shove a standing ladder over
+            Vector3 middle = transform.position + Vector3.up * (player.Height * 0.5f);
+            Vector3 grip = Physics.Raycast(middle, transform.forward, out RaycastHit rung, SteadyClimbReach, structureLayer)
+                ? -rung.normal * 0.4f : Vector3.zero;
+            float up = input.MoveInput.y > 0.1f ? player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed) : 0f;
+            rb.linearVelocity = new Vector3(grip.x, up, grip.z);
+            return;
+        }
         if (currentClimbSpeed <= MinClimbSpeed)
         {
             ClampFallSpeed();

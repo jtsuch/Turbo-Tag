@@ -17,6 +17,9 @@ public class PlayerGun : MonoBehaviourPun
     /// <summary>Local: (headshot) after a shot hit a player, for the hit marker.</summary>
     public static event System.Action<bool> LocalHit;
 
+    /// <summary>Owner: this player just fired (Cloak ends on it).</summary>
+    public event System.Action Fired;
+
     /// <summary>Owner: shots don't use ammo (the Bottomless Mag donut).</summary>
     public bool InfiniteAmmo { get; set; }
 
@@ -249,6 +252,8 @@ public class PlayerGun : MonoBehaviourPun
         if (Killcam.Instance != null) Killcam.Instance.RecordShot(player.ActorNumber, firstEnd);
         photonView.RPC(nameof(RPC_ShotFx), RpcTarget.Others, firstEnd, gun.Pellets);
         if (anyHit) LocalHit?.Invoke(anyHead);
+        if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt(); // Shooting ends an emote
+        Fired?.Invoke();
 
         if (Ammo <= 0) StartReload();
     }
@@ -312,11 +317,14 @@ public class PlayerGun : MonoBehaviourPun
         return mode == null || mode.CanDamage(player.Role, target.Role);
     }
 
+    private PlayerEmotes emotes;
+
     // ─── Effects on other screens ─────────────────────────────────────────────
 
     [PunRPC]
     private void RPC_ShotFx(Vector3 end, int pellets)
     {
+        if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt();
         if (Killcam.Instance != null) Killcam.Instance.RecordShot(player.ActorNumber, end);
         if (Killcam.IsPlaying) return; // The killcam replays the killer's shots itself
 

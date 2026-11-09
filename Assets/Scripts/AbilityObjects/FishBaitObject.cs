@@ -43,7 +43,7 @@ public class FishBaitObject : NetworkedProjectile
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || landed) return;
+        if (!IsAuthority || landed || !RealContact(collision)) return;
         if (collision.collider.GetComponentInParent<Player>() != null) return; // Bounces off penguins
         if (!OnGround(collision, out Vector3 floor)) return;                       // Walls: keep falling
         photonView.RPC(nameof(RPC_Land), RpcTarget.All, floor + Vector3.up * restHeight);

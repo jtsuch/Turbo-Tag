@@ -60,6 +60,9 @@ public class SearchDestroyMode : TeamMode
 
     public override bool CanDamage(PlayerRole attacker, PlayerRole target) => !SameTeam(attacker, target);
 
+    // Enemy names are never shown (only your own team's)
+    public override bool ShowsName(PlayerRole viewer, PlayerRole target) => SameTeam(viewer, target);
+
     // ─── Synced reads (every client) ──────────────────────────────────────────
 
     public static string     AttackTeam => NetProps.Room(RoomKeys.SnDAttack, Red);
@@ -417,7 +420,8 @@ public class SearchDestroyMode : TeamMode
         phase == MatchPhase.Active || phase == MatchPhase.RoundEnd || phase == MatchPhase.MatchEnd;
 
     // Pre-round: guns fire too (damage only counts once the round is live)
-    public override bool CanShoot(MatchPhase phase) => phase == MatchPhase.Countdown || phase == MatchPhase.Active;
+    public override bool CanShoot(MatchPhase phase) =>
+        phase == MatchPhase.Countdown || phase == MatchPhase.Active || phase == MatchPhase.RoundEnd; // Post-round: shoot freely, nobody takes damage
 
     // Pre-round: everyone moves (within their spawn area) and can set up with abilities
     public override bool CanMove(PlayerRole role, MatchPhase phase) => true;

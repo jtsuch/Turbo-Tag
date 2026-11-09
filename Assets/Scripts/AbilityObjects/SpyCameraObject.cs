@@ -31,6 +31,8 @@ public class SpyCameraObject : MonoBehaviourPun, IPunObservable
     private void Awake()
     {
         ObjectTunables.Apply(photonView); // Cheat values from the placer
+        // Shootable: 50 damage breaks it (the owner's view drops back to them when it's gone). Added on every copy
+        if (!TryGetComponent(out Shootable _)) gameObject.AddComponent<Shootable>().health = 50f;
         if (head != null) restRotation = head.localRotation;
         if (!photonView.ObservedComponents.Contains(this)) photonView.ObservedComponents.Add(this);
     }

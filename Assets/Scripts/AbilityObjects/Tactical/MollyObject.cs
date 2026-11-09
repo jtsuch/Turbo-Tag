@@ -10,7 +10,7 @@ using UnityEngine;
 public class MollyObject : NetworkedProjectile
 {
     [TunableParam("Radius", 1f, 12f)]
-    [SerializeField] private float radius = 3.5f;
+    [SerializeField] private float radius = 4.2f;
     [TunableParam("Burn Time", 1f, 20f)]
     [SerializeField] private float burnSeconds = 5f;
     [TunableParam("Damage / s", 0f, 200f)]
@@ -33,9 +33,11 @@ public class MollyObject : NetworkedProjectile
         if (!lit) Ignite(transform.position);
     }
 
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
+
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || lit || collision.contactCount == 0) return;
+        if (!IsAuthority || lit || collision.contactCount == 0 || !RealContact(collision)) return;
         var contact = collision.GetContact(0);
         if (contact.normal.y < 0.5f) return; // Walls bounce it on
         Ignite(contact.point);

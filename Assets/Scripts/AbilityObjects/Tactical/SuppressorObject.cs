@@ -7,8 +7,8 @@ using UnityEngine;
 /// </summary>
 public class SuppressorObject : TacticalTrapObject
 {
-    [TunableParam("Radius", 1f, 20f)]
-    [SerializeField] private float radius = 6f;
+    [TunableParam("Radius", 1f, 30f)]
+    [SerializeField] private float radius = 12f;
     private Material dome;
 
     private void Reset() => lifetime = 8f;

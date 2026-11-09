@@ -16,7 +16,7 @@ public class TurretObject : TacticalTrapObject
     [TunableParam("Interval", 0.05f, 3f)]
     [SerializeField] private float interval = 0.35f;
     [TunableParam("Damage", 0f, 100f)]
-    [SerializeField] private float damage = 8f;
+    [SerializeField] private float damage = 4f;
     [Tooltip("The part that turns to aim (the prefab's 'Head').")]
     [SerializeField] private Transform head;
 
@@ -31,6 +31,25 @@ public class TurretObject : TacticalTrapObject
         if (head == null) head = transform.Find("Head");
         aim = transform.rotation;
         nextShot = Time.time + 1f; // A moment to set up
+        BuildFacingMarker();
+    }
+
+    // A flat red triangle on the floor just in front, pointing the way it covers
+    private void BuildFacingMarker()
+    {
+        var go = new GameObject("Facing");
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = new Vector3(0f, 0.03f / transform.lossyScale.y, 0f);
+        var mesh = new Mesh { name = "Turret Facing" };
+        Vector3 Local(Vector3 world) => new(world.x / transform.lossyScale.x, world.y / transform.lossyScale.y, world.z / transform.lossyScale.z);
+        mesh.vertices = new[] { Local(new Vector3(-0.35f, 0f, 0.75f)), Local(new Vector3(0f, 0f, 1.35f)), Local(new Vector3(0.35f, 0f, 0.75f)) };
+        mesh.triangles = new[] { 0, 1, 2, 2, 1, 0 }; // Both sides
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var r = go.AddComponent<MeshRenderer>();
+        r.sharedMaterial = Glass(new Color(1f, 0.25f, 0.2f, 0.75f));
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
     private void Update()

@@ -1,10 +1,31 @@
+using Photon.Pun;
 using UnityEngine;
 
-/// <summary>Raise a curtain of falling snow (14 s): it hides what's behind it and slows enemies who walk through. Health modes only. Behaviour: AbilityObjects/Tactical/SnowScreenObject.</summary>
-[AbilityInfo("Raise a curtain of falling snow (14 s): it hides what's behind it and slows enemies who walk through.", DisplayName = "Snow Screen", HealthModesOnly = true)]
+/// <summary>
+/// Snow Screen (Trap slot): press to send a little snow cloud forward along your view (no placing). It drifts through
+/// walls, leaving a tall wall of snow along its path on whatever is below it (<see cref="SnowScreenObject"/>): nobody
+/// sees through it, and enemies wading through it are slowed.
+/// Health modes only.
+/// </summary>
+[AbilityInfo("Send a little snow cloud forward: it drifts through walls, leaving a long, tall wall of snow along its path that nobody can see through. Enemies wading through it are slowed.", DisplayName = "Snow Screen", HealthModesOnly = true)]
 public class SnowScreen : TrapAbility
 {
-    // On floors, facing where you look (walls and the snow curtain stand across your view)
-    protected override bool IsValidSurface(Vector3 normal) => normal.y > 0.7f;
-    protected override Quaternion PlacementRotation(RaycastHit hit, Transform view) => Quaternion.Euler(0f, view.eulerAngles.y, 0f);
+    [TunableParam("Cloud Speed", 2f, 30f)]
+    [SerializeField] private float cloudSpeed = 9f;
+
+    // A press sends the cloud: no hologram and no Action key
+    public override bool UsesActionKey    => false;
+    public override bool IsAwaitingAction => false;
+
+    public override void HandleInput(AbilityInputEvent inputEvent)
+    {
+        if (inputEvent != AbilityInputEvent.Down || !IsReady) return;
+        var cam = PlayerCam.Local != null ? PlayerCam.Local.Camera.transform : transform;
+        PhotonNetwork.Instantiate(ResourcePath, cam.position + cam.forward * 1.5f, Quaternion.LookRotation(cam.forward), 0,
+            SpawnData.Create(cam.forward * cloudSpeed, Owner.AbilityPower, Owner.photonView.ViewID));
+        Sfx.Here(SfxKind.Blow, 0.6f, 1.3f);
+        StartCooldown();
+    }
+
+    public override void Cancel() { }
 }

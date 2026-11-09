@@ -93,9 +93,11 @@ public class Bomb : NetworkedProjectile
     [PunRPC]
     private void RPC_Beep(bool last) => WorldFx.Beep(transform.position, audioRadius, beepSFX, last ? 1.5f : 1f);
 
+    private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
+
     private void OnCollisionEnter(Collision collision)
     {
-        if (!IsAuthority || exploded) return;
+        if (!IsAuthority || exploded || !RealContact(collision)) return;
         if (explodeOnImpact) { Detonate(); return; }
         if (!sticky || stuck) return;
 
