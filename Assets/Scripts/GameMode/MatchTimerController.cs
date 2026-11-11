@@ -49,6 +49,19 @@ public class MatchTimerController : MonoBehaviour
         };
     }
 
+    /// <summary>
+    /// Master (host's End Phase button): runs the clock out now, so the mode moves on to its next phase exactly as if
+    /// the time had run out (hiding → hunt, S&D pre-round → round, a round → its end…). Nothing for a phase without a
+    /// time limit.
+    /// </summary>
+    public bool EndPhaseNow()
+    {
+        if (!PhotonNetwork.IsMasterClient || !HasLimit || IsExpired) return false;
+        double now = IsPaused ? NetProps.Room(RoomKeys.PausedAt, PhotonNetwork.Time) : PhotonNetwork.Time;
+        NetProps.SetRoom(RoomKeys.PhaseStart, now - Duration - 0.05);
+        return true;
+    }
+
     private void SetPaused(bool paused)
     {
         if (paused == IsPaused) return;

@@ -54,6 +54,8 @@ public class FlashbangObject : NetworkedProjectile
     [PunRPC]
     private void RPC_Pop(Vector3 flashPos)
     {
+        AoeDebug.Sphere(flashPos, fullBlindRange * Mathf.Sqrt(Power), new Color(1f, 0.9f, 0.3f), "Flashbang full blind", 3f);
+        AoeDebug.Sphere(flashPos, maxBlindRange * Mathf.Sqrt(Power), new Color(1f, 0.9f, 0.3f) * 0.6f, "Flashbang reach", 3f);
         WorldFx.SpawnVfx(popVFX, flashPos);
         Sfx.At(SfxKind.Pop, flashPos, 1f, 50f);
         Vfx.Burst(flashPos, Color.white, 40, 9f, 0.5f, 0.4f);

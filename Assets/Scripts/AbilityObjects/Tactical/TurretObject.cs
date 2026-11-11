@@ -52,8 +52,11 @@ public class TurretObject : TacticalTrapObject
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    private AoeDebug aoe;
+
     private void Update()
     {
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sector(transform, range, arc, new Color(1f, 0.35f, 0.25f), "Turret (line of sight)");
         if (head != null) head.rotation = Quaternion.Slerp(head.rotation, aim, 1f - Mathf.Exp(-12f * Time.deltaTime));
         if (!photonView.IsMine || Time.time < nextShot || !AbilityDamage.Active) return;
         nextShot = Time.time + interval;

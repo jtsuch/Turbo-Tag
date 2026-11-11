@@ -66,10 +66,13 @@ public class GravBallObject : NetworkedProjectile
         DestroyNetworked();
     }
 
+    private AoeDebug aoe;
+
     protected override void FixedUpdate()
     {
         base.FixedUpdate();
         float radius = pullRadius * Mathf.Sqrt(Power);
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, radius, new Color(0.75f, 0.45f, 1f), "GravBall pull", 0f, transform);
 
         if (!throwerReleased && throwerBody != null
             && (Time.time - launchTime > throwerGrace || (throwerBody.position - transform.position).sqrMagnitude > radius * radius))

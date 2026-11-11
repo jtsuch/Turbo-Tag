@@ -65,6 +65,7 @@ public static class AbilityCatalog
         if (HealthModesOnly(id)) parts.Add("health modes");
         if (ability.MaxCharges > 1) parts.Add($"{ability.MaxCharges} uses");
         if (ability is TrapAbility trap && trap.MaxPlaced > 0) parts.Add($"up to {trap.MaxPlaced} out");
+        if (ability is ThrowAbility toss && toss.MaxOut > 0) parts.Add($"up to {toss.MaxOut} out");
         return string.Join("  ·  ", parts);
     }
 

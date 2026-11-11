@@ -18,7 +18,6 @@ public class FragObject : NetworkedProjectile
     [SerializeField] private float maxDamage = 170f;
 
     private LineRenderer ring;
-    private Transform fill;
     private const int RingPoints = 72;
 
     protected override void OnLaunched()
@@ -32,39 +31,22 @@ public class FragObject : NetworkedProjectile
         ring.widthMultiplier = 0.12f;
         ring.material = new Material(Shader.Find("Sprites/Default")) { color = new Color(1f, 0.15f, 0.15f, 0.9f) };
         ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        Destroy(disc.GetComponent<Collider>());
-        disc.name = "Frag Radius Fill";
-        disc.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Sprites/Default")) { color = new Color(1f, 0.1f, 0.1f, 0.12f) };
-        disc.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        fill = disc.transform; // Not parented: it must not tumble with the grenade
         if (IsAuthority) StartCoroutine(Fuse());
     }
 
     private void LateUpdate()
     {
         if (ring == null) return;
-        Vector3 ground = Physics.Raycast(transform.position + Vector3.up * 0.3f, Vector3.down, out RaycastHit hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-            ? hit.point : transform.position;
-        float r = radius;
-        for (int i = 0; i < RingPoints; i++)
-        {
-            float a = i * Mathf.PI * 2f / RingPoints;
-            ring.SetPosition(i, ground + new Vector3(Mathf.Cos(a) * r, 0.06f, Mathf.Sin(a) * r));
-        }
+        // On the real floor: where the blast sphere meets whatever is under each point (down off ledges, not hanging
+        // in the air at the grenade's height)
+        GroundRing.Drape(transform.position, radius, ringPoints, transform);
+        for (int i = 0; i < RingPoints; i++) ringPoints[i].y += 0.06f;
+        ring.SetPositions(ringPoints);
         float pulse = 0.75f + 0.25f * Mathf.Sin(Time.time * 10f);
         ring.material.color = new Color(1f, 0.15f, 0.15f, 0.9f * pulse);
-        if (fill != null)
-        {
-            fill.SetPositionAndRotation(ground + Vector3.up * 0.04f, Quaternion.identity);
-            fill.localScale = new Vector3(r * 2f, 0.005f, r * 2f);
-        }
     }
 
-    private void OnDestroy()
-    {
-        if (fill != null) Destroy(fill.gameObject);
-    }
+    private readonly Vector3[] ringPoints = new Vector3[RingPoints];
 
     private IEnumerator Fuse()
     {
@@ -87,9 +69,9 @@ public class FragObject : NetworkedProjectile
     [PunRPC]
     private void RPC_Blast(Vector3 at)
     {
+        AoeDebug.Sphere(at, radius, new Color(1f, 0.35f, 0.25f), "Frag damage (chest, line of sight)");
         HideAndFreeze();
         if (ring != null) ring.enabled = false;
-        if (fill != null) fill.gameObject.SetActive(false);
         Fx.Explosion(at, radius * 0.5f);
         WorldFx.Explode(at, radius, 18f, default, 1f, sourceActor: photonView.OwnerActorNr, cause: "Frag");
     }

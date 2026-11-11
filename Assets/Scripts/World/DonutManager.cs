@@ -398,6 +398,20 @@ public class DonutManager : MonoBehaviourPunCallbacks
             photonView.RPC(nameof(RPC_EveryoneEffect), RpcTarget.All, entry.Effect.Name, entry.Seconds);
             return;
         }
+        // Curses go to others, never the one who ate the donut: either one random other player or every other
+        // player, chosen at random. (Alone, there's nobody else: the eater gets it, so it can still be tried.)
+        if (entry.Type == Donut.Kind.Bad)
+        {
+            var others = new System.Collections.Generic.List<Player>();
+            foreach (var p in Player.All) if (p != null && p != Player.Local && p.Role != PlayerRole.Ghost) others.Add(p);
+            if (others.Count > 0)
+            {
+                int target = Random.value < 0.5f ? others[Random.Range(0, others.Count)].ActorNumber : 0;
+                photonView.RPC(nameof(RPC_DonutCurse), RpcTarget.All, entry.Effect.Name, entry.Seconds, target, Player.Local.ActorNumber);
+                Sfx.Here(SfxKind.Horn, 0.7f);
+                return;
+            }
+        }
         var applied = PlayerEffect.Apply(entry.Effect, Player.Local, entry.Seconds);
         if (applied != null) Sfx.Here(applied.IsChaos ? SfxKind.Horn : applied.IsGood ? SfxKind.Heal : SfxKind.ZapDown, 0.8f);
 
@@ -412,6 +426,46 @@ public class DonutManager : MonoBehaviourPunCallbacks
     }
 
     // ─── Chaos effects that reach other players ───────────────────────────────
+
+    // A curse from someone's donut: everyone reads who got it ("Sam is now Drunk!" / "Everyone else is now Drunk!");
+    // target 0 = everyone but the eater
+    [PunRPC]
+    private void RPC_DonutCurse(string typeName, float seconds, int target, int eater)
+    {
+        var type = System.Type.GetType(typeName);
+        if (type == null) return;
+        string effect = EffectName(type);
+        string eaterName = NameOf(eater);
+        string whom = target == 0 ? "Everyone else is" : $"{NameOf(target)} is";
+        CombatHud.Post($"<color=#FF7AB6>{eaterName}'s donut:</color> {whom} now <b>{effect}</b>!", 4f);
+
+        var local = Player.Local;
+        if (local == null) return;
+        bool mine = target == 0 ? local.ActorNumber != eater : local.ActorNumber == target;
+        if (!mine) return;
+        PlayerEffect.Apply(type, local, seconds);
+        Sfx.Here(SfxKind.ZapDown, 0.8f);
+        if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner($"{eaterName}'s donut: you're {effect}!", 2f);
+    }
+
+    private static string NameOf(int actor)
+    {
+        var p = PhotonNetwork.CurrentRoom?.GetPlayer(actor);
+        return p == null ? "Someone" : string.IsNullOrEmpty(p.NickName) ? $"Player {actor}" : p.NickName;
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<System.Type, string> effectNames = new();
+
+    // An effect's card name, read from a throwaway copy on an inactive object (nothing of it runs)
+    private static string EffectName(System.Type type)
+    {
+        if (effectNames.TryGetValue(type, out var name)) return name;
+        var go = new GameObject("Effect Name");
+        go.SetActive(false);
+        name = go.AddComponent(type) is PlayerEffect e ? e.DisplayName : type.Name.Replace("Effect", "");
+        DestroyImmediate(go);
+        return effectNames[type] = name;
+    }
 
     // A donut effect for every player (Low Gravity Party)
     [PunRPC]

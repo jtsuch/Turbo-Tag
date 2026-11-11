@@ -59,9 +59,12 @@ public class IceTrapObject : MonoBehaviourPun
 
     // ─── Trigger (each client checks its own player) ─────────────────────────
 
+    private AoeDebug aoe;
+
     private void FixedUpdate()
     {
         if (triggered) return;
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, triggerRadius * power, new Color(0.4f, 0.95f, 1f), "Ice Trap trigger (to the body)", 0f, transform);
         var local = Player.Local;
         if (local == null || local.IsCaught || local.ActorNumber == photonView.OwnerActorNr) return;
         if (!local.AffectedByTrap(photonView.OwnerActorNr)) return; // Shielded or a teammate: walks right over it

@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Glider: while held in the air, caps fall speed and boosts air control; while still rising it holds up
+/// Glider: while held in the air, caps fall speed, boosts air control and lets you go a little faster across (×1.15); while still rising it holds up
 /// part of gravity, so a jump (or launch) with Flappy held goes higher and further. Jumping off the ground with it
 /// held adds an extra upward kick (<c>groundJumpBoost</c>). Drains duration only while actually airborne.
 /// </summary>
@@ -19,6 +19,9 @@ public class Flappy : BasicAbility
     [Tooltip("Extra upward speed (m/s) for a jump off the ground with Flappy already held.")]
     [TunableParam("Ground Jump Boost", 0f, 30f)]
     [SerializeField] private float groundJumpBoost = 6f;
+    [Tooltip("Horizontal speed multiplier while gliding (air steering reaches this much more speed).")]
+    [TunableParam("Glide Speed", 1f, 2f)]
+    [SerializeField] private float glideSpeedMultiplier = 1.15f;
 
     private bool held, groundedLastStep;
 
@@ -51,7 +54,7 @@ public class Flappy : BasicAbility
     {
         held     = false;
         IsActive = false;
-        if (Owner != null) Owner.Modifiers.Remove(Stat.AirControl, this);
+        if (Owner != null) { Owner.Modifiers.Remove(Stat.AirControl, this); Owner.Modifiers.Remove(Stat.Speed, this); }
     }
 
     // Runs at the physics rate so gliding feels the same at any frame rate
@@ -65,6 +68,7 @@ public class Flappy : BasicAbility
             {
                 // Air control stays boosted for the whole glide; falling is limited, rising is carried on
                 Owner.Modifiers.Set(Stat.AirControl, this, airControlMultiplier);
+                Owner.Modifiers.Set(Stat.Speed, this, glideSpeedMultiplier); // A little faster across while flapping
                 if (Body.linearVelocity.y > 0f && Body.useGravity)
                     Body.AddForce(-Physics.gravity * risingLift, ForceMode.Acceleration);
                 if (Body.linearVelocity.y < -glideFallSpeed)
@@ -73,6 +77,7 @@ public class Flappy : BasicAbility
             else
             {
                 Owner.Modifiers.Remove(Stat.AirControl, this);
+                Owner.Modifiers.Remove(Stat.Speed, this);
             }
         }
 

@@ -39,6 +39,7 @@ public class SmokeObject : NetworkedProjectile
         HideAndFreeze();
         transform.position = at;
         deployedAt = Time.time;
+        AoeDebug.Sphere(at + Vector3.up * radius * 0.45f, radius * 1.6f, new Color(0.75f, 0.75f, 0.8f), "Smoke cloud (puffs reach)", seconds);
         Sfx.At(SfxKind.Blow, at, 1f, 45f, 0.6f);
         Sfx.At(SfxKind.Pop, at, 0.7f, 45f, 0.5f);
 

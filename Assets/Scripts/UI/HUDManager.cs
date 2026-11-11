@@ -392,6 +392,17 @@ public class HUDManager : MonoBehaviour
             var a = s.Ability;
             if (a == null || s.Root == null) continue;
 
+            // Abilities switched off by an effect (Suppression's zone, Butterfingers): every card dark and greyed, "OFF"
+            if (player != null && player.AbilitiesLockedByEffect)
+            {
+                s.Sweep.fillAmount = 1f;
+                s.Sweep.color = new Color(0.05f, 0.03f, 0.12f, 0.8f);
+                s.Icon.color = new Color(1f, 1f, 1f, 0.3f);
+                s.Seconds.text = "OFF";
+                if (s.MeterBack != null) s.MeterBack.gameObject.SetActive(true);
+                continue;
+            }
+
             if (a is BasicAbility)
             {
                 float fill = a.Readiness;

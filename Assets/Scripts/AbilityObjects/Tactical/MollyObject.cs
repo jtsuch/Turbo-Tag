@@ -77,6 +77,7 @@ public class MollyObject : NetworkedProjectile
         lit = true;
         litAt = Time.time;
         pool = at;
+        AoeDebug.Cylinder(at, radius, 2f, 2f, new Color(1f, 0.35f, 0.25f), "Molly fire", burnSeconds);
         HideAndFreeze();
         Sfx.At(SfxKind.Explosion, at, 0.6f, 40f, 1.6f);
         Vfx.Ring(at + Vector3.up * 0.1f, new Color(1f, 0.55f, 0.15f), 40, radius * 2f, 0.4f, 0.5f);

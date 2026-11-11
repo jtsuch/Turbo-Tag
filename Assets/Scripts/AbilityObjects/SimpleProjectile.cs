@@ -113,6 +113,7 @@ public class SimpleProjectile : NetworkedProjectile
     private void RPC_Lightning(int[] actors, Vector3[] points, int[] links)
     {
         Lightning.Strike(points, links);
+        foreach (var p in points) AoeDebug.Sphere(p, chainRange, new Color(0.4f, 0.95f, 1f), "Lightning chain", 3f);
         // Modes without health: anyone struck goes as if they'd fallen off the level (hunters back to a spawn,
         // hiders caught)
         var local = Player.Local;

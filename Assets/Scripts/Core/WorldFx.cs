@@ -103,6 +103,7 @@ public static class WorldFx
     public static void Explode(Vector3 position, float radius, float force, LayerMask mask, float upwardsModifier = 1f, int sourceActor = 0,
                                string cause = null, float falloffPower = 1f)
     {
+        AoeDebug.Sphere(position, radius, new Color(1f, 0.6f, 0.15f), (cause ?? "Blast") + " push" + (Mathf.Approximately(falloffPower, 1f) ? "" : $" (falloff ^{falloffPower:0})"));
         int layers = mask.value != 0 ? mask.value : Physics.AllLayers;
         int count  = Physics.OverlapSphereNonAlloc(position, radius, overlapBuffer, layers, QueryTriggerInteraction.Ignore);
 

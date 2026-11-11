@@ -10,7 +10,7 @@ using UnityEngine.UI;
 /// The main menu: logo and big buttons on the left (Quick Play, Create Game, Join Game, Settings, Quit), the
 /// player's card on the right (name, penguin colour picker, log out), connection status and version along
 /// the bottom. Quick Play joins the first open game (or starts one); modes are picked in the lobby. Logs in or registers first (PlayFab through <see cref="AccountService"/>) in a modal that
-/// can't be dismissed. Attach to one GameObject in the MainMenu scene.
+/// can't be dismissed, or Play as Guest (a made-up name for this session; asked again at the next bootup). Attach to one GameObject in the MainMenu scene.
 /// </summary>
 public class MainMenuScreen : MenuScreen
 {
@@ -101,7 +101,7 @@ public class MainMenuScreen : MenuScreen
         UIKit.Size(wardrobeButton, 280f, 60f);
 
         UIKit.Spacer(card);
-        UIKit.LinkButton(card, "Log out", LogOut, 22f);
+        logOutLink = UIKit.LinkButton(card, "Log out", LogOut, 22f);
         RefreshPlayer();
     }
 
@@ -154,6 +154,7 @@ public class MainMenuScreen : MenuScreen
     private void Start()
     {
         AccountService.PurgeLegacyCredentials();
+        if (AccountService.IsGuest) { RefreshPlayer(); return; } // Back from a match as a guest: no prompt until next bootup
         if (AccountService.CanAutoLogin)
             AccountService.AutoLogin(OnLoggedIn, _ => ShowLogin(LoginMode.Login));
         else
@@ -229,6 +230,7 @@ public class MainMenuScreen : MenuScreen
     {
         string name = string.IsNullOrEmpty(PhotonNetwork.NickName) ? PlayerPrefs.GetString(UsernamePrefsKey, "Penguin") : PhotonNetwork.NickName;
         nameText.text = name;
+        if (logOutLink != null) UIKit.Label(logOutLink).text = AccountService.IsGuest ? "Sign in / Sign up" : "Log out";
         string current = PenguinSkins.Saved;
         preview.SetSkin(current);
         preview.SetCosmetics(null);
@@ -272,6 +274,9 @@ public class MainMenuScreen : MenuScreen
         submit = UIKit.Button(login.Footer, "Log In", UIKit.Style.Primary, Submit, 76f, 34f);
         UIKit.Size(submit, flexWidth: 1f);
 
+        // No account needed: a silly made-up name for this session (asked again next time the game starts)
+        guestLink = UIKit.LinkButton(body, "Play as Guest", PlayAsGuest, 22f);
+
         // Enter submits from any field
         foreach (var field in new[] { usernameInput, emailInput, passwordInput, confirmInput })
             field.onSubmit.AddListener(_ => Submit());
@@ -286,6 +291,14 @@ public class MainMenuScreen : MenuScreen
         return group;
     }
 
+    private Button guestLink, logOutLink;
+
+    private void PlayAsGuest()
+    {
+        if (loginBusy) return;
+        OnLoggedIn(AccountService.PlayAsGuest());
+    }
+
     private void ShowLogin(LoginMode newMode)
     {
         mode = newMode;
@@ -298,6 +311,7 @@ public class MainMenuScreen : MenuScreen
         confirmRow.gameObject.SetActive(register);
         passwordRow.gameObject.SetActive(!reset);
         forgot.gameObject.SetActive(!register);
+        guestLink.gameObject.SetActive(!reset);
         UIKit.Label(forgot).text = reset ? "Never mind, I remember it" : "Forgot your password?";
         UIKit.Label(submit).text = reset ? "Send Reset Email" : register ? "Create Account" : "Log In";
 

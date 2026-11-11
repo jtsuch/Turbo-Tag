@@ -123,9 +123,53 @@ public static class AccountService
 
     public static void Logout()
     {
+        IsGuest = false;
         ForgetDevice();
         PlayFabClientAPI.ForgetAllCredentials();
     }
+
+    // ─── Guests ───────────────────────────────────────────────────────────────
+
+    private const string GuestNameKey = "Account_GuestName";
+
+    /// <summary>
+    /// Playing as a guest this session (no PlayFab account). Only for this run of the game: the next bootup asks
+    /// them to sign in again (and offers Play as Guest again), until they make or log into an account.
+    /// </summary>
+    public static bool IsGuest { get; private set; }
+
+    /// <summary>Starts a guest session and returns its name (the same silly name each time on this PC).</summary>
+    public static string PlayAsGuest()
+    {
+        IsGuest = true;
+        string name = PlayerPrefs.GetString(GuestNameKey, "");
+        if (string.IsNullOrEmpty(name))
+        {
+            name = RandomGuestName();
+            PlayerPrefs.SetString(GuestNameKey, name);
+            PlayerPrefs.Save();
+        }
+        return name;
+    }
+
+    private static readonly string[] Adjectives =
+    {
+        "Wobbly", "Soggy", "Grumpy", "Sneaky", "Fluffy", "Zippy", "Bouncy", "Sleepy", "Spicy", "Clumsy", "Giggly",
+        "Cranky", "Sassy", "Dizzy", "Chunky", "Squishy", "Snazzy", "Goofy", "Wiggly", "Toasty", "Frosty", "Jolly",
+        "Lumpy", "Peppy", "Rowdy", "Silly", "Sparkly", "Stinky", "Tubby", "Zesty", "Nervous", "Fancy", "Crispy",
+    };
+
+    private static readonly string[] Animals =
+    {
+        "Penguin", "Walrus", "Llama", "Otter", "Goose", "Badger", "Wombat", "Platypus", "Hamster", "Narwhal", "Sloth",
+        "Puffin", "Moose", "Yak", "Ferret", "Capybara", "Lobster", "Pigeon", "Raccoon", "Axolotl", "Seal", "Alpaca",
+        "Duck", "Panda", "Koala", "Hedgehog", "Toucan", "Gecko", "Turkey", "Frog",
+    };
+
+    /// <summary>An adjective, an animal and a number from 1 to 100 ("SoggyWalrus42"; fits the 24-character name rule).</summary>
+    public static string RandomGuestName() =>
+        Adjectives[UnityEngine.Random.Range(0, Adjectives.Length)] + Animals[UnityEngine.Random.Range(0, Animals.Length)]
+        + UnityEngine.Random.Range(1, 101);
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 

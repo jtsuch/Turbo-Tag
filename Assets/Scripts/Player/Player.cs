@@ -348,6 +348,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     // ─── Private ──────────────────────────────────────────────────────────────
     private Vector3[]       baseVisualScales;
     private Vector3[]       baseVisualPositions;
+    private BodyScaleKeeper scaleKeeper;
     private CapsuleCollider col;
     private float   baseColHeight;
     private float   baseColRadius;
@@ -392,6 +393,9 @@ public class Player : MonoBehaviourPun, IPunObservable
             baseVisualScales[i]    = visualRoots[i] != null ? visualRoots[i].localScale : Vector3.one;
             baseVisualPositions[i] = visualRoots[i] != null ? visualRoots[i].localPosition : Vector3.zero;
         }
+        // The roots' offsets are scaled after the Animator every frame (it rewrites the Armature's position)
+        scaleKeeper = TryGetComponent(out BodyScaleKeeper keeper) ? keeper : gameObject.AddComponent<BodyScaleKeeper>();
+        scaleKeeper.Init(visualRoots, baseVisualPositions);
 
         col = GetComponent<CapsuleCollider>();
         if (col != null)
@@ -505,8 +509,9 @@ public class Player : MonoBehaviourPun, IPunObservable
             float across = 1f / Mathf.Sqrt(Mathf.Max(0.3f, bounce)); // Squash and stretch keep the volume
             for (int a = 0; a < 3; a++) localScale[a] *= a == up ? squash * bounce : across;
             root.localScale    = localScale;
-            root.localPosition = Vector3.Scale(baseVisualPositions[i], new Vector3(size, size * squash * bounce, size));
         }
+        // Positions: BodyScaleKeeper (after the Animator, which would otherwise undo them)
+        if (scaleKeeper != null) scaleKeeper.SetFactor(new Vector3(size, size * squash * bounce, size));
 
         if (visualOnly || col == null) return;
 
@@ -542,6 +547,56 @@ public class Player : MonoBehaviourPun, IPunObservable
         MovementState.Prone  => 1f,
         _                    => 2f,
     };
+
+    // ─── Head hitbox ──────────────────────────────────────────────────────────
+
+    // The head (every vertex mostly skinned to the Head bone) measured on the model: a ball about 0.7 m round whose
+    // middle sits 0.46 m along the Head bone's up from the bone (in the bone's own frame), at normal size. It's the
+    // top half of the penguin (1.4 to 2.8 m above the feet), much more than the top quarter of the capsule that used
+    // to count as the head
+    private static readonly Vector3 HeadOffset = new(-0.1f, 0.46f, -0.02f);
+    private const float HeadRadiusAtSize1 = 0.7f;
+    private Transform headBone;
+    private bool headLooked;
+
+    /// <summary>Middle of the head (follows the Head bone: crouching, prone, spinning, flinching), any copy.</summary>
+    public Vector3 HeadCentre
+    {
+        get
+        {
+            if (!headLooked)
+            {
+                headLooked = true;
+                foreach (var t in GetComponentsInChildren<Transform>(true)) if (t.name == "Head") { headBone = t; break; }
+            }
+            if (headBone == null) return new Vector3(transform.position.x, TopY - HeadRadius, transform.position.z);
+            return headBone.position + headBone.rotation * (HeadOffset * Size);
+        }
+    }
+
+    /// <summary>Radius of the head ball for hit tests (scales with size).</summary>
+    public float HeadRadius => HeadRadiusAtSize1 * Size;
+
+    /// <summary>How far past the body's surface a shot may reach the head ball and still count (the body's width).</summary>
+    public float BodyDepth => (col != null ? col.radius * 2f : 1.4f * Size) + 0.05f;
+
+    /// <summary>
+    /// A shot along a ray (normalised <paramref name="dir"/>) goes through the head ball before
+    /// <paramref name="distance"/>. The ball sits just inside the capsule, so for a shot that hit the body pass the
+    /// hit distance plus <see cref="BodyDepth"/>: a line that enters the body and then crosses the head was aimed at
+    /// the head. For a ray that hit something else, pass that distance (a head behind cover doesn't count).
+    /// </summary>
+    public bool HitsHead(Vector3 origin, Vector3 dir, float distance)
+    {
+        Vector3 c = HeadCentre;
+        float r = HeadRadius;
+        Vector3 oc = origin - c;
+        float b = Vector3.Dot(oc, dir), q = oc.sqrMagnitude - r * r;
+        float disc = b * b - q;
+        if (disc < 0f) return false;
+        float t = -b - Mathf.Sqrt(disc);
+        return t > 0f && t <= distance;
+    }
 
     /// <summary>World height of the top of the body (the collider's top: stance and size included).</summary>
     public float TopY => col != null && col.enabled ? col.bounds.max.y : transform.position.y + Height;

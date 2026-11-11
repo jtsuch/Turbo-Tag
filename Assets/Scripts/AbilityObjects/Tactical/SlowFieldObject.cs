@@ -27,8 +27,11 @@ public class SlowFieldObject : TacticalTrapObject
         if (field != null) { fieldScale = field.localScale; field.gameObject.SetActive(false); }
     }
 
+    private AoeDebug aoe;
+
     private void Update()
     {
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Cylinder(transform.position, radius * Power, 3f, 3f, new Color(0.75f, 0.45f, 1f), active ? "Slow Field" : "Slow Field (armed: springs here)", 0f, transform);
         var enemy = LocalEnemy;
         bool inside = false;
         if (enemy != null)
@@ -62,6 +65,7 @@ public class SlowFieldObject : TacticalTrapObject
         active = true;
         activeAt = Time.time;
         if (field != null) field.gameObject.SetActive(true);
+        if (aoe != null) Destroy(aoe.gameObject); // Relabelled
         Sfx.At(SfxKind.ZapDown, transform.position, 1f, 40f, 0.6f);
         Vfx.Ring(transform.position + Vector3.up * 0.1f, new Color(0.7f, 0.45f, 1f), 48, radius * Power * 2f, 0.4f, 0.5f);
     }

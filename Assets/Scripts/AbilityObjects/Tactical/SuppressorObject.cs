@@ -29,8 +29,11 @@ public class SuppressorObject : TacticalTrapObject
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    private AoeDebug aoe;
+
     private void Update()
     {
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, radius * Power, new Color(0.75f, 0.45f, 1f), "Suppression (chest)", 0f, transform);
         if (dome != null) dome.color = new Color(1f, 0.35f, 0.4f, 0.05f + 0.025f * Mathf.Sin(Time.time * 4f));
         var enemy = LocalEnemy;
         if (enemy == null) return;

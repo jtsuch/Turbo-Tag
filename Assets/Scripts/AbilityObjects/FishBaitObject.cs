@@ -89,9 +89,13 @@ public class FishBaitObject : NetworkedProjectile
         DestroyNetworked();
     }
 
+    private AoeDebug aoe, aoeEat;
+
     private void Update()
     {
-        if (!landed || Time.time > lureEndsAt) return;
+        if (!landed || Time.time > lureEndsAt) { if (aoe != null) Destroy(aoe.gameObject); return; }
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, lureRadius, new Color(1f, 0.9f, 0.3f), "Fish Bait lure", 0f, transform);
+        if (AoeDebug.On && aoeEat == null) aoeEat = AoeDebug.Sphere(transform.position, eatRange, new Color(1f, 0.6f, 0.15f), "Fish Bait eat (F)", 0f, transform);
 
         // Flop about and glint so it's impossible to miss
         transform.rotation = Quaternion.Euler(Mathf.Sin(Time.time * 18f) * 20f, transform.eulerAngles.y, 90f);

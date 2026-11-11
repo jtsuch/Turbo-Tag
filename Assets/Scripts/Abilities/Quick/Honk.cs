@@ -44,6 +44,7 @@ public class Honk : QuickAbility
     private void RPC_Honk(Vector3 origin, Vector3 direction)
     {
         direction.Normalize();
+        AoeDebug.Cone(origin, direction, range, coneAngle, new Color(1f, 0.9f, 0.3f), "Honk");
         ShowHorn(origin, direction);
         Sfx.At(SfxKind.Honk, origin, 1f, 45f);
         Vfx.Burst(origin + direction * 1.2f, new Color(1f, 1f, 1f, 0.7f), 22, 9f, 0.35f, 0.4f, direction: direction, spread: 0.35f);

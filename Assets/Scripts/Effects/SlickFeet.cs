@@ -1,83 +1,84 @@
 using UnityEngine;
 
 /// <summary>
-/// Slick (Snowball, Ice Trap, Donut ice: <see cref="Player.IsIced"/>): the player's feet stuck in translucent blue ice
-/// cubes, on every screen (<see cref="Player.IsSlick"/> is synced). They pop in, ride along with the feet, and melt
-/// away when it ends. Added to every player copy by <see cref="Player"/>.
+/// Slick (Snowball, Ice Trap, Donut ice: <see cref="Player.IsIced"/>): each foot frozen in its own translucent blue
+/// block of ice, on every screen (<see cref="Player.IsSlick"/> is synced). The penguin's feet are wide flat paddles
+/// under each leg (about 0.6 m across and 0.7 m long, measured from the mesh), so each block is centred on its foot
+/// (from the LeftFoot / RightFoot bone) and big enough to hold the whole foot and the ankle; the blocks follow the
+/// feet as they move. They pop in, and melt away when it ends. Added to every player copy by <see cref="Player"/>.
 /// </summary>
 public class SlickFeet : MonoBehaviour
 {
     private Player player;
-    private Collider body;
-    private Transform cubes;
+    private Transform leftFoot, rightFoot;
+    private Transform left, right;
     private float amount;
     private static Material ice;
 
-    // Two big blocks (one per foot) and a few chips, in units of the player's size
-    private static readonly (Vector3 at, Vector3 size, float spin)[] Blocks =
-    {
-        (new Vector3(-0.17f, 0.17f,  0.02f), new Vector3(0.36f, 0.34f, 0.40f),  8f),
-        (new Vector3( 0.18f, 0.15f, -0.03f), new Vector3(0.34f, 0.30f, 0.38f), -11f),
-        (new Vector3( 0.02f, 0.08f,  0.24f), new Vector3(0.20f, 0.16f, 0.18f),  27f),
-        (new Vector3(-0.05f, 0.07f, -0.24f), new Vector3(0.18f, 0.14f, 0.16f), -34f),
-        (new Vector3( 0.34f, 0.05f,  0.12f), new Vector3(0.12f, 0.10f, 0.12f),  45f),
-    };
+    // Measured on the model at normal size, in the body's frame: the foot's middle sits ~0.15 m in front of its bone
+    // and the block reaches from the floor to just over the ankle
+    private static readonly Vector3 FromBone = new(0f, 0.18f, 0.14f);
+    private static readonly Vector3 BlockSize = new(0.78f, 0.46f, 0.92f);
 
     private void Awake()
     {
         player = GetComponent<Player>();
-        body = GetComponent<Collider>();
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == "LeftFoot") leftFoot = t;
+            else if (t.name == "RightFoot") rightFoot = t;
+        }
     }
 
     private void LateUpdate()
     {
         if (player == null) return;
         amount = Mathf.MoveTowards(amount, player.IsSlick && !player.IsDownAfterTag ? 1f : 0f, 6f * Time.deltaTime);
-        if (amount <= 0f) { if (cubes != null) cubes.gameObject.SetActive(false); return; }
-        if (cubes == null) Build();
-        cubes.gameObject.SetActive(true);
-
-        float floor = body != null && body.enabled ? body.bounds.min.y : transform.position.y;
-        Vector3 at = transform.position;
-        Vector3 flat = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
-        cubes.SetPositionAndRotation(new Vector3(at.x, floor, at.z),
-            Quaternion.LookRotation(flat.sqrMagnitude > 0.01f ? flat : Vector3.forward, Vector3.up));
-        float pop = amount < 1f ? Mathf.SmoothStep(0f, 1f, amount) : 1f;
-        cubes.localScale = Vector3.one * Mathf.Max(0.3f, player.Size) * pop;
+        bool show = amount > 0f;
+        if (!show) { if (left != null) { left.gameObject.SetActive(false); right.gameObject.SetActive(false); } return; }
+        if (left == null) { left = Block("Ice Block L"); right = Block("Ice Block R"); }
+        float pop = Mathf.SmoothStep(0f, 1f, amount) * Mathf.Max(0.3f, player.Size);
+        Place(left, leftFoot, -1f, pop);
+        Place(right, rightFoot, 1f, pop);
     }
 
-    private void Build()
+    private void Place(Transform block, Transform foot, float side, float scale)
+    {
+        block.gameObject.SetActive(true);
+        Vector3 flat = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        var facing = Quaternion.LookRotation(flat.sqrMagnitude > 0.01f ? flat.normalized : Vector3.forward, Vector3.up);
+        // Without the bone (shouldn't happen), under where the foot would be
+        Vector3 bone = foot != null ? foot.position : transform.position + facing * new Vector3(side * 0.33f * scale, 0f, -0.15f * scale);
+        block.SetPositionAndRotation(bone + facing * (FromBone * scale), facing);
+        block.localScale = BlockSize * scale;
+    }
+
+    private Transform Block(string name)
     {
         if (ice == null)
         {
             var lit = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Slick Ice" };
             ice = CosmeticWearer.SeeThroughCopy(lit);
-            ice.SetColor("_BaseColor", new Color(0.6f, 0.85f, 1f, 0.45f));
+            ice.SetColor("_BaseColor", new Color(0.6f, 0.85f, 1f, 0.42f));
             ice.SetFloat("_Smoothness", 0.95f);
             ice.EnableKeyword("_EMISSION");
             ice.SetColor("_EmissionColor", new Color(0.08f, 0.2f, 0.35f));
         }
-        cubes = new GameObject("Slick Ice Cubes").transform;
-        cubes.SetParent(transform, true);
-        foreach (var b in Blocks)
-        {
-            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Destroy(cube.GetComponent<Collider>());
-            cube.name = "Ice Cube";
-            cube.layer = gameObject.layer;
-            cube.transform.SetParent(cubes, false);
-            cube.transform.localPosition = b.at;
-            cube.transform.localRotation = Quaternion.Euler(b.spin * 0.2f, b.spin, b.spin * -0.15f);
-            cube.transform.localScale = b.size;
-            var r = cube.GetComponent<MeshRenderer>();
-            r.sharedMaterial = ice;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        }
+        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Destroy(cube.GetComponent<Collider>());
+        cube.name = name;
+        cube.layer = gameObject.layer;
+        cube.transform.SetParent(transform, true);
+        var r = cube.GetComponent<MeshRenderer>();
+        r.sharedMaterial = ice;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        return cube.transform;
     }
 
     private void OnDestroy()
     {
-        if (cubes != null) Destroy(cubes.gameObject);
+        if (left != null) Destroy(left.gameObject);
+        if (right != null) Destroy(right.gameObject);
     }
 }
 

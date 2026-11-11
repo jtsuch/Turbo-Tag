@@ -166,6 +166,9 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
         UIKit.Size(timerButton, 260f, 60f);
         cheatsButton = UIKit.Button(hostRow, "Enable Cheats", UIKit.Style.Secondary, () => ToggleRule(RuleKeys.CheatsEnabled), 60f, 24f);
         UIKit.Size(cheatsButton, 260f, 60f);
+        // Skips straight to the next phase (hiding → hunt, S&D pre-round → round…): the clock runs out now
+        endPhaseButton = UIKit.Button(hostRow, "End Phase", UIKit.Style.Secondary, EndPhase, 60f, 24f);
+        UIKit.Size(endPhaseButton, 260f, 60f);
         var rulesArea = UIKit.Rect("Rules", rulesBody);
         UIKit.Stretch(rulesArea, 0f, 0f, 84f, 0f);
         RulesEditor.Create(rulesArea, allowModeChange: false);
@@ -247,10 +250,21 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
         if (timerButton == null) return;
         bool host = PhotonNetwork.IsMasterClient;
         timerButton.interactable = cheatsButton.interactable = host;
+        var clock = GameModeManager.Instance != null ? GameModeManager.Instance.Clock : null;
+        endPhaseButton.interactable = host && clock != null && clock.HasLimit;
         UIKit.Label(timerButton).text = MatchRules.TimerPaused ? "Resume Clock" : "Pause Clock";
         UIKit.Label(cheatsButton).text = MatchRules.CheatsEnabled ? "Disable Cheats" : "Enable Cheats";
         var mode = GameModeManager.Instance != null && GameModeManager.Instance.Mode != null ? GameModeManager.Instance.Mode.DisplayName : "";
         roomText.text = PhotonNetwork.InRoom ? $"{mode}  ·  {Nicify(MatchRules.Map)}" : mode;
+    }
+
+    private Button endPhaseButton;
+
+    private void EndPhase()
+    {
+        var manager = GameModeManager.Instance;
+        if (manager == null || manager.Clock == null) return;
+        if (manager.Clock.EndPhaseNow()) Resume(); // Back to the game to watch the next phase start
     }
 
     private static void ToggleRule(string key)

@@ -367,7 +367,8 @@ public class PlayerMovement : MonoBehaviourPun
             StopWallRun();
         }
 
-        if (wallForward && move.y > 0.1f && State != Player.MovementState.Climb)
+        bool steady = player.SteadyClimbSpeed > 0f; // Infinite Climb held: facing a wall is enough
+        if (wallForward && (move.y > 0.1f || steady) && State != Player.MovementState.Climb)
             StartClimb();
         else if (State == Player.MovementState.Climb && ShouldStopClimbing(move))
         {
@@ -729,22 +730,32 @@ public class PlayerMovement : MonoBehaviourPun
     private bool  onLadder;
     private float ladderGrip;
 
+    [Header("Climbing")]
+    [Tooltip("Climb speed (m/s) from any jump at a wall, whatever the run-up.")]
+    [SerializeField] private float climbBaseSpeed = 23f;
+    [Tooltip("Extra climb speed (m/s) from running at the wall, full at sprint speed.")]
+    [SerializeField] private float climbMomentumBonus = 3f;
+    [Tooltip("Falling faster than this (m/s) into a wall only slides down it.")]
+    [SerializeField] private float climbFallLimit = 4f;
+
     private void StartClimb()
     {
         if (State == Player.MovementState.Prone || State == Player.MovementState.Crouch) return;
-        if (onLadder)
-        {
-            currentClimbSpeed = player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed);
-            player.SetState(Player.MovementState.Climb);
-            return;
-        }
+        // Less momentum-based (Nov 11): any jump at a wall climbs about as high as a running one. In the air a climb
+        // starts at climbBaseSpeed, plus up to climbMomentumBonus for run speed toward it (≈10.4 m of climb from a
+        // standing jump, ≈13.3 m from a sprint, at 25 m/s² of climb decay; it was ≈14 and ≈18 m, and a dash got
+        // the full 18); falling hard into a wall only slides. From the
+        // ground it needs speed toward the wall (a walk-up gives a short climb, never more than the base)
+        Vector3 v = rb.linearVelocity;
+        float flat = new Vector2(v.x, v.z).magnitude;
+        float runShare = Mathf.Clamp01(flat / player.Stats.sprintSpeed);
+        float speed;
+        if (OnGround) speed = Mathf.Min(flat * 1.4f, climbBaseSpeed);
+        else speed = v.y < -climbFallLimit ? 0f : climbBaseSpeed + climbMomentumBonus * runShare;
+        speed = Mathf.Min(speed * player.Modifiers.Get(Stat.Speed), player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed));
 
-        float speed = rb.linearVelocity.y < 0f
-            ? 0f
-            : Mathf.Min(rb.linearVelocity.magnitude * 1.7f, player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed));
-
-        // Infinite Climb: always climbs, from a standstill too
-        if (player.SteadyClimbSpeed > 0f) speed = Mathf.Max(speed, player.SteadyClimbSpeed);
+        // Infinite Climb: always its own steady speed, from a standstill too; momentum plays no part
+        if (player.SteadyClimbSpeed > 0f) speed = player.SteadyClimbSpeed;
 
         // Standing at the foot of a wall without momentum is not a climb (it used to lock the player in place)
         if (OnGround && speed <= MinClimbSpeed) return;
@@ -757,6 +768,7 @@ public class PlayerMovement : MonoBehaviourPun
     // aren't actively climbing up (no forward input, or the climb has run out of speed). Never stuck on the floor.
     private bool ShouldStopClimbing(Vector2 move)
     {
+        if (player.SteadyClimbSpeed > 0f) return !wallForward || move.y < -0.1f; // Infinite Climb: up while held, S lets go
         if (onLadder) return move.y < -0.1f || (OnGround && move.y <= 0.1f); // Rest anywhere on it; S lets go
         if (!wallForward || move.y < -0.1f) return true;
         return OnGround && (move.y <= 0.1f || Mathf.Abs(move.x) > 0.1f || currentClimbSpeed <= MinClimbSpeed);
@@ -766,13 +778,16 @@ public class PlayerMovement : MonoBehaviourPun
     {
         if (onLadder)
         {
-            // Up while W is held, otherwise resting where you are: no sliding, no running out of climb.
-            // Only a light hold against it, so the climber doesn't shove a standing ladder over
+            // A ladder climbs exactly like a wall (same start speed, same slowing down; no boost), but where the climb
+            // runs out, or when W is let go, you stay put instead of sliding down. Only a light hold against it, so
+            // the climber doesn't shove a standing ladder over
             Vector3 middle = transform.position + Vector3.up * (player.Height * 0.5f);
             Vector3 grip = Physics.Raycast(middle, transform.forward, out RaycastHit rung, SteadyClimbReach, structureLayer)
                 ? -rung.normal * 0.4f : Vector3.zero;
-            float up = input.MoveInput.y > 0.1f ? player.Stats.climbSpeed * player.Modifiers.Get(Stat.Speed) : 0f;
-            rb.linearVelocity = new Vector3(grip.x, up, grip.z);
+            bool climbing = input.MoveInput.y > 0.1f && currentClimbSpeed > MinClimbSpeed;
+            rb.linearVelocity = new Vector3(grip.x, climbing ? currentClimbSpeed : 0f, grip.z);
+            if (climbing) currentClimbSpeed -= 0.5f;
+            else currentClimbSpeed = 0f; // Resting spends the climb: like a wall, it doesn't come back
             return;
         }
         if (currentClimbSpeed <= MinClimbSpeed)
@@ -793,7 +808,7 @@ public class PlayerMovement : MonoBehaviourPun
 
         // Climbs slow down, unless Infinite Climb holds the speed up
         currentClimbSpeed = player.SteadyClimbSpeed > 0f
-            ? Mathf.Max(currentClimbSpeed - 0.5f, player.SteadyClimbSpeed)
+            ? player.SteadyClimbSpeed
             : currentClimbSpeed - 0.5f;
     }
 

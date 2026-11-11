@@ -84,6 +84,8 @@ public class Bulldozer : QuickAbility
     [PunRPC]
     private void RPC_DozerFx(Vector3 at)
     {
+        AoeDebug.Sphere(transform.position, reach, new Color(1f, 0.35f, 0.25f), "Bulldozer hit (players)", chargeSeconds, transform);
+        AoeDebug.Sphere(transform.position + Vector3.up, reach + 0.6f, new Color(1f, 0.6f, 0.15f), "Bulldozer smash (utility)", chargeSeconds, transform);
         Sfx.At(SfxKind.Whoosh, at, 1f, 40f, 0.6f);
         Sfx.At(SfxKind.Land, at, 0.8f, 40f, 0.6f);
         Vfx.Burst(at, new Color(0.9f, 0.95f, 1f), 24, 5f, 0.35f, 0.5f);

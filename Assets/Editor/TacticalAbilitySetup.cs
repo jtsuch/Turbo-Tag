@@ -43,7 +43,7 @@ public static class TacticalAbilitySetup
         ("Bulldozer",   AbilitySlot.Quick, 18f, 1, 0f, 0f, "BD"),
         ("Drone",       AbilitySlot.Quick, 30f, 1, 0f, 0f, "DR"),
         ("SnowScreen",  AbilitySlot.Trap,  30f, 1, 1f, 15f, "SN"),
-        ("TripWire",    AbilitySlot.Trap,  15f, 1, 2f, 6f,  "TW"),
+        ("TripWire",    AbilitySlot.Trap,  15f, 3, 3f, 6f,  "TW"), // 3 uses, up to 3 out (Nov 11)
         ("Turret",      AbilitySlot.Trap,  40f, 1, 1f, 8f,  "TU"),
         ("IceWall",     AbilitySlot.Trap,  30f, 1, 1f, 12f, "IW"),
         ("SlowField",   AbilitySlot.Trap,  25f, 1, 1f, 15f, "SF"),
@@ -306,6 +306,7 @@ public static class TacticalAbilitySetup
         Part(trip.transform, PrimitiveType.Cube, "Anchor", Vector3.zero, new Vector3(0.22f, 0.22f, 0.1f), dark);
         Part(trip.transform, PrimitiveType.Sphere, "Light", new Vector3(0f, 0f, 0.06f), Vector3.one * 0.07f, Clear("TacRed", new Color(1f, 0.2f, 0.25f, 1f)));
         SetFloat(trip.AddComponent<TripWireObject>(), "lifetime", 0f);
+        Shootable(trip, 1f); // One bullet breaks it (shots check the wire line: PlayerGun)
         Save(trip);
 
         // Turret

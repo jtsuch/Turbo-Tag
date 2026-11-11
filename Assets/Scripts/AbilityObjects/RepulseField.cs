@@ -18,8 +18,11 @@ public class RepulseField : MonoBehaviourPun
     private static readonly Collider[] overlapBuffer = new Collider[32];
     private readonly System.Collections.Generic.HashSet<Rigidbody> pushed = new();
 
+    private AoeDebug aoe;
+
     private void FixedUpdate()
     {
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, pushRadius, new Color(0.75f, 0.45f, 1f), "Repel Field", 0f, transform);
         int count = Physics.OverlapSphereNonAlloc(transform.position, pushRadius, overlapBuffer,
                                                   Physics.AllLayers, QueryTriggerInteraction.Ignore);
         pushed.Clear();

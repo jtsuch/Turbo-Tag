@@ -131,7 +131,14 @@ public class AdminConsole : MonoBehaviour
                 foreach (var c in AdminCommands.Help)
                     sb.Append($"<color=#22D3EE>{c.name}</color> {c.args}  <color=#B9B2E0>{c.what}</color>\n");
                 Print(sb.ToString().TrimEnd());
-                Print("<color=#22D3EE>announce</color> <text>  ·  <color=#22D3EE>goto</color> <name>  ·  <color=#22D3EE>list</color>  ·  <color=#22D3EE>clear</color>");
+                Print("<color=#22D3EE>announce</color> <text>  ·  <color=#22D3EE>goto</color> <name>  ·  <color=#22D3EE>aoe</color> [on|off] (show ability reach)  ·  <color=#22D3EE>list</color>  ·  <color=#22D3EE>clear</color>");
+                return;
+            case "aoe":
+                // Debug view of every ability's area of effect, on this screen only (aoe, aoe on, aoe off)
+                AoeDebug.Toggle(words.Length > 1 ? words[1] is "on" or "1" : (bool?)null);
+                Print(AoeDebug.On
+                    ? "<color=#7CE85A>AOE view on</color>: every ability's reach shows as a wireframe (spheres, cylinders, cones, beams) with its size. Traps already out show too."
+                    : "AOE view off.");
                 return;
             case "clear":
                 lines.Clear();

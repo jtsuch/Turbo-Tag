@@ -63,6 +63,7 @@ public class TacticalNet : MonoBehaviourPun
     {
         var view = PhotonView.Find(viewId);
         if (view == null || !view.IsMine) return;
+        if (view.TryGetComponent(out TripWireObject wire)) wire.NotifyBroken("smashed");
         photonView.RPC(nameof(RPC_TSmashed), RpcTarget.All, view.transform.position);
         PhotonNetwork.Destroy(view.gameObject);
     }

@@ -39,7 +39,6 @@ public class PlayerGun : MonoBehaviourPun
     /// <summary>Reload progress 0–1, or -1 when not reloading.</summary>
     public float ReloadProgress => IsReloading ? 1f - (reloadEndsAt - Time.time) / Mathf.Max(0.01f, Current.ReloadTime) : -1f;
 
-    private const float HeadFraction = 0.25f; // Top part of the body that counts as the head
 
     private Player player;
     private float  nextShotAt;
@@ -284,6 +283,54 @@ public class PlayerGun : MonoBehaviourPun
             best = hits[i].distance;
             hitIndex = i;
         }
+        // The head sticks out of the capsule a little at the sides: a ray that clips it there (before whatever it
+        // hit) is a headshot on that player, not a miss
+        Player grazed = null;
+        if (hitIndex < 0 || hits[hitIndex].collider.GetComponentInParent<Player>() == null)
+        {
+            float limit = hitIndex >= 0 ? best : range;
+            foreach (var p in Player.All)
+            {
+                if (p == null || p == player || p.IsDownAfterTag || !CanHurt(p)) continue;
+                if (!p.HitsHead(origin, dir, limit)) continue;
+                float along = Vector3.Dot(p.HeadCentre - origin, dir);
+                if (along < limit) { limit = along; grazed = p; }
+            }
+        }
+        if (grazed != null)
+        {
+            lastTraceHit = true;
+            lastShootable = null;
+            lastTraceNormal = -dir;
+            target = grazed;
+            head = true;
+            return origin + dir * Vector3.Dot(grazed.HeadCentre - origin, dir);
+        }
+
+        // A Trip Wire is a line, not a collider: a shot passing within a hair of a set wire (before anything else)
+        // breaks it (1 health)
+        {
+            float limit = hitIndex >= 0 ? best : range;
+            TripWireObject wireHit = null;
+            float wireAt = limit;
+            foreach (var wire in TripWireObject.Live)
+            {
+                if (wire == null || wire.Shootable == null) continue;
+                Vector3 shotEnd = origin + dir * limit;
+                if (TripWireObject.SegmentDistance(origin, shotEnd, wire.WireStart, wire.WireEnd) > 0.2f) continue;
+                // Roughly where along the shot it crosses: the nearest point of the wire to the shot line
+                float along = Mathf.Clamp(Vector3.Dot(ClosestOnSegment(wire.WireStart, wire.WireEnd, origin, dir) - origin, dir), 0f, limit);
+                if (along < wireAt) { wireAt = along; wireHit = wire; }
+            }
+            if (wireHit != null)
+            {
+                lastTraceHit = true;
+                lastShootable = wireHit.Shootable;
+                lastTraceNormal = -dir;
+                return origin + dir * wireAt;
+            }
+        }
+
         lastTraceHit = hitIndex >= 0;
         lastShootable = null;
         if (hitIndex < 0) return origin + dir * range;
@@ -296,10 +343,20 @@ public class PlayerGun : MonoBehaviourPun
         if (other != null && !other.IsDownAfterTag)
         {
             target = other;
-            float feet = other.transform.position.y;
-            head = hit.point.y >= other.TopY - (other.TopY - feet) * HeadFraction;
+            // The head is a ball round the Head bone (the top half of a penguin), not a slice of the capsule
+            head = other.HitsHead(origin, dir, hit.distance + other.BodyDepth);
         }
         return hit.point;
+    }
+
+    // The point on segment a-b nearest the line through origin along dir
+    private static Vector3 ClosestOnSegment(Vector3 a, Vector3 b, Vector3 origin, Vector3 dir)
+    {
+        Vector3 u = b - a, w = a - origin;
+        float uu = Vector3.Dot(u, u), ud = Vector3.Dot(u, dir), uw = Vector3.Dot(u, w), dw = Vector3.Dot(dir, w);
+        float denom = uu - ud * ud;
+        float s = denom > 1e-6f ? Mathf.Clamp01((ud * dw - uw) / denom) : 0f;
+        return a + u * s;
     }
 
     [PunRPC]

@@ -27,6 +27,7 @@ public class EchoStomp : QuickAbility
     [PunRPC]
     private void RPC_EchoFx(Vector3 at, float reach)
     {
+        AoeDebug.Sphere(at, reach, new Color(1f, 0.6f, 0.15f), "Echo Stomp reveal");
         Sfx.At(SfxKind.Land, at, 1f, 45f, 0.6f);
         Sfx.At(SfxKind.Warp, at, 0.7f, 45f, 0.5f);
         Vfx.Ring(at + Vector3.up * 0.2f, new Color(1f, 0.55f, 0.3f), 64, reach * 1.6f, 0.5f, 0.7f);

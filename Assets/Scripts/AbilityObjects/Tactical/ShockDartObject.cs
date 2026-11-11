@@ -62,6 +62,7 @@ public class ShockDartObject : NetworkedProjectile
     [PunRPC]
     private void RPC_Zap(Vector3 at, float r)
     {
+        AoeDebug.Sphere(at, r, new Color(0.4f, 0.95f, 1f), "Shock Dart (to the body)");
         HideAndFreeze();
         Sfx.At(SfxKind.ZapDown, at, 1f, 40f, 1.4f);
         Vfx.Burst(at, Blue, 30, 7f, 0.18f, 0.35f);

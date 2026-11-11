@@ -32,20 +32,14 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
     }
 
     private GroundRing reach;
+    private AoeDebug aoe;
 
-    // The reach on the floor below: where the scan sphere meets the ground
+    // The reach on the floor: where the scan sphere meets the ground, each point on whatever is under it (a platform
+    // under the drone, the floor beyond its edges)
     private void UpdateReach()
     {
-        var hits = Physics.RaycastAll(transform.position, Vector3.down, scanRadius, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        float best = float.MaxValue;
-        Vector3 floor = Vector3.zero;
-        foreach (var h in hits)
-            if (h.distance < best && !h.transform.IsChildOf(transform) && h.collider.GetComponentInParent<Player>() == null) { best = h.distance; floor = h.point; }
-        if (best == float.MaxValue) { if (reach != null) reach.gameObject.SetActive(false); return; }
-        float r = Mathf.Sqrt(Mathf.Max(0f, scanRadius * scanRadius - best * best));
-        if (reach == null) reach = GroundRing.Held(floor, r, new Color(0.35f, 1f, 0.6f));
-        reach.gameObject.SetActive(true);
-        reach.Place(floor, r);
+        if (reach == null) reach = GroundRing.Held(transform.position, scanRadius, new Color(0.35f, 1f, 0.6f));
+        reach.Place(transform.position, scanRadius);
     }
 
     private void OnDestroy()
@@ -72,6 +66,7 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
         }
         transform.position += Vector3.up * Mathf.Sin((Time.time - spawnedAt) * 5f) * 0.15f * Time.deltaTime;
         UpdateReach();
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, scanRadius, new Color(0.4f, 1f, 0.55f), "Drone scan (line of sight)", 0f, transform);
 
         if (Time.time < nextScan) return;
         nextScan = Time.time + scanEvery;

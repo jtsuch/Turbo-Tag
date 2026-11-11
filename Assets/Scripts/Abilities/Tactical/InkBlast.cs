@@ -32,6 +32,7 @@ public class InkBlast : QuickAbility
     [PunRPC]
     private void RPC_InkFx(Vector3 from, Vector3 dir)
     {
+        AoeDebug.Cone(from - dir * 0.8f, dir, range, angle, new Color(0.75f, 0.45f, 1f), "Ink Blast (line of sight)");
         Sfx.At(SfxKind.Splat, from, 1f, 35f, 0.8f);
         for (int i = 1; i <= 6; i++)
             Vfx.Burst(from + dir * (i * 2.2f), new Color(0.05f, 0.04f, 0.1f, 0.95f), 14, 2f + i, 0.35f + i * 0.12f, 0.6f, direction: dir, spread: 0.5f);

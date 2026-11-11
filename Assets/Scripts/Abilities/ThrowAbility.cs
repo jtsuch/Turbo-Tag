@@ -112,10 +112,28 @@ public abstract class ThrowAbility : Ability
         state = ThrowState.Idle;
         PutAway();
 
-        PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(direction, throwOrigin.up), 0,
+        var thrownObject = PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(direction, throwOrigin.up), 0,
             SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
+        TrackThrown(thrownObject);
 
         StartCooldown();
+    }
+
+    /// <summary>At most this many of this player's thrown objects lie about at once (0 = no limit); throwing another removes the oldest (Rock: 5).</summary>
+    public virtual int MaxOut => 0;
+
+    private readonly System.Collections.Generic.List<GameObject> thrown = new();
+
+    private void TrackThrown(GameObject thrownObject)
+    {
+        if (MaxOut <= 0 || thrownObject == null) return;
+        thrown.RemoveAll(o => o == null);
+        thrown.Add(thrownObject);
+        while (thrown.Count > MaxOut)
+        {
+            if (thrown[0] != null) PhotonNetwork.Destroy(thrown[0]);
+            thrown.RemoveAt(0);
+        }
     }
 
     /// <summary>

@@ -1,8 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// A flat ring drawn on the ground for a moment (local, every screen calls it from an RPC): shows exactly how far an
-/// effect reached (Echo Stomp). It fades out over its lifetime. <see cref="Show"/> makes one.
+/// A ring drawn on the ground (local, every screen calls it from an RPC): shows exactly how far an effect reaches
+/// (Echo Stomp, the Drone). It lies on the real floor: every point of it is dropped onto whatever surface is under it
+/// (<see cref="Drape"/>), so over a platform's edge it goes down to the floor below instead of hanging in the air, and
+/// for a sphere-shaped reach it follows where the sphere meets the ground at that height. <see cref="Show"/> makes
+/// one that fades; <see cref="Held"/> one that stays (move it with <see cref="Place"/>).
 /// </summary>
 public class GroundRing : MonoBehaviour
 {
@@ -35,14 +38,60 @@ public class GroundRing : MonoBehaviour
         return ring;
     }
 
-    /// <summary>Moves the ring to <paramref name="centre"/> with <paramref name="radius"/>.</summary>
+    /// <summary>Lays the ring on the ground where a sphere of <paramref name="radius"/> round <paramref name="centre"/> meets it.</summary>
     public void Place(Vector3 centre, float radius)
     {
-        for (int i = 0; i < Points; i++)
+        Drape(centre, radius, points, null);
+        for (int i = 0; i < Points; i++) points[i].y += 0.08f;
+        line.SetPositions(points);
+    }
+
+    private readonly Vector3[] points = new Vector3[Points];
+    private static readonly RaycastHit[] hits = new RaycastHit[16];
+
+    /// <summary>
+    /// Fills <paramref name="into"/> with a ring on the floor where a sphere (<paramref name="centre"/>,
+    /// <paramref name="radius"/>) meets it: for each direction it finds the floor straight down at that distance
+    /// (players and <paramref name="ignore"/> don't count), then sizes the circle for that floor's height (a lower
+    /// floor gets a smaller circle), so the ring always lies on a real surface. A point with no floor in reach sits
+    /// at the edge of the sphere's level, like before.
+    /// </summary>
+    public static void Drape(Vector3 centre, float radius, Vector3[] into, Transform ignore)
+    {
+        int n = into.Length;
+        float lastY = centre.y;
+        for (int i = 0; i < n; i++)
         {
-            float a = i * Mathf.PI * 2f / Points;
-            line.SetPosition(i, centre + new Vector3(Mathf.Cos(a) * radius, 0.08f, Mathf.Sin(a) * radius));
+            float a = i * Mathf.PI * 2f / n;
+            var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+            float r = radius, y = float.NaN;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                if (!FloorBelow(centre + dir * r + Vector3.up * 0.5f, radius + 1f, ignore, out float floorY)) break;
+                y = floorY;
+                float dy = centre.y - y;
+                r = Mathf.Sqrt(Mathf.Max(0f, radius * radius - dy * dy));
+            }
+            if (float.IsNaN(y)) { y = lastY; r = radius; }
+            lastY = y;
+            into[i] = new Vector3(centre.x + dir.x * r, y, centre.z + dir.z * r);
         }
+    }
+
+    private static bool FloorBelow(Vector3 from, float distance, Transform ignore, out float y)
+    {
+        y = 0f;
+        int count = Physics.RaycastNonAlloc(from, Vector3.down, hits, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        for (int i = 0; i < count; i++)
+        {
+            var h = hits[i];
+            if (h.distance >= best || h.collider.GetComponentInParent<Player>() != null) continue;
+            if (ignore != null && h.transform.IsChildOf(ignore)) continue;
+            best = h.distance;
+            y = h.point.y;
+        }
+        return best < float.MaxValue;
     }
 
     private void Update()

@@ -8,7 +8,7 @@ using UnityEngine;
 /// dropping fast to a small but noticeable <see cref="edgeSpeed"/> nudge over the whole outer half, as a velocity change
 /// so every body flies the same). Warnings so people can
 /// react: a slow beep everyone hears wherever they are (quicker for the last few seconds), a red digital countdown
-/// floating on the bomb, and a faint blue ring on the ground marking its reach. Anyone standing next to it can
+/// floating on the bomb, and a faint see-through blue sphere marking its reach (up and down too). Anyone standing next to it can
 /// disarm it with the Grab key.
 /// The placing client owns the countdown; beeps (which carry the time left, so every screen's display agrees),
 /// detonation and disarming are RPCs to all. Each client throws only what it has authority over: its own player
@@ -47,9 +47,7 @@ public class NukeSequence : MonoBehaviourPun
     [SerializeField] private GameObject explosionEffect;
     [SerializeField] private Light      warningLight;
 
-    private static readonly Color RingColor  = new(0.3f, 0.65f, 1f, 0.45f);
     private static readonly Color DigitColor = new(1f, 0.12f, 0.1f);
-    private const int RingSegments = 192;
 
     private static readonly Collider[] overlapBuffer = new Collider[512];
 
@@ -58,7 +56,7 @@ public class NukeSequence : MonoBehaviourPun
     private float power = 1f;
     private bool  isActive = true;
     private TextMeshPro  display;
-    private LineRenderer ring;
+    private Renderer     ring; // The see-through blast sphere
     private Material     ringMaterial;
 
     private void Awake() => ObjectTunables.Apply(photonView); // Cheat values from the placer
@@ -77,9 +75,12 @@ public class NukeSequence : MonoBehaviourPun
         BuildRing();
     }
 
+    private AoeDebug aoe;
+
     private void Update()
     {
         if (!isActive) return;
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Sphere(transform.position, explosionRadius, new Color(1f, 0.35f, 0.25f), "Nuke (85 m/s centre, ~6.5 half way, 4 edge)", 0f, transform);
 
         // Every screen counts down (the owner's beeps keep it in step); the owner decides
         timeRemaining -= Time.deltaTime;
@@ -142,43 +143,55 @@ public class NukeSequence : MonoBehaviourPun
         if (cam != null) display.transform.rotation = Quaternion.LookRotation(display.transform.position - cam.transform.position, Vector3.up);
     }
 
-    // A thin blue line round the blast's reach, laid on whatever floor is under each point
+    // The blast's reach as a sphere (it reaches up and down too, not just along the floor): a faint see-through blue
+    // shell, both faces drawn (Sprites/Default culls nothing) so it shows from inside as well
     private void BuildRing()
     {
-        var go = new GameObject("Blast Radius");
+        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        go.name = "Blast Radius";
+        Destroy(go.GetComponent<Collider>());
         go.transform.SetParent(transform, false);
-        ring = go.AddComponent<LineRenderer>();
-        ring.useWorldSpace = true;
-        ring.loop = true;
-        ring.positionCount = RingSegments;
-        ring.widthMultiplier = 0.3f;
-        ring.numCapVertices = 0;
+        go.transform.position = transform.position;
+        Vector3 lossy = transform.lossyScale;
+        float d = explosionRadius * 2f;
+        go.transform.localScale = new Vector3(d / lossy.x, d / lossy.y, d / lossy.z);
+        ring = go.GetComponent<Renderer>();
+        ringMaterial = new Material(Shader.Find("Sprites/Default")) { color = ShellColor }; // Always in builds
+        ring.sharedMaterial = ringMaterial;
         ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         ring.receiveShadows = false;
-        ringMaterial = new Material(Shader.Find("Sprites/Default")); // Always in builds
-        ring.material = ringMaterial;
-        ring.startColor = ring.endColor = RingColor;
 
-        Vector3 centre = transform.position;
-        for (int i = 0; i < RingSegments; i++)
+        // Three great circles so the sphere reads as a sphere from inside and out
+        foreach (var axis in new[] { Vector3.up, Vector3.right, Vector3.forward })
         {
-            float a = i / (float)RingSegments * Mathf.PI * 2f;
-            Vector3 p = centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * explosionRadius;
-            if (Physics.Raycast(p + Vector3.up * 15f, Vector3.down, out RaycastHit hit, 45f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                && hit.collider.GetComponentInParent<Player>() == null)
-                p = hit.point;
-            ring.SetPosition(i, p + Vector3.up * 0.15f);
+            var circle = new GameObject("Blast Circle").AddComponent<LineRenderer>();
+            circle.transform.SetParent(go.transform, true);
+            circle.useWorldSpace = true;
+            circle.loop = true;
+            circle.positionCount = 96;
+            circle.widthMultiplier = 0.35f;
+            circle.sharedMaterial = ringMaterial;
+            circle.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Vector3 a = Vector3.Cross(axis, Mathf.Abs(axis.y) < 0.9f ? Vector3.up : Vector3.right).normalized, b = Vector3.Cross(axis, a);
+            for (int i = 0; i < 96; i++)
+            {
+                float t = i * Mathf.PI * 2f / 96;
+                circle.SetPosition(i, transform.position + (a * Mathf.Cos(t) + b * Mathf.Sin(t)) * explosionRadius);
+            }
+            circle.startColor = circle.endColor = new Color(1f, 1f, 1f, 4f); // ×4 the shell's alpha (vertex colour × material)
         }
     }
 
-    // The ring brightens with each beep, then fades back to faint
+    private static readonly Color ShellColor = new(0.3f, 0.65f, 1f, 0.12f);
+
+    // The shell brightens with each beep, then fades back to faint
     private System.Collections.IEnumerator PulseRing()
     {
         for (float t = 0f; t < 0.4f && ring != null; t += Time.deltaTime)
         {
-            var c = RingColor;
-            c.a = Mathf.Lerp(0.9f, RingColor.a, t / 0.4f);
-            ring.startColor = ring.endColor = c;
+            var c = ShellColor;
+            c.a = Mathf.Lerp(0.3f, ShellColor.a, t / 0.4f);
+            ringMaterial.color = c;
             yield return null;
         }
     }

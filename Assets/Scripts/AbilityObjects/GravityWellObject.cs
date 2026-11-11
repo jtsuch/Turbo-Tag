@@ -56,9 +56,12 @@ public class GravityWellObject : MonoBehaviourPun
         }
     }
 
+    private AoeDebug aoe;
+
     private void FixedUpdate()
     {
-        if (used) return;
+        if (used) { if (aoe != null) Destroy(aoe.gameObject); return; }
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Column(transform, maxRange, Behind, cylinderRadius, new Color(0.75f, 0.45f, 1f), "Gravity Well (chest, line of sight)");
         // This client's own player (never the placer)
         var local = Player.Local;
         if (local == null || local.Body == null || local.ActorNumber == photonView.OwnerActorNr || local.IsCaught

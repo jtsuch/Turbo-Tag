@@ -58,6 +58,8 @@ public class ReconBoltObject : NetworkedProjectile
     {
         if (stuck) return;
         stuck = true;
+        AoeDebug.Sphere(at, range * Mathf.Sqrt(Power), new Color(0.35f, 0.7f, 1f), "Recon Bolt scan (line of sight)", 3f);
+        AoeDebug.Sphere(at, 20f, new Color(0.35f, 0.7f, 1f) * 0.6f, "Recon Bolt warning", 3f);
         Body.isKinematic = true;
         transform.SetPositionAndRotation(at, Quaternion.LookRotation(-normal));
         Sfx.At(SfxKind.Place, at, 0.8f, 30f, 1.4f);

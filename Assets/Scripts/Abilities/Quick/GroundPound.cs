@@ -26,12 +26,18 @@ public class GroundPound : QuickAbility
     [SerializeField] private float lift = 10f;
     [TunableParam("Stun Radius", 0f, 15f)]
     [SerializeField] private float stunRadius = 5f;
-    [TunableParam("Stun Time", 0f, 5f)]
-    [SerializeField] private float stunSeconds = 1.5f;
+    [Tooltip("Stun for the shortest slam (s); it grows with the height fallen.")]
+    [TunableParam("Min Stun", 0f, 5f)]
+    [SerializeField] private float minStun = 1f;
+    [TunableParam("Max Stun", 0f, 8f)]
+    [SerializeField] private float maxStun = 4f;
+    [Tooltip("Metres fallen (from where the slam started) per extra second of stun: 8 → a jump-height slam stuns " +
+             "~1.4 s, a ~8 m drop 2 s, 24 m or more the full 4 s.")]
+    [SerializeField] private float metresPerSecond = 8f;
 
     private static readonly Collider[] overlap = new Collider[64];
     private bool  slamming;
-    private float slamStarted;
+    private float slamStarted, slamFromY;
 
     public override void HandleInput(AbilityInputEvent inputEvent)
     {
@@ -48,6 +54,7 @@ public class GroundPound : QuickAbility
         Owner.NotePushed();
         slamming    = true;
         slamStarted = Time.time;
+        slamFromY   = transform.position.y;
     }
 
     public override void Cancel() => slamming = false;
@@ -68,12 +75,17 @@ public class GroundPound : QuickAbility
         }
 
         slamming = false;
-        Owner.photonView.RPC(nameof(RPC_GroundPound), RpcTarget.All, transform.position);
+        // The longer the fall, the longer the stun
+        float fallen = Mathf.Max(0f, slamFromY - transform.position.y);
+        float stun = Mathf.Clamp(minStun + fallen / Mathf.Max(0.1f, metresPerSecond), minStun, maxStun);
+        Owner.photonView.RPC(nameof(RPC_GroundPound), RpcTarget.All, transform.position, stun);
     }
 
     [PunRPC]
-    private void RPC_GroundPound(Vector3 at)
+    private void RPC_GroundPound(Vector3 at, float stunSeconds)
     {
+        AoeDebug.Sphere(at, radius, new Color(1f, 0.6f, 0.15f), "Ground Pound push");
+        AoeDebug.Sphere(at, stunRadius, new Color(1f, 0.9f, 0.3f), $"Ground Pound stun {stunSeconds:0.0} s (feet)");
         Sfx.At(SfxKind.Explosion, at, 0.6f, 60f, 1.4f);
         Sfx.At(SfxKind.Land, at, 1f, 40f, 0.7f);
         Vfx.Ring(at, new Color(0.85f, 0.85f, 0.9f, 0.85f), 40, radius * 2.2f, 0.7f, 0.6f);

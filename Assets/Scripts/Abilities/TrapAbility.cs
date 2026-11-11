@@ -167,7 +167,7 @@ public abstract class TrapAbility : Ability
         }
 
         hologram.transform.SetPositionAndRotation(targetPosition, targetRotation);
-        canPlace = IsValidSurface(hit.normal) && IsSpaceFree();
+        canPlace = IsValidSurface(hit.normal) && (!NeedsFreeSpace || IsSpaceFree());
         ShowValidity(canPlace);
     }
 
@@ -187,6 +187,9 @@ public abstract class TrapAbility : Ability
 
     // A hair off the surface, so the free-space check never counts the surface itself
     private const float SurfaceGap = 0.02f;
+
+    /// <summary>False lets the object overlap walls and players (Ice Wall: only its centre has to be on a floor).</summary>
+    protected virtual bool NeedsFreeSpace => true;
 
     /// <summary>Whether the trap may go on a surface facing <paramref name="normal"/> (all surfaces by default).</summary>
     protected virtual bool IsValidSurface(Vector3 normal) => true;

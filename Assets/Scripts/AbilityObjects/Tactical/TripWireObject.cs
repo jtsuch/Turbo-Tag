@@ -5,6 +5,8 @@ using UnityEngine;
 /// Trip Wire (Resources/Object/TripWire): a little anchor on a wall with a thin red wire running straight out to
 /// whatever is across the gap (up to <see cref="maxLength"/>). Each screen checks its own player: the first enemy whose
 /// body crosses it is held for <see cref="holdSeconds"/> and revealed to the placer's team, then the wire is used up.
+/// One bullet breaks it (<see cref="Shootable"/> with 1 health: <see cref="PlayerGun"/> checks shots against the wire
+/// line itself, <see cref="Live"/>), and the placer is told when it's shot down or smashed.
 /// </summary>
 public class TripWireObject : TacticalTrapObject
 {
@@ -16,6 +18,12 @@ public class TripWireObject : TacticalTrapObject
     [SerializeField] private float revealSeconds = 3f;
 
     private Vector3 start, end;
+
+    /// <summary>Every wire still set, for shots against the wire line (<see cref="PlayerGun"/>).</summary>
+    public static readonly System.Collections.Generic.List<TripWireObject> Live = new();
+    public Vector3 WireStart => start;
+    public Vector3 WireEnd => end;
+    public Shootable Shootable { get; private set; }
     private LineRenderer line;
     private bool tripped;
 
@@ -39,11 +47,34 @@ public class TripWireObject : TacticalTrapObject
         line.widthMultiplier = 0.025f;
         line.material = Glass(new Color(1f, 0.2f, 0.25f, 0.55f));
         line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+        Live.Add(this);
+        Shootable = GetComponent<Shootable>();
+        if (Shootable != null) Shootable.Broken += () => NotifyBroken("shot down");
     }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        Live.Remove(this);
+    }
+
+    /// <summary>Owner: the wire was broken (shot down, smashed): the placer hears about it.</summary>
+    public void NotifyBroken(string how)
+    {
+        if (!photonView.IsMine || tripped) return;
+        tripped = true;
+        Live.Remove(this);
+        CombatHud.Post($"Your <color=#FF5A5A>Trip Wire</color> was {how}!", 4f);
+        Minimap.Pulse(new Color(1f, 0.55f, 0.3f));
+    }
+
+    private AoeDebug aoe;
 
     private void Update()
     {
         if (tripped) return;
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Line(start, end, 0.45f, new Color(1f, 0.35f, 0.25f), "Trip Wire (body within)", transform);
         var enemy = LocalEnemy;
         if (enemy == null) return;
         // The body as a line from the feet to the top: does it pass within reach of the wire?
@@ -59,6 +90,7 @@ public class TripWireObject : TacticalTrapObject
     [PunRPC]
     private void RPC_Tripped(Vector3 at, int caught)
     {
+        Live.Remove(this);
         // The placer hears about it: a line in the feed, a map pulse and a ping where it happened
         if (photonView.IsMine)
         {
@@ -75,7 +107,7 @@ public class TripWireObject : TacticalTrapObject
     }
 
     // Closest distance between two segments (p1-q1 and p2-q2)
-    private static float SegmentDistance(Vector3 p1, Vector3 q1, Vector3 p2, Vector3 q2)
+    public static float SegmentDistance(Vector3 p1, Vector3 q1, Vector3 p2, Vector3 q2)
     {
         Vector3 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
         float a = Vector3.Dot(d1, d1), e = Vector3.Dot(d2, d2), f = Vector3.Dot(d2, r);

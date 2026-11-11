@@ -26,8 +26,11 @@ public class UpdraftVentObject : TacticalTrapObject
         }
     }
 
+    private AoeDebug aoe;
+
     private void FixedUpdate()
     {
+        if (AoeDebug.On && aoe == null) aoe = AoeDebug.Cylinder(transform.position, radius, 1f, height * Power, new Color(0.4f, 1f, 0.55f), "Updraft Vent", 0f, transform);
         var local = Player.Local;
         if (local == null || local.IsCaught) return;
         Vector3 off = local.transform.position - transform.position;
