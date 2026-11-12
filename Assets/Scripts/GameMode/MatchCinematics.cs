@@ -33,7 +33,8 @@ public class MatchCinematics : MonoBehaviour
 
     private void HandlePhaseChanged(MatchPhase phase)
     {
-        bool skip = manager.Mode is SearchDestroyMode; // Players move and plan during its pre-round: no fly-over
+        // Players move and plan during S&D's pre-round: no fly-over; nor straight after the map intro
+        bool skip = manager.Mode is SearchDestroyMode || Time.time - MapIntro.LastEnded < 10f;
         if (phase == MatchPhase.Countdown && !skip && manager.Clock != null && manager.Clock.HasLimit && manager.Clock.Remaining >= MinCountdown)
         {
             if (flyover != null) StopCoroutine(flyover);

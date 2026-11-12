@@ -20,6 +20,7 @@ public static class RoomKeys
     public const string WinningTeam   = "Match_WinningTeam";
     public const string DiscHolder    = "Match_DiscHolder";    // Keep Away: actor holding the disc (-1: loose)
     public const string Modifier      = "Match_Modifier";      // This round's RoundModifiers id ("" none)
+    public const string IntroStart    = "Match_IntroStart";    // PhotonNetwork.Time the map intro began (0: not yet)
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
     /// <summary>The starting roles were dealt in Pregame (so players chose abilities knowing them): the level keeps them.</summary>

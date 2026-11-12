@@ -20,8 +20,9 @@ using static GreyboxKit;
 ///   East: a deck (5) with an undercroft under it flowing into the warehouse hall (mezzanine 5, roof 10).
 ///   West: over the void, a ring island with a fan blowing up through its hole (a ride up to the sky deck at 10 by
 ///     the factory roof), bridged from the yard; hex stepping stones south to the docks.
-///   South: the docks (0) open to the void, a few tiles missing (pits), container stacks, arch gates, a boost pad
-///     down a lane, a pier on a catwalk with a teleport pad to the sky deck.
+///   South: the docks (0) open to the void, two mirrored pits in the lane, container stacks, arch gates, a pier
+///     on a catwalk with a teleport pad to the sky deck. West: a second island (a hall with a room on top, a hollow
+///     tower with a roof hatch and a zip line down to a mini island by the floating plates).
 /// All of it floats: a skirt round the main island's edge, dirt underneath, propellers holding it up (BuildIsland).
 ///
 /// Every build checks for overlapping pieces (collider against collider) and writes them to the report.
@@ -35,40 +36,39 @@ public static class FoundryBuilder
     private const string ReportPath = "Library/TurboTag/scratch/foundry_report.txt";
     private const string KitFolder  = "Assets/Environment/Prefabs/";
 
-    private const float L0 = 0f, L5 = 5f, L10 = 10f, Service = -10f;
+    private const float L0 = 0f, L5 = 5f, L10 = 10f, Service = -5f;
     private static readonly Vector3 N = Vector3.forward, S = Vector3.back, E = Vector3.right, W = Vector3.left;
 
-    // ─── Kit usage rules (Justin, Nov 15) ─────────────────────────────────────
-    // Floor-Plate-8m has bevelled corners that leave holes where tiles meet: never on a floor or a walkable roof.
-    // Outdoors: Floor-Tiles and Floor-Inlay mixed. Indoors: Floor-Tiles most, Inlay sometimes, Grate rarely (indoors only).
-    // Floor-Lanes only in straight runs all facing one way. Repeated walls are mixed; only Wall-Pipes may chain.
-    // No flat walls at the map edge (the edge is the boundary); building faces there get windows and mixed panels.
+    // ─── Kit usage rules (Justin, Nov 15, updated Nov 11) ───────────────────────
+    // Open ground: big plain slabs (Floor-32x32m, Floor-32x16m), laid out so each open area divides into them; the rimmed
+    // Platform-16x16m where a 16 × 16 piece is a feature (the Stack's dais, decks). Patterns (Floor-Tiles, Inlay, Grate,
+    // Lanes, the 32 m patterned slabs) only for one room or one segment at a time, one kind per room: never mixed at
+    // random. Floor-Plate-8m has bevelled corners that leave holes: ceilings only.
+    // Holes and props are laid out evenly: on the grid, square to it, in rows, rings or mirrored pairs.
+    // Props are sized to the penguin (2.9 m tall, 1.4 m wide): containers ×4/3, barriers ×1.5, crates 1.5 m.
+    // Repeated wall panels are mixed; only Wall-Pipes may chain. No flat walls at the map edge. Wall-Climb-8m (the arrows)
+    // only right under a top you can climb onto. Towers: mostly Wall-Tall, a few windows and doors.
     // Every ramp and flight of stairs has a floor at its start and a landing at its end, in its direction of travel.
     // Beams: balance beams or supports under decks and mezzanines.
 
     private static System.Random rng;
-    private static readonly string[] OutdoorFloors = { "Floor-Tiles-8m", "Floor-Inlay-8m" };
     private static readonly string[] LowerWalls =
-        { "Wall-Chevron-8m", "Wall-Grid-8m", "Wall-Hazard-8m", "Wall-Mid-8m", "Wall-Vented-8m", "WallRunPanel-8m", "WallWindow-8m", "Wall-Pipes-8m" };
+        { "Wall-Grid-8m", "Wall-Hazard-8m", "Wall-Mid-8m", "Wall-Vented-8m", "WallRunPanel-8m", "WallWindow-8m", "Wall-Pipes-8m" };
+    // Its arrows point up: only directly under a top players can climb onto (a 4 m wall under a deck or roof), never at random
+    private const string ClimbWall = "Wall-Climb-8m";
     private static readonly string[] UpperWalls = { "Wall-Upper-8m", "Wall-Grid-8m", "Wall-Mid-8m", "Wall-Vented-8m" };
-    private static string lastFloor, lastWall, lastUpper;
+    private static string lastWall, lastUpper;
 
     // A random pick from the palette, mostly not the same as the last one (Wall-Pipes may repeat)
-    private static string Mix(string[] palette, ref string last, float repeatChance = 0f)
+    private static string Mix(string[] palette, ref string last)
     {
         string id;
         int tries = 0;
         do id = palette[rng.Next(palette.Length)];
-        while (id == last && id != "Wall-Pipes-8m" && rng.NextDouble() >= repeatChance && ++tries < 20);
+        while (id == last && id != "Wall-Pipes-8m" && ++tries < 20);
         return last = id;
     }
 
-    private static string OutdoorFloor() => Mix(OutdoorFloors, ref lastFloor, 0.3f);
-    private static string IndoorFloor()
-    {
-        double r = rng.NextDouble();
-        return r < 0.08 ? "Floor-Grate-8m" : r < 0.28 ? "Floor-Inlay-8m" : "Floor-Tiles-8m";
-    }
     private static string LowerWall() => Mix(LowerWalls, ref lastWall);
     private static string UpperWall() => Mix(UpperWalls, ref lastUpper);
 
@@ -76,7 +76,7 @@ public static class FoundryBuilder
     public static void Build()
     {
         rng = new System.Random(20261115);
-        lastFloor = lastWall = lastUpper = null;
+        lastWall = lastUpper = null;
         island.Clear();
         if (!System.IO.File.Exists(ScenePath)) AssetDatabase.CopyAsset("Assets/Scenes/Levels/Fracture.unity", ScenePath);
         var scene = Begin(ScenePath, RootName);
@@ -91,7 +91,10 @@ public static class FoundryBuilder
         BuildEast();
         BuildWest();
         BuildDocks();
+        BuildWestIsland();
+        BuildMiniIsland();
         BuildIsland();
+        CheckAccess();
         CheckOverlaps();
         // Low enough that a fall off the edge passes the skirt and the dirt (both climbable) before it counts
         Bounds(Vector3.zero, 360f, -110f, 60f);
@@ -103,103 +106,279 @@ public static class FoundryBuilder
         Finish(scene, ReportPath, "Foundry", RenderOverviews);
     }
 
-    // ─── Yard (0) and the Stack ───────────────────────────────────────────────
+    // ─── The west island: a hall with a room on top, and a hollow tower to climb ──────────────────────────
 
-    // Hole tiles drop into the service level below the yard's south-east quarter
-    private static readonly Vector2[] Holes = { new(12, -12), new(20, -20) };
+    // x −112..−64, z −48..16 (48 × 64, smaller than the main island), past the hex stepping stones. Its own skirt,
+    // dirt and propellers come from BuildIsland (every separate piece of ground floats on its own).
+    private const float WBX0 = -112, WBX1 = -96, WBZ0 = -48, WBZ1 = -16, WBUpper = -32; // The hall (its upper room z −32..−16)
+    private const float TX0 = -80, TX1 = -64, TZ0 = -8, TZ1 = 8, TowerTop = 19f;          // The hollow tower (roof top)
+
+    private static void BuildWestIsland()
+    {
+        var g = Group("West Island");
+        // Ground: big plain slabs (two 32 × 32 west, two 32 × 16 east)
+        Slab(g, "Floor-32x32m", -96, -32, L0);
+        Slab(g, "Floor-32x32m", -96, 0, L0);
+        Slab(g, "Floor-32x16m", -72, -32, L0, 90f);
+        Slab(g, "Floor-32x16m", -72, 0, L0, 90f);
+
+        // ── The hall (0, roof 5) with a room on its north half (5, roof 10) ──
+        Slab(g, "Floor-32x16m", -104, -32, L5, 90f);                       // The hall's roof: the room's floor
+        K(g, "Platform-16x16m", new Vector3(-104, L10 - 1, -24), 0f);       // The room's roof
+        for (float x = -108; x <= -100; x += 8)
+        {
+            for (float z = -44; z <= -20; z += 8) Ceiling(g, x, L5 - 1, z);
+            for (float z = -28; z <= -20; z += 8) Ceiling(g, x, L10 - 1, z);
+        }
+        // West (the map's edge) and south (the map's edge): windows; two storeys where the room is
+        foreach (float z in new[] { -44f, -36f }) Wall(g, "WallWindow-8m", WBX0, 0, z, W);
+        Facade(g, WBX0, -28, W, 'W');
+        Facade(g, WBX0, -20, W, 'M');
+        foreach (float x in new[] { -108f, -100f }) Wall(g, "WallWindow-8m", x, 0, WBZ0, S);
+        // East: a door into the hall, the ramp up onto its roof, then the two-storey part
+        Wall(g, "Archway-8m", WBX1, 0, -44, E);
+        Facade(g, WBX1, -28, E, 'W');
+        Facade(g, WBX1, -20, E, 'P');
+        // North: a door into the hall (under the room) and a window
+        Facade(g, -108, WBZ1, N, 'D');
+        Facade(g, -100, WBZ1, N, 'W');
+        Post(g, WBX0, 0, WBZ0, W, S, 4f);
+        Post(g, WBX1, 0, WBZ0, E, S, 4f);
+        Post(g, WBX0, 0, WBZ1, W, N, 9f);
+        Post(g, WBX1, 0, WBZ1, E, N, 9f);
+        // The room's south face, standing on the hall's roof: a door out onto it, and a panel
+        Wall(g, "Archway-8m", -108, L5, WBUpper, S);
+        Wall(g, ClimbWall, -100, L5, WBUpper, S);                                         // Climbs onto the room's roof
+        Post(g, WBX0, 4, WBUpper, W, S, 5f);
+        Post(g, WBX1, L5, WBUpper, E, S, 4f);     // From 5: the ramp's top fills 4..5 below it
+        Tunnel("West Hall Door E", new Vector3(WBX1 + 2, 0, -44), new Vector3(WBX1 - 2, 0, -44), "run");
+        Tunnel("West Hall Door N", new Vector3(-108, 0, WBZ1 + 2), new Vector3(-108, 0, WBZ1 - 2), "run");
+        Tunnel("West Room Door", new Vector3(-108, L5, WBUpper - 2), new Vector3(-108, L5, WBUpper + 2), "run");
+        // Up onto the hall's roof: a ramp rising west straight onto it; the hard way on up to the room's roof: a container
+        K(g, "Ramp-8x10m", new Vector3(-91, L0 - 1, -36), -90f);
+        Container(g, -101, L5, -37, 90f);          // Against the room, clear of its door and the ramp's top: 8.5 → its roof (10)
+        Lamp(g, new Vector3(-104, 3f, -36), 16f);
+        Lamp(g, new Vector3(-104, 8f, -24), 14f);
+
+        // ── The hollow tower: 16 × 16, tall walls (two rows, 0..18) with arched doors west and north and a window in each
+        // side's upper row; a roof (19) with a hatch you climb out through. Inside, a staircase of 3 m steps (plain jumps)
+        // up the south and east walls to just under the hatch (a ledge grab out). From the roof, a zip line down to the
+        // mini island by the floating plates ──
+        Facade(g, TX0, -4, W, 'S');            Facade(g, TX0, 4, W, 'D');            // West: a door
+        Facade(g, -76, TZ1, N, 'D');           Facade(g, -68, TZ1, N, 'S');          // North: a door
+        Facade(g, -76, TZ0, S, 'S');           Facade(g, -68, TZ0, S, 'S');
+        Facade(g, TX1, -4, E, 'S');            Facade(g, TX1, 4, E, 'S');            // The map's edge
+        Facade(g, TX0, -4, W, 'S', baseY: 9f); Facade(g, TX0, 4, W, 'W', baseY: 9f);
+        Facade(g, -76, TZ1, N, 'S', baseY: 9f); Facade(g, -68, TZ1, N, 'W', baseY: 9f);
+        Facade(g, -76, TZ0, S, 'W', baseY: 9f); Facade(g, -68, TZ0, S, 'S', baseY: 9f);
+        Facade(g, TX1, -4, E, 'W', baseY: 9f); Facade(g, TX1, 4, E, 'S', baseY: 9f);
+        foreach (float y in new[] { 0f, 9f })
+        {
+            Post(g, TX0, y, TZ0, W, S, 9f); Post(g, TX1, y, TZ0, E, S, 9f);
+            Post(g, TX0, y, TZ1, W, N, 9f); Post(g, TX1, y, TZ1, E, N, 9f);
+        }
+        Tunnel("Tower Door W", new Vector3(TX0 - 2, 0, 4), new Vector3(TX0 + 2, 0, 4), "run");
+        Tunnel("Tower Door N", new Vector3(-76, 0, TZ1 + 2), new Vector3(-76, 0, TZ1 - 2), "run");
+        // The roof (slab 18..19): the hatch tile over the staircase's top, plain tiles elsewhere, light ceilings inside
+        foreach (float x in new[] { -76f, -68f })
+            foreach (float z in new[] { -4f, 4f })
+            {
+                bool hatch = x == -68f && z == -4f;
+                Tile(g, hatch ? "Floor-Hole-8m" : "Floor-Tiles-8m", x, z, TowerTop);
+                if (!hatch) Ceiling(g, x, TowerTop - 1, z);
+            }
+        // The staircase: columns of blocks cut to 3 m (3, 6, 9, 12, 15), the last one under the hatch (19: a ledge grab)
+        var steps = new[] { new Vector2(-78, -6), new Vector2(-74, -6), new Vector2(-70, -6), new Vector2(-66, -6), new Vector2(-66, -2) };
+        for (int i = 0; i < steps.Length; i++)
+            for (int h = 0; h <= i; h++)
+                K(g, "Block-4x4x4m", new Vector3(steps[i].x, h * 3f, steps[i].y), 0f, new Vector3(1f, 0.75f, 1f));
+        // A zip line from the roof's north edge down to the mini island by the plates (MiniIsland)
+        ZipLine(g, new Vector3(-70, TowerTop, 5), new Vector3(-64, L0, 42));
+        Lamp(g, new Vector3(-72, 12f, 0), 20f);
+
+        // Cover, evenly: two containers mirrored on the north yard, two barriers in a row on the east yard
+        // Two sheds facing each other across the north yard (their doors on local −Z), a scaffold to climb on the east yard
+        K(g, "Shed-4x4m", new Vector3(-100, L0, 10), 0f);
+        K(g, "Shed-4x4m", new Vector3(-100, L0, -10), 180f);
+        Tunnel("Shed N door", new Vector3(-100, 0, 6), new Vector3(-100, 0, 10), "crouch");
+        Tunnel("Shed S door", new Vector3(-100, 0, -6), new Vector3(-100, 0, -10), "crouch");
+        K(g, "Scaffold-4x4x5m", new Vector3(-74, L0, -34), 0f);
+        Lamp(g, new Vector3(-88, 8, -24), 22f);
+
+        // ── The way over: a catwalk straight on from the docks' lane (z −44, rim to rim), and a third hex stone ──
+        const float From = -63f, To = -41f;
+        int n = 3;
+        float piece = (To - From) / n;
+        for (int i = 0; i < n; i++)
+        {
+            var walk = K(g, "Catwalk-8x2m", new Vector3(From + piece * (i + 0.5f), L0 - 1, -44), 0f, new Vector3(piece / 8f, 1f, 1f));
+            if (i == 1) PropsUnder(g, walk, 0.8f, Vector2.zero);
+        }
+        PropsUnder(g, K(g, "Platform-Hex-8m", new Vector3(-57, L0 - 1, -14), 0f), 1.6f, Vector2.zero);
+        gaps.Add(("Hex 2 to hex 3", new Vector3(-46, 0, -15), new Vector3(-53, 0, -14)));
+        gaps.Add(("Hex 3 to the west island", new Vector3(-61, 0, -14), new Vector3(-63, 0, -14)));
+    }
+
+    // ─── The mini island by the floating plates: where the tower's zip line lands ──────────────────────
+
+    // x −72..−56, z 32..48 (16 × 16), west of the plates on the beam route; its own skirt, dirt and propeller
+    private static void BuildMiniIsland()
+    {
+        var g = Group("Mini Island");
+        Slab(g, "Platform-16x16m", -64, 40, L0);
+        // A bridge over to the first plate (rim to plate)
+        const float From = -55f, To = RingX - 2f;   // The plate's west edge
+        K(g, "Bridge-8x4m", new Vector3((From + To) / 2f, L0 - 1, 34.2f), 0f, new Vector3((To - From) / 8f, 1f, 1f));
+        // A little cover either side of where the zip line drops you
+        Barrier(g, -68, L0, 36, 90f);
+        Barrier(g, -60, L0, 36, 90f);
+        Lamp(g, new Vector3(-64, 6, 40), 14f);
+    }
+
+    /// <summary>
+    /// A zip line from <paramref name="topBase"/> (where its high anchor stands) to <paramref name="bottomBase"/> (the low
+    /// anchor): two ZipAnchor-6m posts turned to face each other (their arms point along local −X), a cable between the
+    /// arm tips, and the ride (`World/ZipLine`) on the high one.
+    /// </summary>
+    private static void ZipLine(Transform g, Vector3 topBase, Vector3 bottomBase)
+    {
+        Vector3 flat = Vector3.ProjectOnPlane(bottomBase - topBase, Vector3.up).normalized;
+        float YawToward(Vector3 d) => Mathf.Atan2(d.z, -d.x) * Mathf.Rad2Deg;   // Local −X along d
+        var high = K(g, "ZipAnchor-6m", topBase, YawToward(flat));
+        K(g, "ZipAnchor-6m", bottomBase, YawToward(-flat));
+        // The arm tips: 2 m out from the post toward the other end, 0.4 below the top
+        Vector3 from = topBase + flat * 2f + Vector3.up * 5.4f;
+        Vector3 to = bottomBase - flat * 2f + Vector3.up * 5.4f;
+        var cable = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cable.name = "Zip Cable";
+        cable.transform.SetParent(g, false);
+        Object.DestroyImmediate(cable.GetComponent<Collider>());
+        cable.transform.SetPositionAndRotation((from + to) / 2f, Quaternion.LookRotation(to - from));
+        cable.transform.localScale = new Vector3(0.07f, 0.07f, Vector3.Distance(from, to));
+        cable.GetComponent<Renderer>().sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Environment/Materials/Metals/BlackMetal.mat");
+        var line = high.AddComponent<global::ZipLine>();
+        var so = new SerializedObject(line);
+        so.FindProperty("from").vector3Value = from;
+        so.FindProperty("to").vector3Value = to;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        float drop = from.y - to.y, run = Vector3.Distance(new Vector3(from.x, 0, from.z), new Vector3(to.x, 0, to.z));
+        report.Add($"zip line: {from:F1} → {to:F1}, {run:0} m across, {drop:0} m down ({Mathf.Atan2(drop, run) * Mathf.Rad2Deg:0}°)");
+    }
+
+    // ─── Props sized to the penguin (2.9 m tall, 1.4 m wide) ──────────────────
+
+    private const float ContainerScale = 4f / 3f;                    // 8 × 3.5 × 3.3: a penguin fits inside; one grid cell long
+    private const float ContainerHeight = 2.6f * ContainerScale;
+    private const float BarrierScale = 1.5f;                         // 6 × 1.8 × 1.5: chest-high cover, a plain hop
+    private const float CrateSize = 1.5f;                            // Waist high
+
+    private static GameObject Container(Transform g, float x, float y, float z, float yaw) =>
+        K(g, "CargoContainer-6m", new Vector3(x, y, z), yaw, Vector3.one * ContainerScale);
+
+    private static GameObject Barrier(Transform g, float x, float y, float z, float yaw) =>
+        K(g, "Barrier-4m", new Vector3(x, y, z), yaw, Vector3.one * BarrierScale);
+
+    /// <summary>A floor slab of any size centred on (x, z) with its top at <paramref name="top"/>; ground ones are recorded
+    /// for the island (every 8 m cell they cover).</summary>
+    private static GameObject Slab(Transform g, string id, float x, float z, float top, float yaw = 0f)
+    {
+        var slab = K(g, id, new Vector3(x, top - 1f, z), yaw);
+        if (top == L0 || top == Service)
+        {
+            var rs = slab.GetComponentsInChildren<Renderer>();
+            Bounds b = rs[0].bounds;
+            foreach (var r in rs) b.Encapsulate(r.bounds);
+            for (float cx = Mathf.Round(b.min.x) + 4f; cx < b.max.x; cx += 8f)
+                for (float cz = Mathf.Round(b.min.z) + 4f; cz < b.max.z; cz += 8f)
+                    island.Add(CellOf(cx, cz));
+        }
+        return slab;
+    }
+
+    // ─── Yard (0) and the Stack ───────────────────────────────────────────────
 
     private static void BuildYard()
     {
         var g = Group("Yard");
-        for (int ix = 0; ix < 6; ix++)
-        for (int iz = 0; iz < 6; iz++)
-        {
-            float x = -20 + ix * 8, z = -20 + iz * 8;
-            if (x == 4 && z < 0) continue; // The ramp trench down to the service level
-            // One straight lane runs north–south through the yard (all facing the same way); the rest mixed
-            string id = System.Array.Exists(Holes, h => h.x == x && h.y == z) ? "Floor-Hole-8m"
-                      : x == -4 ? "Floor-Lanes-8m"
-                      : OutdoorFloor();
-            Tile(g, id, x, z, L0, 0f);
-        }
-        // North strip in front of the factory and dock (z 24..32), and beside the dock (x 8..24, z 32..48)
-        for (float x = -36; x <= 20; x += 8) Tile(g, x == -4 ? "Floor-Lanes-8m" : OutdoorFloor(), x, 28, L0);
-        for (float x = 12; x <= 20; x += 8) for (float z = 36; z <= 44; z += 8) Tile(g, OutdoorFloor(), x, z, L0);
+        // A pinwheel of big plain slabs round the Stack's rimmed dais (16 × 16): north, east and west 32 × 16; the south
+        // side is the service yard
+        Slab(g, "Floor-32x16m", -8, 16, L0, 0f);      // North: x −24..8, z 8..24
+        Slab(g, "Floor-32x16m", 16, 8, L0, 90f);      // East: x 8..24, z −8..24
+        Slab(g, "Floor-32x16m", -16, -8, L0, 90f);    // West: x −24..−8, z −24..8
+        Slab(g, "Platform-16x16m", 0, 0, L0);         // The Stack's dais
+        // The service yard (x −8..24, z −24..−8): one block of tiles, all one kind; its east end is the trench down
+        for (float x = -4; x <= 12; x += 8) for (float z = -20; z <= -12; z += 8) Tile(g, "Floor-Tiles-8m", x, z, L0);
+        // In front of the factory and dock: one straight lane east–west (z 24..32); beside the dock a rimmed loading bay
+        for (float x = -36; x <= 20; x += 8) Tile(g, "Floor-Lanes-8m", x, 28, L0, 0f);      // The stripe runs along x
+        Slab(g, "Platform-16x16m", 16, 40, L0);
+        // The loading bay: a forklift and a row of pallet stacks, low to high
+        K(g, "Forklift-3m", new Vector3(18, L0, 44), 180f);
+        foreach (var (id, x) in new[] { ("PalletStack-Low-0p6m", 12f), ("PalletStack-Mid-1p2m", 14f), ("PalletStack-High-1p8m", 16f) })
+            K(g, id, new Vector3(x, L0, 36), 90f);
 
         // The Stack: a round tower (10) in the middle, a lift beside it (a 1 m hop on, up to the top)
         K(g, "Tower-Round-8m", new Vector3(0, L0, 0), 0f);
         KitMover(g, "Stack Lift", new Vector3(-6.5f, L0, 0), new Vector3(-6.5f, L10 - 1f, 0), 4f);
         Lamp(g, new Vector3(0, L10 + 6, 0), 26f);
 
-        // Cover: containers (one stacked pair to climb), barriers, half walls, round pillars, crates
-        K(g, "CargoContainer-6m", new Vector3(-14, L0, -14), 30f);
-        K(g, "CargoContainer-6m", new Vector3(-16, L0, 14), 90f);
-        K(g, "CargoContainer-6m", new Vector3(-16, L0 + 2.6f, 14), 80f);
-        K(g, "CargoContainer-6m", new Vector3(16, L0, 10), 0f);
-        K(g, "Barrier-4m", new Vector3(-6, L0, -16), 0f);
-        K(g, "Barrier-4m", new Vector3(10, L0, 18), 90f);
-        K(g, "Barrier-4m", new Vector3(-20, L0, 2), 90f);
-        Prop(g, "HalfWall-2m", new Vector3(-8, L0, 8), 45f);
-        Prop(g, "HalfWall-2m", new Vector3(14, L0, -4), 0f);
-        K(g, "Pillar-Round-2m", new Vector3(-10, L0, -4), 0f);
-        K(g, "Pillar-Round-2m", new Vector3(-10, L0, -8), 0f);
-        Prop(g, "Crate-1x1m", new Vector3(-12, L0, -6), 20f, 1.4f);
-        Prop(g, "Crate-1x1m", new Vector3(18, L0, 4), -15f, 1.2f);
-        Prop(g, "Vent", new Vector3(-20, L0, -20), 0f);
+        // Cover, laid out evenly: four barriers in a ring round the Stack, a container on each side (a stacked pair to
+        // climb on the west)
+        // Cover, laid out evenly: four L-covers in a pinwheel round the Stack (each turned a quarter from the last), a
+        // stacked pair of containers west to climb, a container open at both ends east to run through
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * 90f * Mathf.Deg2Rad;
+            K(g, "LCover-4m", new Vector3(Mathf.Sin(a) * 12f, L0, Mathf.Cos(a) * 12f), i * 90f);
+        }
+        Container(g, -16, L0, -4, 90f);
+        Container(g, -16, L0 + ContainerHeight, -4, 90f);
+        K(g, "CargoContainer-Tunnel-8m", new Vector3(16, L0, 4), 90f);
+        InsideTunnel("Yard container", new Vector3(16, 0, -1), new Vector3(16, 0, 9));
         Lamp(g, new Vector3(-12, 8, -12), 24f);
         Lamp(g, new Vector3(14, 8, 14), 24f);
     }
 
-    // ─── Service level (−10) under the yard's south-east quarter ──────────────
+    // ─── Service level (−5) under the service yard's east half ────────────────
 
     private static void BuildServiceLevel()
     {
         var g = Group("Service Level");
-        for (float x = 4; x <= 20; x += 8) for (float z = -20; z <= -4; z += 8) Tile(g, IndoorFloor(), x, z, Service);
-        // Walls round it (−10..−1, up to the yard's slab): a pipe run along the bottom (pipes may chain), mixed panels
-        // above (stretched to fill), posts on the corners
-        for (float x = 4; x <= 20; x += 8)
+        // One storey down (x 8..24, z −24..−8): grated floor, a pipe run all round (pipes may chain), posts on the corners
+        for (float x = 12; x <= 20; x += 8) for (float z = -20; z <= -12; z += 8) Tile(g, "Floor-Grate-8m", x, z, Service);
+        foreach (float x in new[] { 12f, 20f })
         {
-            Wall(g, "Wall-Pipes-8m", x, Service, -24, S); Wall(g, UpperWall(), x, Service + 4, -24, S, 1.25f);
-            Wall(g, "Wall-Pipes-8m", x, Service, 0, N);   Wall(g, UpperWall(), x, Service + 4, 0, N, 1.25f);
+            Wall(g, "Wall-Pipes-8m", x, Service, -24, S);
+            Wall(g, "Wall-Pipes-8m", x, Service, -8, N);
         }
-        for (float z = -20; z <= -4; z += 8)
+        foreach (float z in new[] { -20f, -12f })
         {
-            Wall(g, LowerWall(), 0, Service, z, W);       Wall(g, UpperWall(), 0, Service + 4, z, W, 1.25f);
-            Wall(g, "Wall-Pipes-8m", 24, Service, z, E);  Wall(g, UpperWall(), 24, Service + 4, z, E, 1.25f);
+            Wall(g, "Wall-Pipes-8m", 8, Service, z, W);
+            Wall(g, "Wall-Pipes-8m", 24, Service, z, E);  // Under the east block's floor; the deck's face stands above it
         }
-        Post(g, 0, Service, -24, W, S, 9f); Post(g, 24, Service, -24, E, S, 9f);
-        Post(g, 0, Service, 0, W, N, 9f);   Post(g, 24, Service, 0, E, N, 9f);
-        // Its ceiling: the yard's slab overhead (not over the trench or the hole tiles)
-        for (float x = 12; x <= 20; x += 8)
-            for (float z = -20; z <= -4; z += 8)
-                if (!System.Array.Exists(Holes, h => h.x == x && h.y == z)) Ceiling(g, x, L0 - 1, z);
-        // Out: two ramps up the trench (−10 → −5 → 0), rising north, the second straight onto the yard
-        K(g, "Ramp-8x10m", new Vector3(4, Service - 1, -15), 0f);
-        K(g, "Ramp-8x10m", new Vector3(4, Service + 4, -5), 0f);
-        // Inside: a partition and containers to hide behind, and lights
-        K(g, "Wall-Hazard-8m", new Vector3(16, Service, -12), 90f);
-        K(g, "CargoContainer-6m", new Vector3(20, Service, -4), 0f);
-        K(g, "CargoContainer-6m", new Vector3(12, Service, -21), 0f);
-        Prop(g, "Crate-1x1m", new Vector3(9, Service, -3), 10f, 1.3f);
-        Lamp(g, new Vector3(12, Service + 6, -8), 14f);
-        Lamp(g, new Vector3(18, Service + 6, -18), 14f);
+        Post(g, 8, Service, -24, W, S, 4f);  Post(g, 24, Service, -24, E, S, 4f);
+        Post(g, 8, Service, -8, W, N, 4f);   Post(g, 24, Service, -8, E, N, 4f);
+        // Its ceiling: the service yard's tiles over its west half; the east half is the open trench
+        foreach (float z in new[] { -20f, -12f }) Ceiling(g, 12, L0 - 1, z);
+        // Out: a ramp up the trench rising south, straight onto the docks (−5 → 0)
+        K(g, "Ramp-8x10m", new Vector3(20, Service - 1, -19), 180f);
+        Lamp(g, new Vector3(14, Service + 3.5f, -14), 14f);
     }
 
     // ─── Factory (walls 9, mezzanine 5, roof 10) ──────────────────────────────
 
-    // Footprint x −40..−8, z 32..48 (the strip z 24..32 in front of it is yard)
+    // Footprint x −40..−8, z 32..48 (the lane z 24..32 runs in front of it)
     private const float FX0 = -40, FX1 = -8, FZ0 = 32, FZ1 = 48;
 
     private static void BuildFactory()
     {
         var g = Group("Factory");
-        for (float x = FX0 + 4; x < FX1; x += 8) for (float z = FZ0 + 4; z < FZ1; z += 8) Tile(g, IndoorFloor(), x, z, L0);
+        // Indoors, one pattern for the whole room
+        for (float x = FX0 + 4; x < FX1; x += 8) for (float z = FZ0 + 4; z < FZ1; z += 8) Tile(g, "Floor-Tiles-8m", x, z, L0);
 
         // South face (to the yard): two arched doors, two windows
         Facade(g, -36, FZ0, S, 'W');
         Facade(g, -28, FZ0, S, 'D');
-        Facade(g, -20, FZ0, S, 'W');
+        Facade(g, -20, FZ0, S, 'P');   // Not a window: its sill would stick into the foot of the stairs inside
         Facade(g, -12, FZ0, S, 'D');
         // North face (the map's edge): never flat: windows, a pipe run, mixed panels; west face: a door and a window
         Facade(g, -36, FZ1, N, 'P');
@@ -226,34 +405,28 @@ public static class FoundryBuilder
         foreach (float x in new[] { -32f, -24f, -16f }) K(g, "Pillar-Round-2m", new Vector3(x, 0, 45), 0f, new Vector3(1f, 0.75f, 1f));
         K(g, "Stairs-8x10m", new Vector3(-20, L0 - 1, 39), 0f);
         foreach (float x in new[] { -38f, -30f }) K(g, "Railing-2m", new Vector3(x, L5, 44.3f), 0f);
-        K(g, "CargoContainer-6m", new Vector3(-34, 0, 40), 90f);
-        K(g, "Barrier-4m", new Vector3(-29, 0, 38), 0f);
+        K(g, "Generator-4x2p5m", new Vector3(-34, 0, 40), 90f);
+        Barrier(g, -29, 0, 38, 0f);
         Lamp(g, new Vector3(-24, 7.5f, 40), 18f);
 
-        // Roof (10) with a skylight hole over the open floor
-        for (float x = FX0 + 4; x < FX1; x += 8)
-            for (float z = FZ0 + 4; z < FZ1; z += 8)
-            {
-                bool skylight = x == -28 && z == 36;
-                Tile(g, skylight ? "Floor-Hole-8m" : OutdoorFloor(), x, z, L10);
-                if (!skylight) Ceiling(g, x, L10 - 1, z);
-            }
-        Prop(g, "Vent", new Vector3(-36, L10, 44), 0f);
-        Prop(g, "Vent", new Vector3(-20, L10, 44), 0f);
-        K(g, "Barrier-4m", new Vector3(-14, L10, 40), 90f);
+        // Roof (10): one plain slab; a vent at each end
+        Slab(g, "Floor-32x16m", -24, 40, L10);
+        for (float x = FX0 + 4; x < FX1; x += 8) for (float z = FZ0 + 4; z < FZ1; z += 8) Ceiling(g, x, L10 - 1, z);
+        Prop(g, "Vent", new Vector3(-32, L10, 40), 0f);
+        Prop(g, "Vent", new Vector3(-16, L10, 40), 0f);
     }
 
     /// <summary>
     /// A 9 m facade panel on a footprint edge (two storeys: up to the roof slab at 9..10): 'W' window, 'D' arched door,
     /// 'P' pipe run, 'M' mixed, 'S' one tall solid panel; a mixed upper panel above from <paramref name="upperFrom"/> (4:
-    /// stretched to 9; 5: standing on a slab that crosses the wall line at 4..5).
+    /// stretched to 9; 5: standing on a slab that crosses the wall line at 4..5), all from <paramref name="baseY"/>.
     /// </summary>
-    private static void Facade(Transform g, float x, float z, Vector3 outward, char kind, float upperFrom = 4f, bool upper = true)
+    private static void Facade(Transform g, float x, float z, Vector3 outward, char kind, float upperFrom = 4f, bool upper = true, float baseY = 0f)
     {
-        if (kind == 'S') { Wall(g, "Wall-Tall-8m", x, 0, z, outward); return; }
+        if (kind == 'S') { Wall(g, "Wall-Tall-8m", x, baseY, z, outward); return; }
         string lower = kind == 'W' ? "WallWindow-8m" : kind == 'P' ? "Wall-Pipes-8m" : kind == 'D' ? "Archway-8m" : LowerWall();
-        Wall(g, lower, x, 0, z, outward);
-        if (upper) Wall(g, UpperWall(), x, upperFrom, z, outward, (9f - upperFrom) / 4f);
+        Wall(g, lower, x, baseY, z, outward);
+        if (upper) Wall(g, UpperWall(), x, baseY + upperFrom, z, outward, (9f - upperFrom) / 4f);
     }
 
     // ─── Loading dock (5) between the factory and the yard's north-east ───────
@@ -261,12 +434,12 @@ public static class FoundryBuilder
     private static void BuildDock()
     {
         var g = Group("Loading Dock");
-        // A 16 × 16 deck at 5 (x −8..8, z 32..48) over a low room, in through the factory's east door
-        K(g, "Floor-16x16m", new Vector3(0, L5 - 1, 40), 0f);
-        for (float x = -4; x <= 4; x += 8) for (float z = 36; z <= 44; z += 8) { Tile(g, IndoorFloor(), x, z, L0); Ceiling(g, x, L5 - 1, z); }
+        // A rimmed 16 × 16 deck at 5 (x −8..8, z 32..48) over a low room, in through the factory's east door
+        K(g, "Platform-16x16m", new Vector3(0, L5 - 1, 40), 0f);
+        for (float x = -4; x <= 4; x += 8) for (float z = 36; z <= 44; z += 8) { Tile(g, "Floor-Inlay-8m", x, z, L0); Ceiling(g, x, L5 - 1, z); }
         // The room's faces: south (the ramp up closes its west half), east, north (the map's edge)
-        Wall(g, LowerWall(), 4, 0, FZ0, S);
-        foreach (float z in new[] { 36f, 44f }) Wall(g, LowerWall(), 8, 0, z, E);
+        Wall(g, ClimbWall, 4, 0, FZ0, S);                                                 // Climbs onto the deck
+        foreach (float z in new[] { 36f, 44f }) Wall(g, z == 44f ? ClimbWall : LowerWall(), 8, 0, z, E);
         foreach (float x in new[] { -4f, 4f }) Wall(g, LowerWall(), x, 0, FZ1, N);
         Post(g, 8, 0, FZ0, E, S, 4f);
         Post(g, 8, 0, FZ1, E, N, 4f);
@@ -274,11 +447,10 @@ public static class FoundryBuilder
         K(g, "Ramp-16x8m", new Vector3(-4, L0 - 1, 24), 0f);
         // On up to the factory roof (5 → 10): a ramp along the deck's north half rising west, onto the roof's edge
         K(g, "Ramp-8x10m", new Vector3(-3, L5 - 1, 44), -90f);
-        // The hard way: a container on the deck (5 → 7.6), a crate
-        K(g, "CargoContainer-6m", new Vector3(-3, L5, 35), 90f);
-        Prop(g, "Crate-1x1m", new Vector3(4, L5, 34), 15f, 1.3f);
-        // From the yard onto the deck the hard way: a container against its south face (0 → 2.6 → the wall top 4 → 5)
-        K(g, "CargoContainer-6m", new Vector3(4, L0, 29), 0f);
+        // Cover on the deck (clear of both ramps' ends); the hard way up from the yard: a container in front of the room
+        // (0 → 3.5 → the wall top 4 → the deck)
+        Container(g, 5.5f, L5, 36, 90f);
+        Container(g, 4, L0, 28.5f, 0f);
 
         // Catwalk at 10 from the factory roof's south-east corner, over the dock's front edge, round a corner piece (the
         // straight pieces have rails on both sides) and south to the Stack: one jump onto its top
@@ -303,24 +475,29 @@ public static class FoundryBuilder
     private static void BuildEast()
     {
         var g = Group("East Deck and Warehouse");
-        // Deck and warehouse roof: outdoor floors; a skylight hole in the roof over the mezzanine (the hard way up)
-        for (float x = 28; x <= 36; x += 8) for (float z = -36; z <= 20; z += 8) { Tile(g, OutdoorFloor(), x, z, L5); Ceiling(g, x, L5 - 1, z); }
-        for (float x = 44; x <= 52; x += 8)
-            for (float z = -36; z <= 20; z += 8)
-            {
-                bool skylight = x == 52 && z == -4;
-                Tile(g, skylight ? "Floor-Hole-8m" : OutdoorFloor(), x, z, L10);
-                if (!skylight) Ceiling(g, x, L10 - 1, z);
-            }
-        // Indoors underneath (the undercroft under the deck flows into the hall): mostly tiles, now and then inlay or grate
-        for (float x = 28; x <= 52; x += 8) for (float z = -36; z <= 20; z += 8) Tile(g, IndoorFloor(), x, z, L0);
+        // Deck and roof: two plain slabs each; indoors underneath (undercroft and hall, one room): two big tiled slabs
+        foreach (float z in new[] { -24f, 8f })
+        {
+            Slab(g, "Floor-32x16m", 32, z, L5, 90f);
+            Slab(g, "Floor-32x16m", 48, z, L10, 90f);
+        }
+        Slab(g, "Floor-32x32m-Tiles", 40, -24, L0);
+        Slab(g, "Floor-32x32m-Tiles", 40, 8, L0);
+        for (float z = -36; z <= 20; z += 8)
+        {
+            foreach (float x in new[] { 28f, 36f }) Ceiling(g, x, L5 - 1, z);
+            foreach (float x in new[] { 44f, 52f }) Ceiling(g, x, L10 - 1, z);
+        }
 
         // The deck's west face (to the yard, 0..4 under its slab): mixed panels, two archways into the undercroft, none
         // where the ramp up from the yard meets the deck
         for (float z = -36; z <= 20; z += 8)
         {
             if (z == 20) continue;
-            Wall(g, z == -4 || z == 12 ? "Archway-8m" : LowerWall(), 24, 0, z, W);
+            // Beside the service trench (z −24..−8) there's no floor outside the deck: the panel stands just inside its
+            // edge instead (x 24..25), above the service room's east wall
+            if (z == -20 || z == -12) { Wall(g, LowerWall(), 25, 0, z, W); continue; }
+            Wall(g, z == -4 || z == 12 ? "Archway-8m" : z == -28 || z == 4 ? ClimbWall : LowerWall(), 24, 0, z, W);   // Climbs onto the deck
         }
         Post(g, 24, 0, HZ0, W, S, 4f);
         Post(g, 24, 0, HZ1, W, N, 4f);
@@ -330,7 +507,7 @@ public static class FoundryBuilder
         // The deck's ends (the map's edge)
         foreach (float x in new[] { 28f, 36f }) { Wall(g, LowerWall(), x, 0, HZ0, S); Wall(g, LowerWall(), x, 0, HZ1, N); }
         // The warehouse's face above the deck (5..9), none where the ramp from the deck meets the roof; posts at its ends
-        for (float z = -36; z <= 20; z += 8) if (z != -28) Wall(g, LowerWall(), HX0, L5, z, W);
+        for (float z = -36; z <= 20; z += 8) if (z != -28) Wall(g, z == -20 || z == 12 ? ClimbWall : LowerWall(), HX0, L5, z, W);   // Climbs onto the roof
         Post(g, HX0, 4, HZ0, W, S, 5f);
         Post(g, HX0, 4, HZ1, W, N, 5f);
         // The warehouse's outer faces (the map's edge on three sides): never flat: windows, pipes, mixed panels
@@ -347,26 +524,26 @@ public static class FoundryBuilder
         for (float z = -36; z <= 20; z += 8) K(g, "Beam-8m", new Vector3(52.5f, L5 - 2, z), 90f);
         foreach (float z in new[] { -32f, -8f, 16f }) K(g, "Pillar-Round-2m", new Vector3(52.5f, 0, z), 0f, new Vector3(1f, 0.75f, 1f));
         K(g, "Stairs-8x10m", new Vector3(47, L0 - 1, -20), 90f);
-        K(g, "CargoContainer-6m", new Vector3(54, L5, -4), 90f); // Under the skylight: 7.6 → the roof (10)
+        Container(g, 54, L5, -4, 90f);
         K(g, LowerWall(), new Vector3(47, 0, 8), 0f);            // Partitions
         K(g, LowerWall(), new Vector3(46, 0, -28), 90f);
-        K(g, "CargoContainer-6m", new Vector3(44, 0, 14), 0f);
-        K(g, "Barrier-4m", new Vector3(48, 0, -8), 90f);
-        Prop(g, "Crate-1x1m", new Vector3(50, 0, 18), 15f, 1.3f);
+        K(g, "PipeRack-8m", new Vector3(44, 0, 16), 0f);                 // Run under it, climb onto it
+        K(g, "CrateStack-Stepped-4p5m", new Vector3(49.5f, 0, -12), 0f);  // 1.5 → 3 → 4.5, east: a hop onto the mezzanine (5)
 
         // Ramps rising east: yard → deck, deck → warehouse roof
         K(g, "Ramp-8x10m", new Vector3(19, L0 - 1, 20), 90f);
         K(g, "Ramp-8x10m", new Vector3(35, L5 - 1, -28), 90f);
         // The hard way up each: containers against the faces
-        K(g, "CargoContainer-6m", new Vector3(21, L0, -16), 90f);   // 2.6 → the wall top 4 → deck 5
-        K(g, "CargoContainer-6m", new Vector3(37, L5, 8), 90f);     // 7.6 → roof 10
+        Container(g, 20.5f, L0, -3, 90f);    // 3.5 → the wall top 4 → deck 5
+        Container(g, 36.5f, L5, 8, 90f);     // 8.5 → roof 10
 
-        // Cover up top
-        K(g, "Barrier-4m", new Vector3(32, L5, -10), 90f);
-        K(g, "CargoContainer-6m", new Vector3(30, L5, 14), 0f);
-        K(g, "Barrier-4m", new Vector3(48, L10, -20), 0f);
-        K(g, "Pillar-Round-4m", new Vector3(46, L10, 4), 0f);
-        Prop(g, "Vent", new Vector3(44, L10, -32), 0f);
+        // Cover up top, evenly: a container each side of a barrier on the deck; a pillar and two vents on the roof
+        Barrier(g, 34, L5, 0, 90f);
+        Container(g, 30, L5, 14, 0f);
+        Container(g, 30, L5, -14, 0f);
+        K(g, "Pillar-Round-4m", new Vector3(48, L10, -8), 0f);
+        Prop(g, "Vent", new Vector3(48, L10, -32), 0f);
+        Prop(g, "Vent", new Vector3(48, L10, 20), 0f);
 
         Lamp(g, new Vector3(32, 2.5f, -4), 12f);
         Lamp(g, new Vector3(32, 2.5f, 12), 12f);
@@ -391,10 +568,9 @@ public static class FoundryBuilder
         PropsUnder(g, bridge, 1f, new Vector2(-1.5f, 0));
         PropsUnder(g, K(g, "Platform-4x4m", new Vector3(-35, L0 - 1, 16), 0f), 1f, Vector2.zero);
         // Sky deck (10) west of the factory, flush with its roof: the fan's updraft rides you up beside it
-        var sky = K(g, "Floor-16x16m", new Vector3(-48, L10 - 1, 32), 0f);
+        var sky = K(g, "Platform-16x16m", new Vector3(-48, L10 - 1, 32), 0f);
         PropsUnder(g, sky, 1.4f, new Vector2(4.5f, 4.5f), new Vector2(-4.5f, 4.5f), new Vector2(4.5f, -4.5f), new Vector2(-4.5f, -4.5f));
-        K(g, "Barrier-4m", new Vector3(-52, L10, 36), 0f);
-        Prop(g, "Crate-1x1m", new Vector3(-44, L10, 38), 25f, 1.3f);
+        // (kept clear: a landing spot)
         // A beam from the ring's north edge, under the sky deck, to plates at the factory's west door: the narrow way
         // (you can be knocked off)
         K(g, "Beam-8m", new Vector3(RingX, L0 - 1, 28.2f), 90f);
@@ -411,50 +587,56 @@ public static class FoundryBuilder
 
     // ─── South: the docks (0), open to the void ───────────────────────────────
 
-    // Missing tiles (pits to the void) in the docks
-    private static readonly Vector2[] DockPits = { new(-28, -36), new(-4, -44), new(12, -36) };
+    // Two pits in the lane, mirrored about the docks' middle (x −8)
+    private static readonly float[] LanePits = { -28f, 12f };
 
     private static void BuildDocks()
     {
         var g = Group("Docks");
+        // x −40..24, z −64..−24: a plain quay north and south (32 × 16 slabs), one straight lane between them (z −48..−40)
+        foreach (float x in new[] { -24f, 8f })
+        {
+            Slab(g, "Floor-32x16m", x, -32, L0);
+            Slab(g, "Floor-32x16m", x, -56, L0);
+        }
         for (float x = -36; x <= 20; x += 8)
-            for (float z = -52; z <= -28; z += 8)
-            {
-                if (System.Array.Exists(DockPits, p => p.x == x && p.y == z)) continue;
-                // One straight lane east–west (all facing the same way), the rest mixed
-                Tile(g, z == -44 ? "Floor-Lanes-8m" : OutdoorFloor(), x, z, L0, z == -44 ? 90f : 0f);
-            }
+            if (System.Array.IndexOf(LanePits, x) < 0) Tile(g, "Floor-Lanes-8m", x, -44, L0, 0f);
         // Arch gates from the yard
         K(g, "Archway-8m", new Vector3(-12, L0, -24), 0f);
         K(g, "Archway-8m", new Vector3(12, L0, -24), 0f);
         Tunnel("Dock Gate W", new Vector3(-12, 0, -22), new Vector3(-12, 0, -27), "run");
         Tunnel("Dock Gate E", new Vector3(12, 0, -22), new Vector3(12, 0, -27), "run");
-        // Container stacks (some two high: a climb) and barriers
-        K(g, "CargoContainer-6m", new Vector3(-32, L0, -48), 0f);
-        K(g, "CargoContainer-6m", new Vector3(-32, L0 + 2.6f, -48), 10f);
-        K(g, "CargoContainer-6m", new Vector3(-18, L0, -32), 90f);
-        K(g, "CargoContainer-6m", new Vector3(4, L0, -52), 0f);
-        K(g, "CargoContainer-6m", new Vector3(18, L0, -44), 90f);
-        K(g, "CargoContainer-6m", new Vector3(18, L0 + 2.6f, -44), 95f);
-        K(g, "Barrier-4m", new Vector3(-8, L0, -36), 0f);
-        K(g, "Barrier-4m", new Vector3(8, L0, -30), 90f);
-        Prop(g, "Crate-1x1m", new Vector3(-24, L0, -52), 0f, 1.4f);
-        // A boost pad sends you east down the lane, over the middle pit
-        var boost = K(g, "BoostPad-2x2", new Vector3(-34, L0, -44), 90f);
-        boost.AddComponent<BoostPad>();
+        // Mirrored about x −8: a stacked pair of containers each side on the north quay (climbs), single ones on the
+        // south quay, a barrier on the middle line of each
+        foreach (float x in new[] { -32f, 16f })
+        {
+            Container(g, x, L0, -32, 0f);
+            Container(g, x, L0 + ContainerHeight, -32, 0f);
+
+        }
+        Barrier(g, -8, L0, -30, 0f);
+        Barrier(g, -8, L0, -58, 0f);
+        // South quay: two open containers, their open ends (local +X) facing each other across the middle; crate stacks
+        // on the north quay and cable spools by the pier, mirrored
+        K(g, "CargoContainer-Open-8m", new Vector3(-32, L0, -56), 0f);
+        K(g, "CargoContainer-Open-8m", new Vector3(16, L0, -56), 180f);
+        InsideTunnel("Dock container W", new Vector3(-26, 0, -56), new Vector3(-31, 0, -56));
+        InsideTunnel("Dock container E", new Vector3(10, 0, -56), new Vector3(15, 0, -56));
+        foreach (float x in new[] { -20f, 4f }) K(g, "CrateStack-2x2-3m", new Vector3(x, L0, -30), 0f);
+        foreach (float x in new[] { -26f, 10f }) K(g, "CableSpool-Upright-2m", new Vector3(x, L0, -60), 0f);
         // The pier: a catwalk out over the void (past the skirt's rim), a teleport pad at its end to the sky deck (and back)
-        for (float z = -61; z >= -69; z -= 8)
+        for (float z = -69; z >= -77; z -= 8)
         {
             var walk = K(g, "Catwalk-8x2m", new Vector3(-20, L0 - 1, z), 90f);
-            if (z < -61) PropsUnder(g, walk, 0.8f, Vector2.zero);
+            if (z < -69) PropsUnder(g, walk, 0.8f, Vector2.zero);
         }
-        PropsUnder(g, K(g, "Platform-8x4m", new Vector3(-20, L0 - 1, -75), 0f), 1.2f, new Vector2(-2, 0), new Vector2(2, 0));
-        var a = K(g, "TeleportPad", new Vector3(-20, L0, -75), 0f).AddComponent<TeleportPad>();
+        PropsUnder(g, K(g, "Platform-8x4m", new Vector3(-20, L0 - 1, -83), 0f), 1.2f, new Vector2(-2, 0), new Vector2(2, 0));
+        var a = K(g, "TeleportPad", new Vector3(-20, L0, -83), 0f).AddComponent<TeleportPad>();
         var b = K(g, "TeleportPad", new Vector3(-48, L10, 28), 0f).AddComponent<TeleportPad>();
         Link(a, b, 0f);
         Link(b, a, 180f);
-        Lamp(g, new Vector3(-8, 8, -40), 24f);
-        Lamp(g, new Vector3(-20, 5, -73), 14f);
+        Lamp(g, new Vector3(-8, 8, -44), 24f);
+        Lamp(g, new Vector3(-20, 5, -81), 14f);
     }
 
     private static void Link(TeleportPad from, TeleportPad to, float exitYaw)
@@ -474,17 +656,20 @@ public static class FoundryBuilder
         ("Yard North-West",  -14,   6, L0),
         ("Yard South-West",  -18, -18, L0),
         ("Yard East",         12,  22, L0),
-        ("Service Level",     18, -16, Service),
+        ("Service Level",     12, -12, Service),
         ("Factory Mezzanine",-32,  46, L5),
         ("Factory Roof",     -14,  44, L10),
-        ("Loading Dock",       4,  40, L5),
+        ("Loading Dock",       5,  44, L5),
         ("East Deck",         30,  -2, L5),
         ("Warehouse Roof",    48,  12, L10),
         ("Warehouse Hall",    44, -14, L0),
         ("Ring Island",    RingX,  22, L0),
-        ("Docks West",       -24, -44, L0),
+        ("Docks West",       -16, -56, L0),
         ("Docks East",         2, -36, L0),
         ("Sky Deck",         -54,  38, L10),
+        ("West Hall",       -104, -44, L0),
+        ("West Room",       -104, -24, L5),
+        ("West Tower",       -72,   4, L0),
     };
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -521,7 +706,25 @@ public static class FoundryBuilder
         bool IsOuter(Vector2Int c) => !island.Contains(c) && (outer.Contains(c) || c.x < minX || c.x > maxX || c.y < minZ || c.y > maxZ);
 
         BuildSkirt(g, IsOuter, dirs);
-        BuildDirt(g, IsOuter, minX, maxX, minZ, maxZ);
+        // Each separate piece of ground (4-connected cells) floats on its own dirt, largest first
+        var left = new HashSet<Vector2Int>(island);
+        var pieces = new List<HashSet<Vector2Int>>();
+        while (left.Count > 0)
+        {
+            var start = default(Vector2Int);
+            foreach (var c in left) { start = c; break; }
+            var piece = new HashSet<Vector2Int> { start };
+            var todo = new Queue<Vector2Int>(); todo.Enqueue(start); left.Remove(start);
+            while (todo.Count > 0)
+            {
+                var c = todo.Dequeue();
+                foreach (var d in dirs) if (left.Remove(c + d)) { piece.Add(c + d); todo.Enqueue(c + d); }
+            }
+            pieces.Add(piece);
+        }
+        pieces.Sort((a, b) => b.Count.CompareTo(a.Count));
+        for (int k = 0; k < pieces.Count; k++)
+            BuildDirt(g, IsOuter, pieces[k], k == 0 ? IslandMeshPath : IslandMeshPath.Replace(".asset", $"_{k}.asset"));
     }
 
     // Skirt panels (16 m tall flat faces to climb back up) hang round the outer edge just outside it, their tops flush
@@ -575,12 +778,14 @@ public static class FoundryBuilder
 
     // The dirt under it all: low-poly, flat-shaded; rock faces down from the skirt's foot (and down the pits), an
     // underside sloping in from the rim to a flat bottom where the big propellers are bolted on
-    private static void BuildDirt(Transform parent, System.Func<Vector2Int, bool> isOuter, int minX, int maxX, int minZ, int maxZ)
+    private static void BuildDirt(Transform parent, System.Func<Vector2Int, bool> isOuter, HashSet<Vector2Int> cells, string meshPath)
     {
+        int minX = int.MaxValue, maxX = int.MinValue, minZ = int.MaxValue, maxZ = int.MinValue;
+        foreach (var c in cells) { minX = Mathf.Min(minX, c.x); maxX = Mathf.Max(maxX, c.x); minZ = Mathf.Min(minZ, c.y); maxZ = Mathf.Max(maxZ, c.y); }
         int per = Mathf.RoundToInt(8f / DirtStep);
         int i0 = minX * per, i1 = (maxX + 1) * per, j0 = minZ * per, j1 = (maxZ + 1) * per;
         Vector2Int CellOfSub(int i, int j) => new(Mathf.FloorToInt(i / (float)per), Mathf.FloorToInt(j / (float)per));
-        bool Solid(int i, int j) => island.Contains(CellOfSub(i, j));
+        bool Solid(int i, int j) => cells.Contains(CellOfSub(i, j));
         bool OuterSub(int i, int j) => isOuter(CellOfSub(i, j));
 
         // The rim: vertices where the island meets the outer void; depth grows with the distance from it
@@ -618,7 +823,7 @@ public static class FoundryBuilder
         foreach (var (v, d) in spots)
         {
             if (mounts.Count >= 5) break;
-            float scale = mounts.Count == 0 ? 3.5f : 1.8f;
+            float scale = mounts.Count == 0 ? Mathf.Clamp(d / 9f, 1.8f, 3.5f) : 1.8f;   // The main one sized to the island
             if (d < (mounts.Count == 0 ? 0f : 14f)) break;
             var at = new Vector2(v.x, v.y) * DirtStep;
             if (mounts.Exists(m => (m.at - at).magnitude < 6f * (m.scale + scale) + 10f)) continue;
@@ -685,9 +890,9 @@ public static class FoundryBuilder
         mesh.SetTriangles(underTris, 1);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(IslandMeshPath));
-        AssetDatabase.DeleteAsset(IslandMeshPath);
-        AssetDatabase.CreateAsset(mesh, IslandMeshPath);
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(meshPath));
+        AssetDatabase.DeleteAsset(meshPath);
+        AssetDatabase.CreateAsset(mesh, meshPath);
 
         var dirt = new GameObject("Island Dirt");
         dirt.transform.SetParent(parent, false);
@@ -803,6 +1008,68 @@ public static class FoundryBuilder
         foreach (var r in c.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    /// <summary>A walk-through check for a prop with its own raised floor inside (a container): the path starts on the
+    /// floor found at the path's middle, and must fit a running penguin.</summary>
+    private static void InsideTunnel(string name, Vector3 from, Vector3 to)
+    {
+        Physics.SyncTransforms();
+        float floor = Physics.Raycast((from + to) / 2f + Vector3.up * 1.5f, Vector3.down, out RaycastHit hit, 3f) ? hit.point.y : to.y;
+        report.Add($"{name}: floor inside at {floor:0.00}");
+        Tunnel(name, new Vector3(from.x, floor, from.z), new Vector3(to.x, floor, to.z), "run");
+    }
+
+    // ─── Access check ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Every ramp, flight of stairs, catwalk and bridge needs 2 m of clear space beyond each end at its landing height
+    /// (penguin-tall, a little narrower than the piece): anything standing there more than 0.5 m above the landing (a
+    /// container, a wall, a barrier) is reported as "! blocked". Floors and low lips don't count.
+    /// </summary>
+    private static void CheckAccess()
+    {
+        Physics.SyncTransforms();
+        int blocked = 0, checkedEnds = 0;
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            var go = t.gameObject;
+            if (!PrefabUtility.IsAnyPrefabInstanceRoot(go)) continue;
+            string n = go.name;
+            bool slope = n.StartsWith("Ramp-") || n.StartsWith("Stairs-");
+            bool walk = n == "Catwalk-8x2m" || n.StartsWith("Bridge-");
+            if (!slope && !walk) continue;
+            var own = go.GetComponentsInChildren<Collider>(true);
+            Bounds b = own[0].bounds;
+            foreach (var c in own) b.Encapsulate(c.bounds);
+            Vector3 along = slope ? go.transform.forward : go.transform.right;      // Ramps rise along +Z; walks run along x
+            along = Vector3.ProjectOnPlane(along, Vector3.up).normalized;
+            Vector3 side = Vector3.Cross(Vector3.up, along);
+            float half = Mathf.Abs(Vector3.Dot(b.extents, new Vector3(Mathf.Abs(along.x), 0f, Mathf.Abs(along.z))));
+            float width = 2f * Mathf.Abs(Vector3.Dot(b.extents, new Vector3(Mathf.Abs(side.x), 0f, Mathf.Abs(side.z))));
+            foreach (float sign in new[] { -1f, 1f })
+            {
+                Vector3 end = b.center + along * (sign * half);
+                float landing = float.NegativeInfinity;
+                foreach (var c in own)
+                    if (c.Raycast(new Ray(new Vector3(end.x, b.max.y + 5f, end.z) - along * (sign * 0.3f), Vector3.down), out RaycastHit hit, 100f))
+                        landing = Mathf.Max(landing, hit.point.y);
+                if (float.IsNegativeInfinity(landing)) continue;
+                checkedEnds++;
+                // From 0.1 to 2 m past the end, 1.1 m in from each side (walls alongside a landing don't block it)
+                var centre = new Vector3(end.x, landing + 0.5f + 1.45f, end.z) + along * (sign * 1.05f);
+                var box = new Vector3(Mathf.Max(0.5f, width - 2.2f) / 2f, 1.45f, 0.95f);
+                foreach (var hit in Physics.OverlapBox(centre, box, Quaternion.LookRotation(along), ~0, QueryTriggerInteraction.Ignore))
+                {
+                    if (hit.transform.IsChildOf(go.transform) || hit.bounds.max.y <= landing + 0.5f) continue;
+                    var other = PrefabUtility.GetOutermostPrefabInstanceRoot(hit.gameObject) ?? hit.gameObject;
+                    report.Add($"! blocked: {n} at ({go.transform.position.x:0.#}, {go.transform.position.z:0.#}), its {(slope ? (sign > 0 ? "top" : "bottom") : "end")} by {other.name} at ({other.transform.position.x:0.#}, {other.transform.position.y:0.#}, {other.transform.position.z:0.#})");
+                    blocked++;
+                    break;
+                }
+            }
+        }
+        report.Add($"access: {checkedEnds} ramp/stair/walk ends checked, {blocked} blocked");
+    }
+
     // ─── Overlap check ────────────────────────────────────────────────────────
 
     /// <summary>
@@ -908,12 +1175,15 @@ public static class FoundryBuilder
     {
         // Let the wind run a few seconds so it shows in the pictures
         foreach (var ps in root.GetComponentsInChildren<ParticleSystem>()) ps.Simulate(6f, true, true);
-        Shot("foundry_top", new Vector3(0, 170, -8), Quaternion.Euler(90, 0, 0), true, 80f);
+        Shot("foundry_top", new Vector3(-30, 170, -16), Quaternion.Euler(90, 0, 0), true, 100f);
+        Shot("foundry_westisle", new Vector3(-40, 28, -80), Quaternion.LookRotation(new Vector3(-48, -18, 64)), false, 0f);
+        Shot("foundry_zip", new Vector3(-95, 20, 26), Quaternion.LookRotation(new Vector3(28, -6, -6)), false, 0f);
+        Shot("foundry_tower", new Vector3(-78, 2.5f, 6), Quaternion.LookRotation(new Vector3(0.6f, 0.9f, -1f)), false, 0f);
         Shot("foundry_sw", new Vector3(-95, 70, -100), Quaternion.LookRotation(new Vector3(95, -60, 100)), false, 0f);
         Shot("foundry_ne", new Vector3(95, 75, 100), Quaternion.LookRotation(new Vector3(-95, -65, -100)), false, 0f);
         Shot("foundry_yard", new Vector3(-20, 6, -20), Quaternion.LookRotation(new Vector3(20, -2, 30)), false, 0f);
         Shot("foundry_factory", new Vector3(-24, 3, 14), Quaternion.LookRotation(new Vector3(0, 0.5f, 1)), false, 0f);
-        Shot("foundry_service", new Vector3(20, -5, -22), Quaternion.LookRotation(new Vector3(-15, -2, 14)), false, 0f);
+        Shot("foundry_service", new Vector3(10, -2.5f, -10), Quaternion.LookRotation(new Vector3(10, -1.5f, -10)), false, 0f);
         Shot("foundry_east", new Vector3(10, 10, -30), Quaternion.LookRotation(new Vector3(30, -3, 25)), false, 0f);
         Shot("foundry_hall", new Vector3(42, 2.8f, -34), Quaternion.LookRotation(new Vector3(0.45f, 0.02f, 1f)), false, 0f);
         Shot("foundry_island", new Vector3(-150, -10, -150), Quaternion.LookRotation(new Vector3(158, -15, 146)), false, 0f);

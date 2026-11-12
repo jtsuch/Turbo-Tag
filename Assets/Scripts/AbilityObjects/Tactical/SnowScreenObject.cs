@@ -14,8 +14,6 @@ using UnityEngine;
 /// </summary>
 public class SnowScreenObject : TacticalTrapObject
 {
-    [TunableParam("Speed", 2f, 30f)]
-    [SerializeField] private float speed = 9f;
     [TunableParam("Travel Time", 0.5f, 10f)]
     [SerializeField] private float travelSeconds = 3.5f;
     [SerializeField] private float pileEvery = 1.1f;    // Metres between wall segments along the path

@@ -9,6 +9,7 @@ public class FreeplayMode : GameMode
 {
     public override string DisplayName => "Freeplay";
     public override bool   ShowsTimer  => false;
+    public override bool   PlaysMapIntro => false; // No countdown: straight in
 
     public override void StartMatch()
     {

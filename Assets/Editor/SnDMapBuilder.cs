@@ -36,6 +36,8 @@ public static class SnDMapBuilder
     private const float PlatformHeight = 2.5f;
     private const float ThinWallHeight = 4f;
 
+    // Filled from the layout JSON by JsonUtility, which the compiler can't see
+#pragma warning disable 0649
     [System.Serializable]
     private class Site { public string letter; public float[] rect; }
 
@@ -50,6 +52,7 @@ public static class SnDMapBuilder
         public Site[] sites;
         public Spawn[] spawns;
     }
+#pragma warning restore 0649
 
     /// <summary>Builds (or rebuilds) one map's scene from its layout file.</summary>
     public static void Build(string name)

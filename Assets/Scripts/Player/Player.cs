@@ -118,6 +118,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Stuck in place on a surface (Chameleon): no movement and no gravity until cleared.</summary>
     public bool IsAnchored { get; set; }
 
+    /// <summary>Riding a zip line (World/ZipLine moves the body): no movement and no gravity until it lets go.</summary>
+    public bool OnZipLine { get; set; }
+
     /// <summary>
     /// Wall Magnet (owner): the "up" of the surface being walked on (a wall's or ceiling's normal), or null for
     /// normal gravity. PlayerMovement walks along that surface; PlayerCam turns the body and view to match.

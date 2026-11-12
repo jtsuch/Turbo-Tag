@@ -52,6 +52,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private float       pendingSince;
     private MatchPhase  lastAnnouncedPhase;
     private float       sceneStartTime;
+    private float       introStartedAt = -1f; // Master: when this level's map intro began (−1: not yet)
 
     private const float PendingTimeout = 3f;
 
@@ -90,6 +91,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out LastHiderCam _)) gameObject.AddComponent<LastHiderCam>();       // Tag: hunters can watch the last hider
         if (!TryGetComponent(out ControlsHint _)) gameObject.AddComponent<ControlsHint>();       // The less obvious keys, on the right
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
+        if (!TryGetComponent(out MapIntro _)) gameObject.AddComponent<MapIntro>();               // The pan round the map before a match
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
         Scores = GetComponent<ScoreController>();
@@ -143,7 +145,15 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (Phase == MatchPhase.Waiting)
         {
             if (AllPlayersSpawned() || Time.time - sceneStartTime > maxWaitForPlayers)
-                Mode.StartMatch();
+            {
+                // First a short look round the map on every screen (MapIntro), then the match
+                if (Mode.PlaysMapIntro && introStartedAt < 0f)
+                {
+                    introStartedAt = Time.time;
+                    NetProps.SetRoom(new Hashtable { [RoomKeys.IntroStart] = PhotonNetwork.Time });
+                }
+                if (!Mode.PlaysMapIntro || Time.time - introStartedAt >= MapIntro.Seconds) Mode.StartMatch();
+            }
             return;
         }
 
@@ -246,7 +256,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.PausedAt]       = -1d,
             [RoomKeys.DiscHolder]     = -1,
             [RoomKeys.Modifier]       = "",
+            [RoomKeys.IntroStart]     = 0d,
         });
+        introStartedAt = -1f;
 
         PlayerRoles.ClearPending();
         bool keepRoles = NetProps.Room(RoomKeys.RolesDealt, false); // Dealt in Pregame: StartMatch keeps them

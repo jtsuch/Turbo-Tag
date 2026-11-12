@@ -52,6 +52,9 @@ public abstract class GameMode
     /// <summary>True if the HUD should show the match clock.</summary>
     public virtual bool ShowsTimer => true;
 
+    /// <summary>Show the map intro (a pan round the level with its name) before the match starts (`MapIntro`).</summary>
+    public virtual bool PlaysMapIntro => true;
+
     /// <summary>The local player spawns with abilities off (the admin console's "ability 0"; "ability 1" turns them on). Tutorial.</summary>
     public virtual bool AbilitiesStartOff => false;
 
