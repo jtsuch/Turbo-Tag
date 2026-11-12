@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: SunnyDaySky
+  m_Shader: {fileID: 4800000, guid: 64cb2b9f068dc624285ae3055a7ebcf4, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _CloudCover: 0.42
+    - _CloudScale: 1.4
+    - _SeaCover: 0.72
+    - _SunGlow: 0.6
+    - _SunSize: 0.0035
+    m_Colors:
+    - _BelowColor: {r: 0.8, g: 0.87, b: 0.95, a: 1}
+    - _CloudColor: {r: 1, g: 1, b: 1, a: 1}
+    - _CloudShade: {r: 0.7, g: 0.76, b: 0.86, a: 1}
+    - _CloudSpeed: {r: 0.006, g: 0.002, b: 0, a: 0}
+    - _HorizonColor: {r: 0.72, g: 0.85, b: 0.97, a: 1}
+    - _SunColor: {r: 1, g: 0.95, b: 0.84, a: 1}
+    - _SunDir: {r: 0.3531289, g: 0.7880108, b: -0.5043204, a: 0}
+    - _ZenithColor: {r: 0.22, g: 0.47, b: 0.86, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

@@ -246,8 +246,19 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
 
     private CosmeticWearer wearer;
 
-    /// <summary>The full-body outfit's renderers on this copy (empty if none), for glows (Armored).</summary>
+    /// <summary>The full-body outfit's renderers on this copy (empty if none).</summary>
     public Renderer[] OutfitRenderers => wearer != null ? wearer.RenderersIn(CosmeticSlot.Outfit) : System.Array.Empty<Renderer>();
+
+    /// <summary>Everything worn on this copy (head gear, body gear, outfit), for glows (Armored, the spawn flash).</summary>
+    public IEnumerable<Renderer> WornRenderers
+    {
+        get
+        {
+            if (wearer == null) yield break;
+            foreach (var slot in Cosmetics.Slots)
+                foreach (var r in wearer.RenderersIn(slot)) yield return r;
+        }
+    }
 
     // The owner's synced loadout, worn on this copy (children of the body, so the minimap hides them too). Hidden
     // whole while the body is disguised, hidden or see-through; head gear gives way to the crown. Everything rides

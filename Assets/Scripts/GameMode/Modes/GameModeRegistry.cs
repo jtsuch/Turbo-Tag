@@ -24,6 +24,7 @@ public static class GameModeRegistry
         ["KeepAway"]  = () => new KeepAwayMode(),
         ["Tutorial"]  = () => new TutorialMode(),
         ["SnD"]       = () => new SearchDestroyMode(),
+        ["LMS"]       = () => new LastManStandingMode(),
     };
 
     private static GameModeDefinition[] definitions;

@@ -112,6 +112,9 @@ public static class MatchRules
     // ─── Search & Destroy ──────────────────────────────────────────────────────
     public static int   RoundsToWin => System.Math.Max(1, NetProps.Room(RuleKeys.RoundsToWin, 4));
     public static float RoundTime   => UnityEngine.Mathf.Max(20f, NetProps.Room(RuleKeys.RoundTime, 120f));
+
+    // ─── Last Man Standing ─────────────────────────────────────────────────────
+    public static int   RoundCount  => System.Math.Max(1, NetProps.Room(RuleKeys.RoundCount, 5));
     public static float BombTimer   => UnityEngine.Mathf.Max(5f, NetProps.Room(RuleKeys.BombTimer, 40f));
     public static float PlantTime   => UnityEngine.Mathf.Max(0.5f, NetProps.Room(RuleKeys.PlantTime, 4f));
     public static float DefuseTime  => UnityEngine.Mathf.Max(0.5f, NetProps.Room(RuleKeys.DefuseTime, 7f));

@@ -39,6 +39,12 @@ public static class RoomKeys
     public const string SnDHistory     = "Match_SnDHistory";  // Each finished round's winner, "R"/"B" per round
     public const string SnDFirstAttack = "Match_SnDFirst";    // The team that attacked in round 1
 
+    // Last Man Standing (master-written; see LastManStandingMode)
+    public const string LmsIn          = "Match_LmsIn";       // Actors playing this round (int[]): everyone, or Sudden Death's finalists
+    public const string LmsOut         = "Match_LmsOut";      // Actors knocked out this round (int[])
+    public const string LmsSudden      = "Match_LmsSudden";   // This round is Sudden Death (bool)
+    public const string LmsRoundWinner = "Match_LmsWinner";   // Last round's winner (actor, -1 none)
+
     /// <summary>Keys exposed in the room listing so the Join List can show them.</summary>
     public static readonly string[] LobbyVisible = { Map, GameMode };
 }
@@ -95,6 +101,9 @@ public static class RuleKeys
     public const string BombTimer          = "Rule_BombTimer";
     public const string PlantTime          = "Rule_PlantTime";
     public const string DefuseTime         = "Rule_DefuseTime";
+
+    // Last Man Standing (rounds use Rule_RoundTime too)
+    public const string RoundCount         = "Rule_RoundCount";
 }
 
 /// <summary>Player custom-property keys.</summary>

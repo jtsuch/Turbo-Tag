@@ -18,6 +18,8 @@ using UnityEngine;
 ///   - known interactables get their script: BouncePadv2 (BouncePad), Fan (Fan)
 /// Existing prefabs are never changed, so it's safe to run again after adding models.
 /// Menu: Turbo Tag/Process Meshes (editor job: ProcessMeshes).
+/// Re-exported models: Turbo Tag/Refresh Kit Prefabs (job: RefreshKitPrefabs) rebuilds each prefab whose FBX is newer,
+/// in place (same path, so the GUID and every reference stay), except the legacy pieces (Docs/KitStandards.md).
 /// </summary>
 public static class MeshPrefabBuilder
 {
@@ -26,8 +28,21 @@ public static class MeshPrefabBuilder
     private const int    StructureLayer = 6;
     private const float  BoxFillRatio   = 0.85f;
 
+    // Hand-placed in existing maps with overrides on their prefabs: never rebuilt (Docs/KitStandards.md)
+    private static readonly HashSet<string> Legacy = new()
+    {
+        "Crate-1x1m", "HalfWall-2m", "Fan", "BouncePad", "BouncePadv2", "Railing-2m", "Railing-Left", "Railing-Right", "Vent",
+        "Vent 1", "TeleportPad", "TallStructure1", "LowStruture1", "EdgeTrim-2m", "Checkpoint", "Donut", "Spinner", "Lever",
+        "Button", "Door", "QuestionMark", "Pillar-2m", "Floor-4x4m", "Wall-4m", "Wall-8m", "BoostPad-2x2",
+    };
+
+    [MenuItem("Turbo Tag/Refresh Kit Prefabs")]
+    public static void RefreshKitPrefabs() => Run(refresh: true);
+
     [MenuItem("Turbo Tag/Process Meshes")]
-    public static void ProcessMeshes()
+    public static void ProcessMeshes() => Run(refresh: false);
+
+    private static void Run(bool refresh)
     {
         var log = new StringBuilder("[Process Meshes]\n");
         int made = 0;
@@ -38,7 +53,11 @@ public static class MeshPrefabBuilder
             if (modelPath.StartsWith("Assets/Resources/Cosmetics/")) continue; // Cosmetics never get colliders, layers or Static
             string name       = Path.GetFileNameWithoutExtension(modelPath);
             string prefabPath = $"{PrefabFolder}/{name}.prefab";
-            if (File.Exists(prefabPath)) continue;
+            if (File.Exists(prefabPath))
+            {
+                if (!refresh || Legacy.Contains(name) || File.GetLastWriteTimeUtc(modelPath) <= File.GetLastWriteTimeUtc(prefabPath)) continue;
+                log.AppendLine($"  ~ {name}: model re-exported, rebuilding");
+            }
 
             var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
             if (model == null) { log.AppendLine($"  ! {name}: could not load"); continue; }
@@ -93,8 +112,8 @@ public static class MeshPrefabBuilder
                 continue;
             }
 
-            // A child already has a hand-made collider shape next to it: leave this mesh visual only
-            if (HasCustomCollider(go.transform.parent)) { skipped++; continue; }
+            // Hand-made collider shapes next to it or under it: leave this mesh visual only
+            if (HasCustomCollider(go.transform) || HasCustomCollider(go.transform.parent)) { skipped++; continue; }
 
             if (IsBoxShaped(mesh))
             {

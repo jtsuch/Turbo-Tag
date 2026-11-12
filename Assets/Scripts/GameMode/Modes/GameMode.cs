@@ -68,6 +68,15 @@ public abstract class GameMode
     public virtual bool KeepsDead(MatchPhase phase) => false;
 
     /// <summary>
+    /// The same for one player (<paramref name="actor"/>): lets a mode sit some players out whatever the phase (Last
+    /// Man Standing: Sudden Death bystanders and late joiners). Default: <see cref="KeepsDead(MatchPhase)"/>.
+    /// </summary>
+    public virtual bool KeepsDead(MatchPhase phase, int actor) => KeepsDead(phase);
+
+    /// <summary>Dead players watch a living player from a chase camera (<see cref="DeadSpectator"/>; S&amp;D has its own).</summary>
+    public virtual bool SpectatesWhenDead => false;
+
+    /// <summary>
     /// Team spawns at the start of a round: the spawn points this team uses, or null for the default (the level's
     /// points split in half along its longer side). Search &amp; Destroy: the attack and defence ends.
     /// </summary>
@@ -139,6 +148,9 @@ public abstract class GameMode
 
     /// <summary>Master: called every frame while the match is running.</summary>
     public virtual void MasterUpdate() { }
+
+    /// <summary>Every client, every frame once the mode is running (Last Man Standing: sitting out a round).</summary>
+    public virtual void ClientUpdate() { }
 
     /// <summary>Master: a client reported that <paramref name="tagger"/> touched <paramref name="target"/>.</summary>
     public virtual void HandleTagRequest(PhotonPlayer tagger, PhotonPlayer target) { }

@@ -69,6 +69,7 @@ public class PlayerHealth : MonoBehaviourPun
     private void RPC_Damage(float amount, int attacker, string weapon, bool headshot, Vector3 direction)
     {
         if (!photonView.IsMine || dead || player.IsCaught || player.AdminGod || player.Role == PlayerRole.Ghost) return;
+        if (player.IsSpawnProtected) return; // Just spawned: 2 s of no damage
         if (player.Has(PlayerFlag.Golden)) { Fx.Shake(0.05f); return; } // Invulnerable donut
         var combat  = CombatManager.Instance;
         var manager = GameModeManager.Instance;

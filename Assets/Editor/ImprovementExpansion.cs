@@ -345,7 +345,7 @@ public static class ImprovementExpansion
             ("Shed",          27f, -24f, null),
             ("West Tunnel",  -29f,   0f, null),
             ("West Tier",    -12f,  20f, null),
-            ("Upper Tier",     5f,  28f, null),
+            ("Upper Tier",     2f,  23f, null), // Moved from (5, 28) Nov 11: it was 11.9 m from North Ledge
             ("North Ledge",   10f,  37f, null),
             ("Hut A",        -12f,  49f, null),
             ("Hut B",         16f,  49f, null),

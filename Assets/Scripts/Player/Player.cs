@@ -165,6 +165,34 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>A synced donut flag (golden, phantom, repel…): the owner's own value, or the last one received.</summary>
     public bool Has(PlayerFlag flag) => ((IsLocal ? localFlags : remoteFlags) & (int)flag) != 0;
 
+    // ─── Spawn protection ─────────────────────────────────────────────────────
+
+    /// <summary>Seconds of no damage after every spawn (no message: the body just flashes white on every screen).</summary>
+    public const float SpawnProtectionSeconds = 2f;
+    private float spawnProtectedUntil;
+
+    /// <summary>Just spawned: takes no damage (owner: the timer; others: the synced flag).</summary>
+    public bool IsSpawnProtected => IsLocal ? Time.time < spawnProtectedUntil : Has(PlayerFlag.SpawnShield);
+
+    /// <summary>Owner: starts the spawn protection (every spawn and respawn: Spawner, and the first spawn here).</summary>
+    public void ProtectSpawn(float seconds = SpawnProtectionSeconds)
+    {
+        if (!IsLocal) return;
+        spawnProtectedUntil = Time.time + seconds;
+        SetFlag(PlayerFlag.SpawnShield, true);
+        if (spawnProtection != null) StopCoroutine(spawnProtection);
+        spawnProtection = StartCoroutine(EndSpawnProtection());
+    }
+
+    private Coroutine spawnProtection;
+
+    private IEnumerator EndSpawnProtection()
+    {
+        while (Time.time < spawnProtectedUntil) yield return null;
+        SetFlag(PlayerFlag.SpawnShield, false);
+        spawnProtection = null;
+    }
+
     /// <summary>Owner: turns a synced donut flag on or off (other screens see it within a moment).</summary>
     public void SetFlag(PlayerFlag flag, bool on)
     {
@@ -425,6 +453,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         // Tutorial: arrive with abilities off until an admin turns them on (all ability 1)
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         if (mode != null && mode.AbilitiesStartOff) AdminAbilitiesOff = true;
+        ProtectSpawn();
         LocalPlayerSpawned?.Invoke(this);
     }
 
@@ -658,12 +687,12 @@ public class Player : MonoBehaviourPun, IPunObservable
     }
 
     // The mode holds dead players down for now (Search & Destroy: until the next round's countdown)
-    private static bool ModeKeepsDead
+    private bool ModeKeepsDead
     {
         get
         {
             var manager = GameModeManager.Instance;
-            return manager != null && manager.Mode != null && manager.Mode.KeepsDead(manager.Phase);
+            return manager != null && manager.Mode != null && manager.Mode.KeepsDead(manager.Phase, ActorNumber);
         }
     }
 
@@ -802,4 +831,5 @@ public enum PlayerFlag
     Jammed      = 1 << 9, // Hunter tools and the radar can't find you (Jammer donut)
     HoldingBomb = 1 << 10, // Search & Destroy: the bomb is out in the right hand (the gun is put away)
     Barrier     = 1 << 11, // Shield Bubble is up: a blue glow on every screen (PlayerHighlight)
+    SpawnShield = 1 << 12, // Just spawned: no damage for a moment; flashes white on every screen (PlayerHighlight)
 }

@@ -108,6 +108,7 @@ public class Spawner : MonoBehaviour
         GetSpawnPoint(local.Role, out Vector3 position, out Quaternion rotation);
         local.Teleport(position, rotation);
         if (PlayerCam.Local != null) PlayerCam.Local.SnapTo(rotation.eulerAngles.y);
+        local.ProtectSpawn(); // 2 s without damage (a white flash on every screen, no message)
     }
 
     private void GetSpawnPoint(PlayerRole role, out Vector3 position, out Quaternion rotation)
@@ -157,13 +158,15 @@ public class Spawner : MonoBehaviour
     private static SpawnPoint lastSpawnPoint;
 
     /// <summary>
-    /// Before the match runs (Waiting, Countdown) everyone takes a different point: the list is shuffled with a
-    /// seed every client shares (the phase start time, so each match differs), then dealt out by player index.
-    /// Teams start on opposite halves of the map (the points split along the level's longer side, red one end,
-    /// blue the other), dealt out among teammates.
-    /// Mid-match: any point at least <see cref="SafeSpawnDistance"/> from every other living player (only enemies
-    /// count in team modes; never the one you last used) is equally likely; if none is that safe, a random one of
-    /// the safer half.
+    /// Before the match runs (Waiting, Countdown; every round's countdown too) everyone takes a different point, as
+    /// far apart as the level allows: starting from a point picked with a seed every client shares (the phase start
+    /// time, so each match differs), each next point is the one farthest from all already taken (farthest-point
+    /// spread), dealt out by player index. Teams start on opposite halves of the map (the points split along the
+    /// level's longer side, red one end, blue the other), spread the same way among teammates.
+    /// Mid-match (respawns): the points are scored by their distance to the nearest living enemy (everyone in modes
+    /// without teams; never the one you last used) and a random one of the safest is taken: any at least
+    /// <see cref="SafeSpawnDistance"/> away and within 75% of the safest, else within 85% of the safest. On every
+    /// spawn the player also gets <see cref="Player.SpawnProtectionSeconds"/> without damage.
     /// </summary>
     private static SpawnPoint PickSpawnPoint(PlayerRole role)
     {
@@ -181,19 +184,15 @@ public class Spawner : MonoBehaviour
                 points = chosen != null && chosen.Count > 0 ? chosen : TeamHalf(points, role);
             }
             double start = NetProps.Room(RoomKeys.PhaseStart, 0.0);
-            var shuffle = new System.Random((int)(start * 1000.0 % int.MaxValue));
-            for (int i = points.Count - 1; i > 0; i--)
-            {
-                int j = shuffle.Next(i + 1);
-                (points[i], points[j]) = (points[j], points[i]);
-            }
+            var seeded = new System.Random((int)(start * 1000.0 % int.MaxValue));
+            var spread = Spread(points, seeded.Next(points.Count));
             int index = team ? TeammateIndex(role) : LocalPlayerIndex(out _);
-            return lastSpawnPoint = points[index % points.Count];
+            return lastSpawnPoint = spread[index % spread.Count];
         }
 
         var others = new List<Vector3>();
         foreach (var p in Player.All)
-            if (!p.IsLocal && !p.IsDownAfterTag && !(team && p.Role == role)) others.Add(p.transform.position);
+            if (!p.IsLocal && !p.IsDownAfterTag && !p.IsCaught && !(team && p.Role == role)) others.Add(p.transform.position);
 
         float Safety(SpawnPoint point)
         {
@@ -203,16 +202,36 @@ public class Spawner : MonoBehaviour
         }
 
         if (points.Count > 1) points.Remove(lastSpawnPoint);
-        var safe = points.FindAll(point => Safety(point) >= SafeSpawnDistance);
-        if (safe.Count == 0)
-        {
-            points.Sort((a, b) => Safety(b).CompareTo(Safety(a)));
-            safe = points.GetRange(0, Mathf.Max(1, (points.Count + 1) / 2));
-        }
+        if (others.Count == 0) return lastSpawnPoint = points[Random.Range(0, points.Count)];
+        float best = 0f;
+        foreach (var point in points) best = Mathf.Max(best, Safety(point));
+        var safe = points.FindAll(point => Safety(point) >= SafeSpawnDistance && Safety(point) >= best * 0.75f);
+        if (safe.Count == 0) safe = points.FindAll(point => Safety(point) >= best * 0.85f);
         return lastSpawnPoint = safe[Random.Range(0, safe.Count)];
     }
 
-    private const float SafeSpawnDistance = 20f; // Metres from the nearest other living player
+    private const float SafeSpawnDistance = 25f; // Metres from the nearest living enemy
+
+    // Every point, ordered so each is as far as possible from those before it, starting with points[first]
+    private static List<SpawnPoint> Spread(List<SpawnPoint> points, int first)
+    {
+        var left = new List<SpawnPoint>(points);
+        var order = new List<SpawnPoint> { left[first] };
+        left.RemoveAt(first);
+        while (left.Count > 0)
+        {
+            int pick = 0; float far = -1f;
+            for (int i = 0; i < left.Count; i++)
+            {
+                float near = float.MaxValue;
+                foreach (var taken in order) near = Mathf.Min(near, (taken.transform.position - left[i].transform.position).sqrMagnitude);
+                if (near > far) { far = near; pick = i; }
+            }
+            order.Add(left[pick]);
+            left.RemoveAt(pick);
+        }
+        return order;
+    }
 
     // The half of the spawn points on this team's end: sorted along the axis the points spread out on most
     public static List<SpawnPoint> TeamHalf(List<SpawnPoint> points, PlayerRole role)

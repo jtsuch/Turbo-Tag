@@ -433,7 +433,7 @@ public static class GreyboxKit
         if (ortho) cam.orthographicSize = size;
         cam.fieldOfView = 60f;
         cam.farClipPlane = 1000f;
-        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.clearFlags = RenderSettings.skybox != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.12f, 0.12f, 0.16f);
         var rt = new RenderTexture(1600, ortho ? 1600 : 900, 24);
         cam.targetTexture = rt;

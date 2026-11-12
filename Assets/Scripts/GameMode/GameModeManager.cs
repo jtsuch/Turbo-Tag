@@ -114,6 +114,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (Mode.UsesGuns && !TryGetComponent(out CombatManager _)) gameObject.AddComponent<CombatManager>();
         // Search & Destroy: the bomb, planting/defusing, its HUD and spectating (shares this PhotonView too)
         if (Mode is SearchDestroyMode && !TryGetComponent(out SearchDestroyController _)) gameObject.AddComponent<SearchDestroyController>();
+        // Modes that keep dead players out (Last Man Standing): watch a survivor
+        if (Mode.SpectatesWhenDead && !TryGetComponent(out DeadSpectator _)) gameObject.AddComponent<DeadSpectator>();
 
         // A freshly loaded level always starts from a clean match state
         if (PhotonNetwork.IsMasterClient) ResetMatchState();
@@ -127,7 +129,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
     private void Update()
     {
-        if (!TryInitialize() || !PhotonNetwork.IsMasterClient) return;
+        if (!TryInitialize()) return;
+        Mode.ClientUpdate();
+        if (!PhotonNetwork.IsMasterClient) return;
 
         // Wait for our own phase write to round-trip before making further decisions
         if (pendingPhase.HasValue)

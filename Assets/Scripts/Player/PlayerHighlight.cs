@@ -55,11 +55,14 @@ public class PlayerHighlight : MonoBehaviour
         // Armored: a soft blue glow, breathing, while it's up (on the body and on a full-body outfit over it)
         barrierAmount = Mathf.MoveTowards(barrierAmount, player.Has(PlayerFlag.Barrier) ? 1f : 0f, 4f * Time.deltaTime);
         Color barrier = new Color(0.2f, 0.5f, 1f) * (0.55f + 0.2f * Mathf.Sin(Time.time * 4f)) * barrierAmount;
-        SetGlow(barrier);
-        SetOutfitGlow(barrier * 1.3f);
+        // Spawn protection: a quick white flicker while it lasts
+        spawnAmount = Mathf.MoveTowards(spawnAmount, player.Has(PlayerFlag.SpawnShield) ? 1f : 0f, 8f * Time.deltaTime);
+        Color spawn = Color.white * (0.45f + 0.45f * Mathf.Sin(Time.time * 28f)) * spawnAmount;
+        SetGlow(barrier + spawn);
+        SetOutfitGlow(barrier * 1.3f + spawn);
     }
 
-    private float barrierAmount;
+    private float barrierAmount, spawnAmount;
 
     private void OnDisable()
     {
@@ -68,10 +71,16 @@ public class PlayerHighlight : MonoBehaviour
 
     private readonly System.Collections.Generic.HashSet<Material> emissive = new();
 
+    private Color lastWornGlow = Color.clear;
+
     private void SetOutfitGlow(Color glow)
     {
         if (player == null || player.Appearance == null) return;
-        foreach (var r in player.Appearance.OutfitRenderers)
+        // Nothing to do while it stays off (it walks every worn renderer)
+        bool off = glow.maxColorComponent < 0.001f;
+        if (off && lastWornGlow.maxColorComponent < 0.001f) return;
+        lastWornGlow = glow;
+        foreach (var r in player.Appearance.WornRenderers)
         {
             if (r == null) continue;
             if (glow.maxColorComponent > 0.001f)
