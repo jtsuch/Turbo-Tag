@@ -86,7 +86,7 @@ public static class MatchRules
 
     // ─── Free for All (gun modes) ─────────────────────────────────────────────
     public const float DefaultMatchTime   = 300f;  // seconds
-    public const float DefaultPointLimit  = 25f;
+    public const float DefaultPointLimit  = 20f;
     public const float DefaultMaxHealth   = 100f;
     public const float DefaultDamageScale = 100f;  // %
     public const float DefaultFallPenalty = 1f;    // points lost for falling off

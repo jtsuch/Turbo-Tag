@@ -189,6 +189,14 @@ public class Player : MonoBehaviourPun, IPunObservable
 
     private Coroutine spawnProtection;
 
+    /// <summary>Owner: spawn protection ends early, the moment you attack (fire a gun or use an ability).</summary>
+    public void EndSpawnProtectionNow()
+    {
+        if (!IsLocal || Time.time >= spawnProtectedUntil) return;
+        spawnProtectedUntil = 0f;
+        SetFlag(PlayerFlag.SpawnShield, false);
+    }
+
     private IEnumerator EndSpawnProtection()
     {
         while (Time.time < spawnProtectedUntil) yield return null;

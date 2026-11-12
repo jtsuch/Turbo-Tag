@@ -30,6 +30,18 @@ public class PlayerHealth : MonoBehaviourPun
 
     private void Awake() => player = GetComponent<Player>();
 
+    // Owner: when each other player last hurt us this life, for assists (anyone within AssistWindow of the death)
+    public const float AssistWindow = 15f;
+    private readonly System.Collections.Generic.Dictionary<int, float> hurtBy = new();
+
+    private int[] Assisters(int killer)
+    {
+        var list = new System.Collections.Generic.List<int>();
+        foreach (var pair in hurtBy)
+            if (pair.Key != killer && Time.time - pair.Value <= AssistWindow) list.Add(pair.Key);
+        return list.ToArray();
+    }
+
     // ─── Owner ────────────────────────────────────────────────────────────────
 
     /// <summary>Owner: back to full (respawn, health drop).</summary>
@@ -84,7 +96,14 @@ public class PlayerHealth : MonoBehaviourPun
             Sfx.Here(SfxKind.Snap, 0.4f, 1.5f);
             if (amount <= 0f) return; // All of it into the shield
         }
+        float before     = Current;
         Current          = Mathf.Max(0f, Current - amount);
+        // Damage dealt (what actually came off, not overkill) and assists: hits from other players only
+        if (attacker >= 0 && attacker != photonView.OwnerActorNr)
+        {
+            hurtBy[attacker] = Time.time;
+            combat.NoteDamage(attacker, before - Current);
+        }
         LastAttacker     = attacker;
         LastDamageTime   = Time.time;
         LastHitDirection = direction; // Before Damaged: the HUD's hit-direction arcs read it
@@ -107,7 +126,8 @@ public class PlayerHealth : MonoBehaviourPun
 
         if (!fatal) return;
         dead = true;
-        combat.ReportLocalDeath(attacker, weapon, headshot);
+        combat.ReportLocalDeath(attacker, weapon, headshot, Assisters(attacker));
+        hurtBy.Clear(); // A new life starts with no helpers
     }
 
     // Owner: the shot shoves the body a little (more for big hits) and punches the view

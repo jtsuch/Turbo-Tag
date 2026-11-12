@@ -76,6 +76,7 @@ public static class FoundryBuilder
     public static void Build()
     {
         rng = new System.Random(20261115);
+        cubbies.Clear();
         lastWall = lastUpper = null;
         island.Clear();
         if (!System.IO.File.Exists(ScenePath)) AssetDatabase.CopyAsset("Assets/Scenes/Levels/Fracture.unity", ScenePath);
@@ -95,6 +96,8 @@ public static class FoundryBuilder
         BuildMiniIsland();
         BuildIsland();
         CheckAccess();
+        report.Add($"cubbies: {cubbies.Count}");
+        foreach (var c in cubbies) report.Add("  " + c);
         CheckOverlaps();
         // Low enough that a fall off the edge passes the skirt and the dirt (both climbable) before it counts
         Bounds(Vector3.zero, 360f, -110f, 60f);
@@ -137,7 +140,8 @@ public static class FoundryBuilder
         foreach (float x in new[] { -108f, -100f }) Wall(g, "WallWindow-8m", x, 0, WBZ0, S);
         // East: a door into the hall, the ramp up onto its roof, then the two-storey part
         Wall(g, "Archway-8m", WBX1, 0, -44, E);
-        Facade(g, WBX1, -28, E, 'W');
+        Facade(g, WBX1, -28, E, 'N');
+        Cubby("Wall niche", new Vector3(-94, 0, -28), "standing (3.5 m), facing the east yard");
         Facade(g, WBX1, -20, E, 'P');
         // North: a door into the hall (under the room) and a window
         Facade(g, -108, WBZ1, N, 'D');
@@ -155,7 +159,9 @@ public static class FoundryBuilder
         Tunnel("West Hall Door N", new Vector3(-108, 0, WBZ1 + 2), new Vector3(-108, 0, WBZ1 - 2), "run");
         Tunnel("West Room Door", new Vector3(-108, L5, WBUpper - 2), new Vector3(-108, L5, WBUpper + 2), "run");
         // Up onto the hall's roof: a ramp rising west straight onto it; the hard way on up to the room's roof: a container
-        K(g, "Ramp-8x10m", new Vector3(-91, L0 - 1, -36), -90f);
+        K(g, "Ramp-Hollow-8x10m", new Vector3(-91, L0, -36), 90f);   // The room under its top opens into the hall
+        InsideTunnel("Under the hall ramp", new Vector3(-97.5f, 0, -36), new Vector3(-94f, 0, -36));
+        Cubby("Under the hall ramp", new Vector3(-94, 0, -36), "standing near its mouth (3.3–4.3 m), opens into the hall");
         Container(g, -101, L5, -37, 90f);          // Against the room, clear of its door and the ramp's top: 8.5 → its roof (10)
         Lamp(g, new Vector3(-104, 3f, -36), 16f);
         Lamp(g, new Vector3(-104, 8f, -24), 14f);
@@ -166,7 +172,11 @@ public static class FoundryBuilder
         // mini island by the floating plates ──
         Facade(g, TX0, -4, W, 'S');            Facade(g, TX0, 4, W, 'D');            // West: a door
         Facade(g, -76, TZ1, N, 'D');           Facade(g, -68, TZ1, N, 'S');          // North: a door
-        Facade(g, -76, TZ0, S, 'S');           Facade(g, -68, TZ0, S, 'S');
+        Facade(g, -76, TZ0, S, 'S');
+        // A high niche on the south face (alcove 3.6..6.2: a ledge grab up), then a short panel to the second row
+        Wall(g, "Wall-Niche-High-8m", -68, 0, TZ0, S);
+        Wall(g, "Wall-Upper-8m", -68, 7f, TZ0, S, 0.5f);
+        Cubby("High wall niche", new Vector3(-68, 3.6f, TZ0 - 1.5f), "crouch (2.6 m), a ledge grab up from the ground");
         Facade(g, TX1, -4, E, 'S');            Facade(g, TX1, 4, E, 'S');            // The map's edge
         Facade(g, TX0, -4, W, 'S', baseY: 9f); Facade(g, TX0, 4, W, 'W', baseY: 9f);
         Facade(g, -76, TZ1, N, 'S', baseY: 9f); Facade(g, -68, TZ1, N, 'W', baseY: 9f);
@@ -198,10 +208,11 @@ public static class FoundryBuilder
 
         // Cover, evenly: two containers mirrored on the north yard, two barriers in a row on the east yard
         // Two sheds facing each other across the north yard (their doors on local −Z), a scaffold to climb on the east yard
-        K(g, "Shed-4x4m", new Vector3(-100, L0, 10), 0f);
-        K(g, "Shed-4x4m", new Vector3(-100, L0, -10), 180f);
-        Tunnel("Shed N door", new Vector3(-100, 0, 6), new Vector3(-100, 0, 10), "crouch");
-        Tunnel("Shed S door", new Vector3(-100, 0, -6), new Vector3(-100, 0, -10), "crouch");
+        // ×1.5 (6 × 6 × 6): the model's door is only 2.6 m tall; scaled it's 3.9, a standing penguin walks in
+        K(g, "Shed-4x4m", new Vector3(-100, L0, 10), 0f, Vector3.one * ShedScale);
+        K(g, "Shed-4x4m", new Vector3(-100, L0, -10), 180f, Vector3.one * ShedScale);
+        Tunnel("Shed N door", new Vector3(-100, 0, 4), new Vector3(-100, 0, 10), "run");
+        Tunnel("Shed S door", new Vector3(-100, 0, -4), new Vector3(-100, 0, -10), "run");
         K(g, "Scaffold-4x4x5m", new Vector3(-74, L0, -34), 0f);
         Lamp(g, new Vector3(-88, 8, -24), 22f);
 
@@ -265,12 +276,45 @@ public static class FoundryBuilder
         report.Add($"zip line: {from:F1} → {to:F1}, {run:0} m across, {drop:0} m down ({Mathf.Atan2(drop, run) * Mathf.Rad2Deg:0}°)");
     }
 
+    // ─── Movement lines and cubbies (Nov 12): roof hatches, ceiling coffers, the hide report ──────────────
+
+    /// <summary>
+    /// A roof (or any slab) of 8 m cells over x0..x1, z0..z1 with its top at <paramref name="top"/>: plain Platform-8x4
+    /// pairs, a Floor-Hole at each hatch (a drop in, a climb out), and light ceiling liners under every other cell. Each
+    /// coffer cell gets a Ceiling-Coffer hung under the slab (open underneath: jump up into it) instead of a liner.
+    /// </summary>
+    private static void RoofCells(Transform g, float x0, float x1, float z0, float z1, float top, Vector2[] hatches, Vector2[] coffers)
+    {
+        for (float x = x0 + 4; x < x1; x += 8)
+            for (float z = z0 + 4; z < z1; z += 8)
+            {
+                var cell = new Vector2(x, z);
+                bool hatch = System.Array.IndexOf(hatches, cell) >= 0, coffer = System.Array.IndexOf(coffers, cell) >= 0;
+                if (hatch) Tile(g, "Floor-Hole-8m", x, z, top);
+                else foreach (float dz in new[] { -2f, 2f }) K(g, "Platform-8x4m", new Vector3(x, top - 1f, z + dz), 0f);
+                if (coffer)
+                {
+                    K(g, "Ceiling-Coffer-8x8m", new Vector3(x, top - 1f - CofferHeight, z), 0f);
+                    Cubby("Ceiling coffer", new Vector3(x, top - 1f - CofferHeight, z), "prone (1.7 m), jump up into it from below");
+                }
+                else if (!hatch) Ceiling(g, x, top - 1f, z);
+            }
+    }
+
+    private const float CofferHeight = 2.1f;
+
+    // Every hiding spot the build adds, with what fits in it: the report lists them
+    private static readonly List<string> cubbies = new();
+
+    private static void Cubby(string what, Vector3 at, string fits) => cubbies.Add($"{what} at ({at.x:0}, {at.y:0}, {at.z:0}): {fits}");
+
     // ─── Props sized to the penguin (2.9 m tall, 1.4 m wide) ──────────────────
 
     private const float ContainerScale = 4f / 3f;                    // 8 × 3.5 × 3.3: a penguin fits inside; one grid cell long
     private const float ContainerHeight = 2.6f * ContainerScale;
     private const float BarrierScale = 1.5f;                         // 6 × 1.8 × 1.5: chest-high cover, a plain hop
     private const float CrateSize = 1.5f;                            // Waist high
+    private const float ShedScale = 1.5f;                            // Shed-4x4m's door is 2.6 m: ×1.5 → 3.9
 
     private static GameObject Container(Transform g, float x, float y, float z, float yaw) =>
         K(g, "CargoContainer-6m", new Vector3(x, y, z), yaw, Vector3.one * ContainerScale);
@@ -314,7 +358,7 @@ public static class FoundryBuilder
         // The loading bay: a forklift and a row of pallet stacks, low to high
         K(g, "Forklift-3m", new Vector3(18, L0, 44), 180f);
         foreach (var (id, x) in new[] { ("PalletStack-Low-0p6m", 12f), ("PalletStack-Mid-1p2m", 14f), ("PalletStack-High-1p8m", 16f) })
-            K(g, id, new Vector3(x, L0, 36), 90f);
+            K(g, id, new Vector3(x, L0, 46), 90f);   // Clear of the dock room's slide gap
 
         // The Stack: a round tower (10) in the middle, a lift beside it (a 1 m hop on, up to the top)
         K(g, "Tower-Round-8m", new Vector3(0, L0, 0), 0f);
@@ -332,6 +376,15 @@ public static class FoundryBuilder
         }
         Container(g, -16, L0, -4, 90f);
         Container(g, -16, L0 + ContainerHeight, -4, 90f);
+        // Two crawl platforms in the west corners, mirrored: a hop up (2.2) on top, a crawl space underneath (along z)
+        foreach (float z in new[] { 16f, -16f })
+        {
+            K(g, "Platform-Crawl-8x8m", new Vector3(-16, L0, z), 0f);
+            // A support post stands in the middle: each entrance is checked up to it (you crawl round it inside)
+            Tunnel($"Crawl platform {z:0} south way in", new Vector3(-16.1f, 0, z - 5), new Vector3(-16.1f, 0, z - 1.2f), "crawl");
+            Tunnel($"Crawl platform {z:0} north way in", new Vector3(-16.1f, 0, z + 5), new Vector3(-16.1f, 0, z + 1.2f), "crawl");
+            Cubby("Crawl platform", new Vector3(-16, 0, z), "prone (1.7 m), open at both ends, a post in the middle");
+        }
         K(g, "CargoContainer-Tunnel-8m", new Vector3(16, L0, 4), 90f);
         InsideTunnel("Yard container", new Vector3(16, 0, -1), new Vector3(16, 0, 9));
         Lamp(g, new Vector3(-12, 8, -12), 24f);
@@ -376,9 +429,12 @@ public static class FoundryBuilder
         for (float x = FX0 + 4; x < FX1; x += 8) for (float z = FZ0 + 4; z < FZ1; z += 8) Tile(g, "Floor-Tiles-8m", x, z, L0);
 
         // South face (to the yard): two arched doors, two windows
-        Facade(g, -36, FZ0, S, 'W');
+        Facade(g, -36, FZ0, S, 'Q');   // A crouch squeeze through the wall (3 m deep) from the lane
+        Tunnel("Factory squeeze", new Vector3(-36, 0, FZ0 - 4), new Vector3(-36, 0, FZ0 + 2), "crouch");
+        Cubby("Factory squeeze", new Vector3(-36, 0, FZ0 - 1.5f), "crouch (2.6 m), a way in as well as a hide");
         Facade(g, -28, FZ0, S, 'D');
-        Facade(g, -20, FZ0, S, 'P');   // Not a window: its sill would stick into the foot of the stairs inside
+        Facade(g, -20, FZ0, S, 'N');   // A niche facing the lane (not a window: its sill would stick into the stairs inside)
+        Cubby("Wall niche", new Vector3(-20, 0, FZ0 - 1.5f), "standing (3.5 m), facing the lane");
         Facade(g, -12, FZ0, S, 'D');
         // North face (the map's edge): never flat: windows, a pipe run, mixed panels; west face: a door and a window
         Facade(g, -36, FZ1, N, 'P');
@@ -410,8 +466,8 @@ public static class FoundryBuilder
         Lamp(g, new Vector3(-24, 7.5f, 40), 18f);
 
         // Roof (10): one plain slab; a vent at each end
-        Slab(g, "Floor-32x16m", -24, 40, L10);
-        for (float x = FX0 + 4; x < FX1; x += 8) for (float z = FZ0 + 4; z < FZ1; z += 8) Ceiling(g, x, L10 - 1, z);
+        // Cells: a hatch over the mezzanine (a drop in, the container-free climb out), coffers either side of it
+        RoofCells(g, FX0, FX1, FZ0, FZ1, L10, new[] { new Vector2(-28, 44) }, System.Array.Empty<Vector2>());
         Prop(g, "Vent", new Vector3(-32, L10, 40), 0f);
         Prop(g, "Vent", new Vector3(-16, L10, 40), 0f);
     }
@@ -424,7 +480,8 @@ public static class FoundryBuilder
     private static void Facade(Transform g, float x, float z, Vector3 outward, char kind, float upperFrom = 4f, bool upper = true, float baseY = 0f)
     {
         if (kind == 'S') { Wall(g, "Wall-Tall-8m", x, baseY, z, outward); return; }
-        string lower = kind == 'W' ? "WallWindow-8m" : kind == 'P' ? "Wall-Pipes-8m" : kind == 'D' ? "Archway-8m" : LowerWall();
+        string lower = kind == 'W' ? "WallWindow-8m" : kind == 'P' ? "Wall-Pipes-8m" : kind == 'D' ? "Archway-8m"
+                     : kind == 'N' ? "Wall-Niche-8m" : kind == 'Q' ? "Wall-NichePass-8m" : LowerWall();
         Wall(g, lower, x, baseY, z, outward);
         if (upper) Wall(g, UpperWall(), x, baseY + upperFrom, z, outward, (9f - upperFrom) / 4f);
     }
@@ -439,7 +496,8 @@ public static class FoundryBuilder
         for (float x = -4; x <= 4; x += 8) for (float z = 36; z <= 44; z += 8) { Tile(g, "Floor-Inlay-8m", x, z, L0); Ceiling(g, x, L5 - 1, z); }
         // The room's faces: south (the ramp up closes its west half), east, north (the map's edge)
         Wall(g, ClimbWall, 4, 0, FZ0, S);                                                 // Climbs onto the deck
-        foreach (float z in new[] { 36f, 44f }) Wall(g, z == 44f ? ClimbWall : LowerWall(), 8, 0, z, E);
+        foreach (float z in new[] { 36f, 44f }) Wall(g, z == 44f ? ClimbWall : "Wall-SlideGap-8m", 8, 0, z, E);
+        Tunnel("Dock room slide gap", new Vector3(6, 0, 36), new Vector3(10, 0, 36), "crawl");   // Its second way out
         foreach (float x in new[] { -4f, 4f }) Wall(g, LowerWall(), x, 0, FZ1, N);
         Post(g, 8, 0, FZ0, E, S, 4f);
         Post(g, 8, 0, FZ1, E, N, 4f);
@@ -476,17 +534,17 @@ public static class FoundryBuilder
     {
         var g = Group("East Deck and Warehouse");
         // Deck and roof: two plain slabs each; indoors underneath (undercroft and hall, one room): two big tiled slabs
-        foreach (float z in new[] { -24f, 8f })
-        {
-            Slab(g, "Floor-32x16m", 32, z, L5, 90f);
-            Slab(g, "Floor-32x16m", 48, z, L10, 90f);
-        }
+        foreach (float z in new[] { -24f, 8f }) Slab(g, "Floor-32x16m", 32, z, L5, 90f);
+        // Warehouse roof: a plain slab over its south half; cells over the north half, with a hatch over the mezzanine's
+        // container (the hard way up and a drop in) and coffers over the mezzanine either side
+        Slab(g, "Floor-32x16m", 48, -24, L10, 90f);
+        RoofCells(g, HX0, HX1, -8, HZ1, L10, new[] { new Vector2(52, -4) }, System.Array.Empty<Vector2>());
         Slab(g, "Floor-32x32m-Tiles", 40, -24, L0);
         Slab(g, "Floor-32x32m-Tiles", 40, 8, L0);
         for (float z = -36; z <= 20; z += 8)
         {
             foreach (float x in new[] { 28f, 36f }) Ceiling(g, x, L5 - 1, z);
-            foreach (float x in new[] { 44f, 52f }) Ceiling(g, x, L10 - 1, z);
+            foreach (float x in new[] { 44f, 52f }) if (z < -8) Ceiling(g, x, L10 - 1, z);
         }
 
         // The deck's west face (to the yard, 0..4 under its slab): mixed panels, two archways into the undercroft, none
@@ -497,8 +555,9 @@ public static class FoundryBuilder
             // Beside the service trench (z −24..−8) there's no floor outside the deck: the panel stands just inside its
             // edge instead (x 24..25), above the service room's east wall
             if (z == -20 || z == -12) { Wall(g, LowerWall(), 25, 0, z, W); continue; }
-            Wall(g, z == -4 || z == 12 ? "Archway-8m" : z == -28 || z == 4 ? ClimbWall : LowerWall(), 24, 0, z, W);   // Climbs onto the deck
+            Wall(g, z == -4 || z == 12 ? "Archway-8m" : z == -28 || z == 4 ? ClimbWall : z == -36 ? "Wall-Niche-8m" : LowerWall(), 24, 0, z, W);
         }
+        Cubby("Wall niche", new Vector3(22, 0, -36), "standing (3.5 m), facing the docks");
         Post(g, 24, 0, HZ0, W, S, 4f);
         Post(g, 24, 0, HZ1, W, N, 4f);
         Tunnel("Undercroft Arch S", new Vector3(22, 0, -4), new Vector3(30, 0, -4), "run");
@@ -507,7 +566,11 @@ public static class FoundryBuilder
         // The deck's ends (the map's edge)
         foreach (float x in new[] { 28f, 36f }) { Wall(g, LowerWall(), x, 0, HZ0, S); Wall(g, LowerWall(), x, 0, HZ1, N); }
         // The warehouse's face above the deck (5..9), none where the ramp from the deck meets the roof; posts at its ends
-        for (float z = -36; z <= 20; z += 8) if (z != -28) Wall(g, z == -20 || z == 12 ? ClimbWall : LowerWall(), HX0, L5, z, W);   // Climbs onto the roof
+        for (float z = -36; z <= 20; z += 8)
+            if (z != -28) Wall(g, z == -20 || z == 12 ? ClimbWall : z == 4 ? "Archway-8m" : LowerWall(), HX0, L5, z, W);   // Climbs onto the roof; a door onto the rafter
+        // The rafter: a balance beam at 5 from the deck's door across the hall to the mezzanine (12 m)
+        K(g, "Rafter-8m", new Vector3(46, L5 - 4.4f, 4), 0f, new Vector3(1.5f, 1f, 1f));
+        Tunnel("Deck door to the rafter", new Vector3(37, L5, 4), new Vector3(41.5f, L5, 4), "run");
         Post(g, HX0, 4, HZ0, W, S, 5f);
         Post(g, HX0, 4, HZ1, W, N, 5f);
         // The warehouse's outer faces (the map's edge on three sides): never flat: windows, pipes, mixed panels
@@ -531,11 +594,14 @@ public static class FoundryBuilder
         K(g, "CrateStack-Stepped-4p5m", new Vector3(49.5f, 0, -12), 0f);  // 1.5 → 3 → 4.5, east: a hop onto the mezzanine (5)
 
         // Ramps rising east: yard → deck, deck → warehouse roof
-        K(g, "Ramp-8x10m", new Vector3(19, L0 - 1, 20), 90f);
+        // Yard → deck: a hollow ramp (rising east, no slab of its own); the room under its top opens into the undercroft
+        K(g, "Ramp-Hollow-8x10m", new Vector3(19, L0, 20), -90f);
+        InsideTunnel("Under the yard ramp", new Vector3(25.5f, 0, 20), new Vector3(22f, 0, 20));
+        Cubby("Under the yard ramp", new Vector3(22, 0, 20), "standing near its mouth (3.3–4.3 m), opens into the undercroft");
         K(g, "Ramp-8x10m", new Vector3(35, L5 - 1, -28), 90f);
         // The hard way up each: containers against the faces
         Container(g, 20.5f, L0, -3, 90f);    // 3.5 → the wall top 4 → deck 5
-        Container(g, 36.5f, L5, 8, 90f);     // 8.5 → roof 10
+        Container(g, 36.5f, L5, 13, 90f);    // 8.5 → roof 10, against the climb wall, clear of the rafter door
 
         // Cover up top, evenly: a container each side of a barrier on the deck; a pillar and two vents on the roof
         Barrier(g, 34, L5, 0, 90f);
@@ -545,6 +611,11 @@ public static class FoundryBuilder
         Prop(g, "Vent", new Vector3(48, L10, -32), 0f);
         Prop(g, "Vent", new Vector3(48, L10, 20), 0f);
 
+        // A vent run through the undercroft into the hall: two straight ducts end to end (the T has a divider inside)
+        K(g, "Vent-Duct-8m", new Vector3(32, L0, -12), 90f);
+        K(g, "Vent-Duct-8m", new Vector3(40, L0, -12), 90f);
+        InsideTunnel("Vent run", new Vector3(27f, 0, -12), new Vector3(45f, 0, -12), "crawl");
+        Cubby("Vent run", new Vector3(36, 0, -12), "prone (1.7 m), the undercroft to the hall");
         Lamp(g, new Vector3(32, 2.5f, -4), 12f);
         Lamp(g, new Vector3(32, 2.5f, 12), 12f);
         Lamp(g, new Vector3(46, 7f, -12), 18f);
@@ -606,23 +677,27 @@ public static class FoundryBuilder
         K(g, "Archway-8m", new Vector3(12, L0, -24), 0f);
         Tunnel("Dock Gate W", new Vector3(-12, 0, -22), new Vector3(-12, 0, -27), "run");
         Tunnel("Dock Gate E", new Vector3(12, 0, -22), new Vector3(12, 0, -27), "run");
-        // Mirrored about x −8: a stacked pair of containers each side on the north quay (climbs), single ones on the
-        // south quay, a barrier on the middle line of each
-        foreach (float x in new[] { -32f, 16f })
-        {
-            Container(g, x, L0, -32, 0f);
-            Container(g, x, L0 + ContainerHeight, -32, 0f);
-
-        }
-        Barrier(g, -8, L0, -30, 0f);
+        // North quay: a stacked pair of containers west (a climb); east, the gatehouse: a deck at 5 up its own ramp,
+        // 6 m across from the east deck (a sprint jump over), with a walk-through under it
+        Container(g, -32, L0, -32, 0f);
+        Container(g, -32, L0 + ContainerHeight, -32, 0f);
+        K(g, "Struct-Gatehouse-16x8m", new Vector3(10, L0, -32), 180f);
+        gaps.Add(("Gatehouse deck to the east deck", new Vector3(18, L5, -32), new Vector3(24, L5, -32)));
         Barrier(g, -8, L0, -58, 0f);
+        // South quay: two slide tunnels (slide or crawl through, along z), mirrored about x −8
+        foreach (float x in new[] { -16f, 0f })
+        {
+            K(g, "Tunnel-Slide-8x4m", new Vector3(x, L0, -56), 0f);
+            Tunnel($"Slide tunnel {x:0}", new Vector3(x - 0.1f, 0, -61), new Vector3(x - 0.1f, 0, -51), "crawl");
+            Cubby("Slide tunnel", new Vector3(x, 0, -56), "prone (1.7 m), open at both ends");
+        }
         // South quay: two open containers, their open ends (local +X) facing each other across the middle; crate stacks
         // on the north quay and cable spools by the pier, mirrored
         K(g, "CargoContainer-Open-8m", new Vector3(-32, L0, -56), 0f);
         K(g, "CargoContainer-Open-8m", new Vector3(16, L0, -56), 180f);
         InsideTunnel("Dock container W", new Vector3(-26, 0, -56), new Vector3(-31, 0, -56));
         InsideTunnel("Dock container E", new Vector3(10, 0, -56), new Vector3(15, 0, -56));
-        foreach (float x in new[] { -20f, 4f }) K(g, "CrateStack-2x2-3m", new Vector3(x, L0, -30), 0f);
+        K(g, "CrateStack-2x2-3m", new Vector3(-20, L0, -30), 0f);
         foreach (float x in new[] { -26f, 10f }) K(g, "CableSpool-Upright-2m", new Vector3(x, L0, -60), 0f);
         // The pier: a catwalk out over the void (past the skirt's rim), a teleport pad at its end to the sky deck (and back)
         for (float z = -69; z >= -77; z -= 8)
@@ -654,7 +729,7 @@ public static class FoundryBuilder
     private static readonly (string name, float x, float z, float y)[] SpawnSpots =
     {
         ("Yard North-West",  -14,   6, L0),
-        ("Yard South-West",  -18, -18, L0),
+        ("Yard South-West",  -20, -22, L0),
         ("Yard East",         12,  22, L0),
         ("Service Level",     12, -12, Service),
         ("Factory Mezzanine",-32,  46, L5),
@@ -662,10 +737,10 @@ public static class FoundryBuilder
         ("Loading Dock",       5,  44, L5),
         ("East Deck",         30,  -2, L5),
         ("Warehouse Roof",    48,  12, L10),
-        ("Warehouse Hall",    44, -14, L0),
+        ("Warehouse Hall",    43, -34, L0),
         ("Ring Island",    RingX,  22, L0),
-        ("Docks West",       -16, -56, L0),
-        ("Docks East",         2, -36, L0),
+        ("Docks West",       -24, -52, L0),
+        ("Docks East",         2, -44, L0),
         ("Sky Deck",         -54,  38, L10),
         ("West Hall",       -104, -44, L0),
         ("West Room",       -104, -24, L5),
@@ -1010,12 +1085,14 @@ public static class FoundryBuilder
 
     /// <summary>A walk-through check for a prop with its own raised floor inside (a container): the path starts on the
     /// floor found at the path's middle, and must fit a running penguin.</summary>
-    private static void InsideTunnel(string name, Vector3 from, Vector3 to)
+    private static void InsideTunnel(string name, Vector3 from, Vector3 to, string kind = "run")
     {
         Physics.SyncTransforms();
-        float floor = Physics.Raycast((from + to) / 2f + Vector3.up * 1.5f, Vector3.down, out RaycastHit hit, 3f) ? hit.point.y : to.y;
+        float floor = to.y;
+        foreach (float t in new[] { 0.25f, 0.5f, 0.75f })
+            if (Physics.Raycast(Vector3.Lerp(from, to, t) + Vector3.up * 1.5f, Vector3.down, out RaycastHit hit, 3f)) floor = Mathf.Max(floor, hit.point.y);
         report.Add($"{name}: floor inside at {floor:0.00}");
-        Tunnel(name, new Vector3(from.x, floor, from.z), new Vector3(to.x, floor, to.z), "run");
+        Tunnel(name, new Vector3(from.x, floor, from.z), new Vector3(to.x, floor, to.z), kind);
     }
 
     // ─── Access check ─────────────────────────────────────────────────────────

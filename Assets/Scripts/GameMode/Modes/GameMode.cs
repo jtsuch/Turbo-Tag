@@ -310,4 +310,16 @@ public abstract class GameMode
 
     /// <summary>The headline, given the rows in order.</summary>
     public virtual string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) => "Match Over";
+
+    /// <summary>"X wins!", or a tie when the top players can't be told apart by <see cref="CompareForScoreboard"/>.</summary>
+    protected string WinnerTitle(IReadOnlyList<PhotonPlayer> ranked)
+    {
+        if (ranked.Count == 0) return "Match Over";
+        var tied = new List<string>();
+        foreach (var p in ranked)
+            if (CompareForScoreboard(ranked[0], p) == 0) tied.Add(string.IsNullOrEmpty(p.NickName) ? $"Player {p.ActorNumber}" : p.NickName);
+        if (tied.Count == 1) return $"{tied[0]} wins!";
+        if (tied.Count == 2) return $"It's a tie! {tied[0]} and {tied[1]}";
+        return "It's a draw!";
+    }
 }

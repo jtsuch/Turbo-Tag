@@ -18,6 +18,24 @@ public static class NetworkConfig
     /// </summary>
     public const int SerializationRate = 20;
 
+    /// <summary>
+    /// Every player sends its snapshots to every other one, so a room's messages grow with the square of its size
+    /// (12 players at 20/s is ~2,900 a second; Photon's guideline is ~500 per room). Fewer snapshots in bigger
+    /// rooms: 20/s up to 6 players, 15/s up to 9, 10/s beyond; the playback delay follows the rate
+    /// (<see cref="PlayerNetworkSync"/>). Called every frame by the GameModeManager; only acts when the count changes.
+    /// </summary>
+    public static void FitToRoom()
+    {
+        int players = PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.PlayerCount : 1;
+        if (players == fittedFor) return;
+        fittedFor = players;
+        int rate = players <= 6 ? SerializationRate : players <= 9 ? 15 : 10;
+        PhotonNetwork.SerializationRate = rate;
+        PhotonNetwork.SendRate = rate * 2;
+    }
+
+    private static int fittedFor = -1;
+
     public static bool Connect()
     {
         PhotonNetwork.SendRate          = SerializationRate * 2;

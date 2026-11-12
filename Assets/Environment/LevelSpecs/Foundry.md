@@ -35,3 +35,11 @@ Laid out evenly, replacing older ones: a pinwheel of L-covers round the Stack; a
 a forklift and pallet stacks in the loading bay; open containers facing each other on the docks' south quay, crate
 stacks and cable spools mirrored; a generator in the factory; a pipe rack and stepped crates (onto the mezzanine) in
 the warehouse hall; two sheds facing each other and a scaffold on the west island.
+
+## Chase lines and cubbies (Nov 12)
+Movement: roof hatches over both halls' mezzanines (a drop in, a climb out), a rafter balance beam from a door on the
+east deck across the warehouse hall to the mezzanine, the gatehouse on the docks (deck 5, a 6 m jump to the east deck),
+a slide gap out of the dock room, a squeeze into the factory from the lane, slide tunnels on the south quay.
+Hides (12): crawl platforms (yard, 2), the factory squeeze, wall niches (factory lane face, east deck's dock face, west
+hall), rooms under the hollow ramps (yard → undercroft, west hall), the vent run (undercroft → hall), slide tunnels
+(docks, 2), a high niche on the tower (a ledge grab up).

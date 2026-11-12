@@ -508,9 +508,10 @@ public class SearchDestroyMode : TeamMode
         new ScoreboardColumn("Team",           TeamLabel),
         new ScoreboardColumn("Kills",          p => MatchStats.Count(p, PlayerKeys.StatKills)),
         new ScoreboardColumn("Deaths",         p => MatchStats.Count(p, PlayerKeys.StatDeaths)),
+        new ScoreboardColumn("Assists",        p => MatchStats.Count(p, PlayerKeys.StatAssists)),
+        new ScoreboardColumn("Damage",         p => MatchStats.Count(p, PlayerKeys.StatDamage)),
         new ScoreboardColumn("Plants",         p => MatchStats.Count(p, PlayerKeys.StatPlants)),
         new ScoreboardColumn("Defuses",        p => MatchStats.Count(p, PlayerKeys.StatDefuses)),
-        new ScoreboardColumn("Headshots",      p => MatchStats.Count(p, PlayerKeys.StatHeadshots)),
         new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
     };
 

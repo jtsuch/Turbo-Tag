@@ -46,6 +46,7 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     /// </summary>
     public void CountUse(string abilityId)
     {
+        if (photonView.IsMine && TryGetComponent(out Player self)) self.EndSpawnProtectionNow(); // Attacking ends it
         usesThisMatch++;
         usesDirty = true;
         if (Fx.HasAbilityFx(abilityId)) photonView.RPC(nameof(RPC_AbilityFx), RpcTarget.All, abilityId);

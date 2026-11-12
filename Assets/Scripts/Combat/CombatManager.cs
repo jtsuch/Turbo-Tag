@@ -105,6 +105,7 @@ public class CombatManager : MonoBehaviourPun
         if (subscribed == null && Player.Local != null) HandleLocalSpawned(Player.Local);
 
         UpdatePickups();
+        FlushDamage();
         ResendLostDeathReport();
         AdoptPickupsIfNewMaster();
         if (PhotonNetwork.IsMasterClient) ExpirePickups();
@@ -179,27 +180,74 @@ public class CombatManager : MonoBehaviourPun
     }
 
     /// <summary>Local player died (<paramref name="killerActor"/> -1 for a fall). Sent once per life.</summary>
-    public void ReportLocalDeath(int killerActor, string weapon, bool headshot)
+    public void ReportLocalDeath(int killerActor, string weapon, bool headshot, int[] assists = null)
     {
         var local = Player.Local;
         if (deathReported || local == null || local.IsCaught) return;
         deathReported = true;
         deathReportedAt = Time.time;
-        lastReport = (killerActor, weapon ?? "", headshot);
-        photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, killerActor, weapon ?? "", headshot, local.transform.position);
+        lastReport = (killerActor, weapon ?? "", headshot, assists ?? System.Array.Empty<int>());
+        photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, killerActor, weapon ?? "", headshot, lastReport.assists, local.transform.position);
+    }
+
+    // ─── Damage dealt: the victim's client batches what it took per attacker and sends it to the master ───
+
+    private readonly Dictionary<int, float> pendingDamage = new();
+    private float nextDamageFlush;
+
+    /// <summary>Victim's owner: <paramref name="attacker"/> took <paramref name="amount"/> health off us.</summary>
+    public void NoteDamage(int attacker, float amount)
+    {
+        if (amount <= 0f) return;
+        pendingDamage.TryGetValue(attacker, out float sum);
+        pendingDamage[attacker] = sum + amount;
+    }
+
+    private void FlushDamage()
+    {
+        if (pendingDamage.Count == 0 || Time.time < nextDamageFlush) return;
+        nextDamageFlush = Time.time + 1f;
+        var actors = new int[pendingDamage.Count];
+        var amounts = new float[pendingDamage.Count];
+        int i = 0;
+        foreach (var pair in pendingDamage) { actors[i] = pair.Key; amounts[i] = pair.Value; i++; }
+        pendingDamage.Clear();
+        photonView.RPC(nameof(RPC_DamageDealt), RpcTarget.MasterClient, actors, amounts);
+    }
+
+    [PunRPC]
+    private void RPC_DamageDealt(int[] actors, float[] amounts)
+    {
+        if (!PhotonNetwork.IsMasterClient || actors == null || amounts == null) return;
+        for (int i = 0; i < actors.Length && i < amounts.Length; i++)
+        {
+            var p = PhotonNetwork.CurrentRoom?.GetPlayer(actors[i]);
+            if (p != null) Tally(p, PlayerKeys.StatDamage, amounts[i]);
+        }
+    }
+
+    // Master: adds to a stat from its own running total, so two adds before Photon echoes the first don't lose one
+    private readonly Dictionary<(int, string), float> tallies = new();
+
+    private void Tally(PhotonPlayer player, string key, float amount)
+    {
+        tallies.TryGetValue((player.ActorNumber, key), out float known);
+        float total = Mathf.Max(known, MatchStats.Get(player, key)) + amount;
+        tallies[(player.ActorNumber, key)] = total;
+        NetProps.SetPlayer(player, key, total);
     }
 
     // A death report lost on the way (the host left as it was sent) would leave this player alive at 0 health
     // and unkillable: if no tag has come back after a few seconds, report it again.
     private float deathReportedAt;
-    private (int killer, string weapon, bool headshot) lastReport;
+    private (int killer, string weapon, bool headshot, int[] assists) lastReport;
 
     private void ResendLostDeathReport()
     {
         var local = Player.Local;
         if (!deathReported || local == null || local.IsCaught || Time.time - deathReportedAt < 3f) return;
         deathReportedAt = Time.time;
-        photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, lastReport.killer, lastReport.weapon, lastReport.headshot, local.transform.position);
+        photonView.RPC(nameof(RPC_ReportDeath), RpcTarget.MasterClient, lastReport.killer, lastReport.weapon, lastReport.headshot, lastReport.assists, local.transform.position);
     }
 
     // A new host doesn't know the old host's health packs: it takes over every pack still on the ground
@@ -219,7 +267,7 @@ public class CombatManager : MonoBehaviourPun
     }
 
     [PunRPC]
-    private void RPC_ReportDeath(int killerActor, string weapon, bool headshot, Vector3 position, PhotonMessageInfo info)
+    private void RPC_ReportDeath(int killerActor, string weapon, bool headshot, int[] assists, Vector3 position, PhotonMessageInfo info)
     {
         var manager = GameModeManager.Instance;
         if (!PhotonNetwork.IsMasterClient || manager == null || manager.Mode == null) return;
@@ -238,6 +286,13 @@ public class CombatManager : MonoBehaviourPun
 
         if (live && !killerLeft) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
         if (live && !selfDestruct && weapon.StartsWith(KillInfo.KnockPrefix)) MatchStats.Add(killer, PlayerKeys.StatKnockOffs);
+        // Assists: everyone else who hurt the victim in the last few seconds (not the killer, not the victim)
+        if (live && assists != null)
+            foreach (int actor in assists)
+            {
+                var helper = PhotonNetwork.CurrentRoom.GetPlayer(actor);
+                if (helper != null && helper != victim && helper != killer) Tally(helper, PlayerKeys.StatAssists, 1f);
+            }
 
         photonView.RPC(nameof(RPC_Killed), RpcTarget.All,
             selfDestruct ? victim.ActorNumber : killer.ActorNumber, victim.ActorNumber, weapon, headshot, selfDestruct);

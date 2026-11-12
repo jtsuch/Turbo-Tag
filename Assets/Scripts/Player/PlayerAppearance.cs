@@ -118,6 +118,11 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
             if (set != null) foreach (var m in set) if (m != null) Destroy(m);
     }
 
+    /// <summary>Owner only: your own body is being shown to you (spy camera, last-hider cam, intros): wear your
+    /// cosmetics and crown on it too (set by <see cref="PlayerInitializer.SetOwnBodyVisible"/>).</summary>
+    public bool ShowOwnLook { get; set; }
+    private bool woreOwnLook;
+
     // After PlayerHighlight's Update, so the cloak can switch its glow off
     private void LateUpdate()
     {
@@ -139,6 +144,20 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         {
             if (ghostAmount > CloakAmount) ScreenVignette.Set(ghostAmount * 0.7f, ghostVignette);
             else ScreenVignette.Set(CloakAmount, cloakVignette);
+            if (ShowOwnLook)
+            {
+                var m = GameModeManager.Instance;
+                bool crownedSelf = m != null && m.ShowsCrown(player);
+                UpdateCrown(crownedSelf);
+                UpdateCosmetics(!player.IsDownAfterTag && ghostAmount < 0.05f, crownedSelf);
+                woreOwnLook = true;
+            }
+            else if (woreOwnLook)
+            {
+                woreOwnLook = false;
+                UpdateCrown(false);
+                if (wearer != null) wearer.Clear();
+            }
             return;
         }
         var  manager    = GameModeManager.Instance;

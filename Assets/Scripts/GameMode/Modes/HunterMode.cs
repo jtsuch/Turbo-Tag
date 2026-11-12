@@ -102,10 +102,14 @@ public class HunterMode : GameMode
     private void EndMatch(string winner)
     {
         if (Phase == MatchPhase.MatchEnd) return;
+        foreach (var hider in LivingHiders()) NetProps.SetPlayer(hider, PlayerKeys.StatTimeAlive, HuntSeconds);
         if (winner == HiderTeam)
             foreach (var hider in LivingHiders()) MatchStats.Add(hider, PlayerKeys.StatRoundsSurvived);
         Manager.SetPhase(MatchPhase.MatchEnd, MatchEndSeconds, new Hashtable { [RoomKeys.WinningTeam] = winner });
     }
+
+    // Seconds into the hunt (0 before it starts)
+    private float HuntSeconds => Phase == MatchPhase.Active && Clock != null ? Mathf.Max(0f, MatchRules.MatchTime - Clock.Remaining) : 0f;
 
     // ─── Master: deaths ───────────────────────────────────────────────────────
 
@@ -114,6 +118,7 @@ public class HunterMode : GameMode
         if (PlayerRoles.Get(victim) != PlayerRole.Hider || !ghosted.Add(victim.ActorNumber)) return; // Hunter falls: just respawn
 
         MatchStats.Add(victim, PlayerKeys.StatDeaths);
+        NetProps.SetPlayer(victim, PlayerKeys.StatTimeAlive, HuntSeconds);
         PlayerRoles.Set(victim, PlayerRole.Ghost); // Comes back from the respawn as a ghost
         if (killer != null && PlayerRoles.Get(killer) == PlayerRole.Hunter)
         {
@@ -195,6 +200,7 @@ public class HunterMode : GameMode
             _                 => "Survived",
         }),
         new ScoreboardColumn("Result",         p => Won(p) ? "Won" : "Lost"),
+        new ScoreboardColumn("Time Alive",     p => PlayerRoles.Get(p) == PlayerRole.Hunter ? "-" : MatchStats.FormatTime(MatchStats.Get(p, PlayerKeys.StatTimeAlive))),
         new ScoreboardColumn("Kills",          p => MatchStats.Count(p, PlayerKeys.StatKills)),
         new ScoreboardColumn("Headshots",      p => MatchStats.Count(p, PlayerKeys.StatHeadshots)),
         new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),

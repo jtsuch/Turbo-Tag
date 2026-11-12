@@ -68,6 +68,8 @@ public class PlayerInitializer : MonoBehaviour
         }
         foreach (var renderer in ownBody)
             if (renderer != null) renderer.enabled = visible;
+        // And its look: cosmetics and the crown are otherwise only worn on other screens
+        if (TryGetComponent(out PlayerAppearance look)) look.ShowOwnLook = visible;
     }
 
     private void SetupRemote()

@@ -367,8 +367,7 @@ public class TagMode : GameMode
         return byScore != 0 ? byScore : MatchStats.Get(b, PlayerKeys.StatTags).CompareTo(MatchStats.Get(a, PlayerKeys.StatTags));
     }
 
-    public override string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) =>
-        ranked.Count > 0 ? $"{ranked[0].NickName} wins!" : "Match Over";
+    public override string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) => WinnerTitle(ranked);
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 

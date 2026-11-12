@@ -160,6 +160,10 @@ public static class PlayerKeys
     public const string StatDonuts         = "Stat_Donuts";         // Master: donuts eaten
     public const string StatPlants         = "Stat_Plants";         // Master: Search & Destroy bombs planted
     public const string StatDefuses        = "Stat_Defuses";        // Master: Search & Destroy bombs defused
+    public const string StatAssists        = "Stat_Assists";        // Master: kills this player helped with (damage in the last 15 s)
+    public const string StatDamage         = "Stat_Damage";         // Master: damage this player dealt to others (live phase)
+    public const string StatTimeAlive      = "Stat_TimeAlive";      // Master: Hunter mode, seconds a hider lasted in the hunt
+    public const string Ping               = "Ping";                // Own: round-trip time to Photon (ms), for the Tab scoreboard
 
     /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
     public const string Gun = "Gun";

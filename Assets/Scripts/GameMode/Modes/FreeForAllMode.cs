@@ -165,6 +165,7 @@ public class FreeForAllMode : GameMode
         new ScoreboardColumn("Kills",           p => MatchStats.Count(p, PlayerKeys.StatKills)),
         new ScoreboardColumn("Deaths",          p => MatchStats.Count(p, PlayerKeys.StatDeaths)),
         new ScoreboardColumn("K/D",             p => (MatchStats.Get(p, PlayerKeys.StatKills) / Mathf.Max(1f, MatchStats.Get(p, PlayerKeys.StatDeaths))).ToString("0.0")),
+        new ScoreboardColumn("Damage",          p => MatchStats.Count(p, PlayerKeys.StatDamage)),
         new ScoreboardColumn("Self Destructs",  p => MatchStats.Count(p, PlayerKeys.StatSelfDestructs)),
         new ScoreboardColumn("Headshots",       p => MatchStats.Count(p, PlayerKeys.StatHeadshots)),
         new ScoreboardColumn("Abilities Used",  p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),
@@ -180,6 +181,5 @@ public class FreeForAllMode : GameMode
         return MatchStats.Get(a, PlayerKeys.StatDeaths).CompareTo(MatchStats.Get(b, PlayerKeys.StatDeaths));
     }
 
-    public override string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) =>
-        ranked.Count > 0 ? $"{ranked[0].NickName} wins!" : "Match Over";
+    public override string ScoreboardTitle(IReadOnlyList<PhotonPlayer> ranked) => WinnerTitle(ranked);
 }

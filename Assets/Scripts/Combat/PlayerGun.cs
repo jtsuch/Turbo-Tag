@@ -253,6 +253,7 @@ public class PlayerGun : MonoBehaviourPun
         if (anyHit) LocalHit?.Invoke(anyHead);
         if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt(); // Shooting ends an emote
         Fired?.Invoke();
+        if (player != null) player.EndSpawnProtectionNow(); // Attacking ends spawn protection
 
         if (Ammo <= 0) StartReload();
     }

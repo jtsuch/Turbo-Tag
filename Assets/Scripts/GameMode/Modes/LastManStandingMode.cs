@@ -212,8 +212,24 @@ public class LastManStandingMode : FreeForAllMode
     // Standing while not in this round (a late joiner, a Sudden Death bystander): out quietly to watch
     private float nextSitOutCheck;
 
+    /// <summary>The last seconds of a round in which everyone shows on everyone's map (no camping it out).</summary>
+    public const float RevealSeconds = 45f;
+    private int revealedRound = -1;
+
+    private bool Revealing => Phase == MatchPhase.Active && Clock != null && Clock.HasLimit && Clock.Remaining <= RevealSeconds;
+
+    public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => Revealing || base.ShowsOnMap(viewer, target);
+
     public override void ClientUpdate()
     {
+        // Announce the reveal once a round, on every screen
+        int round = NetProps.Room(RoomKeys.Round, 1);
+        if (Revealing && revealedRound != round)
+        {
+            revealedRound = round;
+            Minimap.Pulse(new Color(1f, 0.3f, 0.3f));
+            if (HUDManager.Instance != null) HUDManager.Instance.ShowBanner($"Final {RevealSeconds:0} seconds: everyone is on the map!", 3f);
+        }
         if (Time.time < nextSitOutCheck) return;
         nextSitOutCheck = Time.time + 0.5f;
         var local = Player.Local;
@@ -271,6 +287,8 @@ public class LastManStandingMode : FreeForAllMode
         new ScoreboardColumn("Rounds Won",      p => Mathf.RoundToInt(NetProps.Of(p, PlayerKeys.Score, 0f)).ToString()),
         new ScoreboardColumn("Kills",           p => MatchStats.Count(p, PlayerKeys.StatKills)),
         new ScoreboardColumn("Deaths",          p => MatchStats.Count(p, PlayerKeys.StatDeaths)),
+        new ScoreboardColumn("Assists",         p => MatchStats.Count(p, PlayerKeys.StatAssists)),
+        new ScoreboardColumn("Damage",          p => MatchStats.Count(p, PlayerKeys.StatDamage)),
         new ScoreboardColumn("Headshots",       p => MatchStats.Count(p, PlayerKeys.StatHeadshots)),
         new ScoreboardColumn("Self Destructs",  p => MatchStats.Count(p, PlayerKeys.StatSelfDestructs)),
         new ScoreboardColumn("Abilities Used",  p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),

@@ -960,6 +960,10 @@ public class PlayerMovement : MonoBehaviourPun
         }
     }
 
+    [Tooltip("After grabbing a ledge, how long (s) W is ignored before it pulls you up, so a held W doesn't climb at once.")]
+    [SerializeField] private float ledgeClimbDelay = 0.3f;
+    private float hangStartedAt;
+
     private bool TryLedgeAt(RaycastHit wallHit)
     {
         Vector3 into = -new Vector3(wallHit.normal.x, 0f, wallHit.normal.z).normalized;
@@ -978,6 +982,7 @@ public class PlayerMovement : MonoBehaviourPun
         ledgeNormal   = new Vector3(wallHit.normal.x, 0f, wallHit.normal.z).normalized;
 
         player.SetState(Player.MovementState.Hang);
+        hangStartedAt     = Time.time;
         rb.linearVelocity = Vector3.zero;
         rb.position       = HangPosition;
         return true;
@@ -999,7 +1004,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (climbingLedge) return;
 
         float vertical = input.MoveInput.y;
-        if (vertical > 0.5f)
+        if (vertical > 0.5f && Time.time - hangStartedAt >= ledgeClimbDelay)
         {
             StartCoroutine(ClimbOntoLedge());
             return;

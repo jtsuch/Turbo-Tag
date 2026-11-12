@@ -58,6 +58,8 @@ public class TeamDeathmatchMode : TeamMode
         new ScoreboardColumn("Team",           TeamLabel),
         new ScoreboardColumn("Kills",          p => MatchStats.Count(p, PlayerKeys.StatKills)),
         new ScoreboardColumn("Deaths",         p => MatchStats.Count(p, PlayerKeys.StatDeaths)),
+        new ScoreboardColumn("Assists",        p => MatchStats.Count(p, PlayerKeys.StatAssists)),
+        new ScoreboardColumn("Damage",         p => MatchStats.Count(p, PlayerKeys.StatDamage)),
         new ScoreboardColumn("K/D",            p => (MatchStats.Get(p, PlayerKeys.StatKills) / Mathf.Max(1f, MatchStats.Get(p, PlayerKeys.StatDeaths))).ToString("0.0")),
         new ScoreboardColumn("Headshots",      p => MatchStats.Count(p, PlayerKeys.StatHeadshots)),
         new ScoreboardColumn("Abilities Used", p => MatchStats.Count(p, PlayerKeys.StatAbilitiesUsed)),

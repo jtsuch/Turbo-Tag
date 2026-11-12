@@ -132,6 +132,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private void Update()
     {
         if (!TryInitialize()) return;
+        NetworkConfig.FitToRoom();
         Mode.ClientUpdate();
         if (!PhotonNetwork.IsMasterClient) return;
 

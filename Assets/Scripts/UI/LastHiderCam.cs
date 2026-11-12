@@ -1,8 +1,10 @@
 using UnityEngine;
 
 /// <summary>
-/// Last Hider Cam (Tag): once one hider is left, a hunter can hold <see cref="InputAction.Spectate"/> (default V) to
-/// watch them from a chase camera behind them. Watching has a price: you stand still and can't use abilities or your
+/// Last Hider Cam (Tag): once the last hider has gone <see cref="UnlockAfter"/> seconds without being found (counted
+/// on every screen from when they became the last one; everyone gets a banner when it opens), a hunter can hold
+/// <see cref="InputAction.Spectate"/> (default V) to watch them from a chase camera behind them. Everyone round
+/// them shows as they are, the watching hunter's own penguin included (<see cref="PlayerInitializer.SetOwnBodyVisible"/>). Watching has a price: you stand still and can't use abilities or your
 /// tool while you look (<see cref="Player.MovementLocked"/>, <see cref="Player.ViewingCamera"/>), and the hider's map
 /// border pulses purple every so often so they know they're being watched (<see cref="PlayerCallouts.NotifyWatched"/>).
 /// Added next to the GameModeManager.
@@ -10,6 +12,10 @@ using UnityEngine;
 public class LastHiderCam : MonoBehaviour
 {
     private const float NotifyEvery = 1.5f;
+    public const float UnlockAfter = 30f;
+
+    private float lastHiderSince = -1f;
+    private bool announced;
 
     /// <summary>True while the local hunter is watching the last hider.</summary>
     public static bool Watching { get; private set; }
@@ -30,9 +36,22 @@ public class LastHiderCam : MonoBehaviour
     {
         var manager = GameModeManager.Instance;
         var local = Player.Local;
-        bool available = manager != null && manager.Mode is TagMode && manager.Phase == MatchPhase.Active
-                         && local != null && local.Role == PlayerRole.Hunter && !local.IsCaught && !PauseMenuManager.IsPaused
-                         && TagRoundSummary.HidersLeft() == 1 && (Watching || !local.ViewingCamera);
+        // How long the last hider has lasted alone (every screen counts it the same way), announced when it opens
+        bool lastOne = manager != null && manager.Mode is TagMode && manager.Phase == MatchPhase.Active && TagRoundSummary.HidersLeft() == 1;
+        if (!lastOne) { lastHiderSince = -1f; announced = false; }
+        else if (lastHiderSince < 0f) lastHiderSince = Time.time;
+        bool unlocked = lastOne && Time.time - lastHiderSince >= UnlockAfter;
+        if (unlocked && !announced)
+        {
+            announced = true;
+            var hider = LastHider();
+            if (HUDManager.Instance != null && hider != null)
+                HUDManager.Instance.ShowBanner(local != null && local == hider
+                    ? "Hunters can now watch you (hold V)!"
+                    : $"{hider.photonView.Owner?.NickName ?? "The last hider"} has lasted {UnlockAfter:0} s: hunters can watch them (hold V)", 3.5f);
+        }
+        bool available = unlocked && local != null && local.Role == PlayerRole.Hunter && !local.IsCaught && !PauseMenuManager.IsPaused
+                         && (Watching || !local.ViewingCamera);
         target = available ? LastHider() : null;
         KeyCode key = Keybinds.Get(InputAction.Spectate);
         if (target != null && !Watching) HUDManager.Prompt(key, "Hold to watch the last hider (you'll stand still)");
@@ -77,6 +96,8 @@ public class LastHiderCam : MonoBehaviour
         local.ViewingCamera = true;
         anchor.position = target.transform.position + Vector3.up * 3f;
         if (PlayerCam.Local != null) PlayerCam.Local.SetViewOverride(anchor);
+        // The camera is away from your body now: show it (and your look), as everyone else sees it
+        if (local.TryGetComponent(out PlayerInitializer init)) init.SetOwnBodyVisible(true);
         nextNotify = 0f;
     }
 
@@ -85,7 +106,12 @@ public class LastHiderCam : MonoBehaviour
         if (!Watching) return;
         Watching = false;
         var local = Player.Local;
-        if (local != null) { local.MovementLocked = false; local.ViewingCamera = false; }
+        if (local != null)
+        {
+            local.MovementLocked = false;
+            local.ViewingCamera = false;
+            if (local.TryGetComponent(out PlayerInitializer init)) init.SetOwnBodyVisible(false);
+        }
         if (PlayerCam.Local != null) PlayerCam.Local.SetViewOverride(null);
     }
 }

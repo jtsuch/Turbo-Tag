@@ -213,8 +213,11 @@ public class PlayerCam : MonoBehaviour
 
         Quaternion frame = UpdateSurfaceFrame();
         Quaternion targetRotation = frame * Quaternion.Euler(xRotation, yRotation, currentTilt + adminRoll);
-        transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation,
-            1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
+        // The camera is a child of the body: turn the body first, then set the camera's world rotation. (Setting the
+        // camera first and then the body turned the camera again by however far the body's interpolated physics
+        // rotation lagged the mouse, which changes from frame to frame: a stutter when turning, worst when the frame
+        // rate is close to the physics rate.)
+        Quaternion previousView = transform.rotation;
 
         Quaternion upright = frame * Quaternion.Euler(0f, yRotation, 0f);
         if (frame != Quaternion.identity)
@@ -232,12 +235,18 @@ public class PlayerCam : MonoBehaviour
         {
             // Hanging: the body keeps facing the wall (the ledge animations), the view still turns all the way round
             Quaternion facing = Quaternion.LookRotation(movement.LedgeFacing, Vector3.up);
-            playerTransform.rotation = Quaternion.Slerp(playerTransform.rotation, facing, 1f - Mathf.Exp(-14f * Time.deltaTime)); // Turns in, no snap
+            player.Body.MoveRotation(Quaternion.Slerp(player.Body.rotation, facing, 1f - Mathf.Exp(-14f * Time.deltaTime))); // Turns in, no snap
         }
         else
         {
-            playerTransform.rotation = upright;
+            // Through the Rigidbody, not the Transform: writing the Transform of an interpolated body makes Unity copy
+            // the whole (interpolated, slightly behind) pose back into physics every frame, pulling the player back
+            // along their path a little each frame: a judder while turning and moving. The camera's own rotation is
+            // set directly below, so the view still follows the mouse at once.
+            player.Body.MoveRotation(upright);
         }
+
+        transform.rotation = Quaternion.Lerp(previousView, targetRotation, 1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
     }
 
     private PlayerMovement movementCache;
