@@ -280,16 +280,17 @@ public static class FoundryBuilder
         // From the yard onto the deck the hard way: a container against its south face (0 → 2.6 → the wall top 4 → 5)
         K(g, "CargoContainer-6m", new Vector3(4, L0, 29), 0f);
 
-        // Catwalk at 10 from the factory roof's south-east corner, over the dock's front edge, then south to the Stack
-        for (float x = -4; x <= 4; x += 8) K(g, "Catwalk-8x2m", new Vector3(x, L10 - 1, 33), 0f);
-        for (float z = 28; z >= 12; z -= 8) K(g, "Catwalk-8x2m", new Vector3(7, L10 - 1, z), 90f);
-        K(g, "Platform-4x4m", new Vector3(6, L10 - 1, 6), 0f); // Landing at the tower's north-east
-        foreach (var p in new[] { new Vector3(7, 0, 24), new Vector3(7, 0, 14) })
+        // Catwalk at 10 from the factory roof's south-east corner, over the dock's front edge, round a corner piece (the
+        // straight pieces have rails on both sides) and south to the Stack: one jump onto its top
+        K(g, "Catwalk-8x2m", new Vector3(-4, L10 - 1, 33), 0f);
+        K(g, "Catwalk-Corner-4x4m", new Vector3(3, L10 - 1, 33), 180f);   // Open to the west and the south
+        for (float z = 26; z >= 10; z -= 8) K(g, "Catwalk-8x2m", new Vector3(3, L10 - 1, z), 90f);
+        foreach (var p in new[] { new Vector3(3, 0, 24), new Vector3(3, 0, 14) })
         {
             K(g, "Pillar-Round-2m", p, 0f, new Vector3(1f, 1.125f, 1f));
             K(g, "Pillar-Round-2m", p + Vector3.up * 4.5f, 0f, new Vector3(1f, 1.125f, 1f));
         }
-        gaps.Add(("Catwalk landing to the Stack top", new Vector3(5, L10, 5), new Vector3(2.5f, L10, 2.5f)));
+        gaps.Add(("Catwalk end to the Stack top", new Vector3(3, L10, 6.2f), new Vector3(3, L10, 2.7f)));
         Lamp(g, new Vector3(0, L10 + 5, 40), 20f);
     }
 
