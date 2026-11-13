@@ -192,6 +192,14 @@ public abstract class GameMode
     /// <summary>Mode-specific multiplier on ability cooldowns (0 = no cooldowns).</summary>
     public virtual float CooldownMultiplier(PlayerRole role) => 1f;
 
+    /// <summary>All clients: whether spent ability charges and Basic meters come back over time in this phase
+    /// (Search &amp; Destroy: not in a live round; everything is refilled when it starts).</summary>
+    public virtual bool AbilitiesRegenerate(MatchPhase phase) => true;
+
+    /// <summary>Guns' spray bloom: × per shot and × its cap (above 1 rewards tapping over spraying).</summary>
+    public virtual float BloomScale => 1f;
+    public virtual float MaxBloomScale => 1f;
+
     /// <summary>True while a player in this role is earning score.</summary>
     public virtual bool IsScoring(PlayerRole role, MatchPhase phase) => false;
 

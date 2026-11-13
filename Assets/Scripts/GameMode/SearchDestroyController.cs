@@ -41,6 +41,7 @@ public class SearchDestroyController : MonoBehaviourPun
     private GameModeManager manager;
     private Task busy;
     private float progress;
+    private bool abilityUsed, sentHalf;   // An ability used this frame (cancels a plant/defuse); this defuse reported half
     private bool lockedMovement;
     private float nextPickupAsk, nextBeep, nextBusyTick;
 
@@ -110,10 +111,14 @@ public class SearchDestroyController : MonoBehaviourPun
         BuildHud();
         spectateAnchor = new GameObject("SnD Spectate Cam").transform;
         spectateAnchor.SetParent(transform, false);
+        AbilityHandler.LocalUsed += NoteAbilityUsed;
     }
+
+    private void NoteAbilityUsed() => abilityUsed = true;
 
     private void OnDestroy()
     {
+        AbilityHandler.LocalUsed -= NoteAbilityUsed;
         if (Instance == this) Instance = null;
         StopSpectating();
         if (lockedMovement && Player.Local != null) Player.Local.MovementLocked = false;
@@ -441,9 +446,20 @@ public class SearchDestroyController : MonoBehaviourPun
                 can = Task.Defuse;
         }
 
+        bool interrupted = abilityUsed;
+        abilityUsed = false;
+        if (interrupted && busy != Task.None)
+        {
+            // Using an ability breaks a plant or defuse: let go of the key and start again
+            EndTask(local);
+            bombKeyDownAt = -1f;
+            return;
+        }
+
         bool holding = can != Task.None && longHold && (can != Task.Plant || local.Movement.OnGround);
         if (can != Task.None && !holding)
-            HUDManager.Prompt(key, can == Task.Plant ? $"Hold to plant the bomb at {letter}" : "Hold to defuse the bomb");
+            HUDManager.Prompt(key, can == Task.Plant ? $"Hold to plant the bomb at {letter}"
+                                   : SearchDestroyMode.DefuseHalf ? "Hold to defuse the bomb (half done)" : "Hold to defuse the bomb");
 
         if (!holding || (busy != Task.None && busy != can))
         {
@@ -455,7 +471,9 @@ public class SearchDestroyController : MonoBehaviourPun
         {
             busy = can;
             local.SetFlag(can == Task.Plant ? PlayerFlag.Planting : PlayerFlag.Defusing, true); // The animation on every screen
-            progress = 0f;
+            // Valorant's checkpoint: once anyone has defused this bomb half way, a defuse starts from half
+            progress = can == Task.Defuse && SearchDestroyMode.DefuseHalf ? MatchRules.DefuseTime * 0.5f : 0f;
+            sentHalf = false;
             if (can == Task.Plant) bombOut = true; // Planting takes it out
             if (!local.MovementLocked) { local.MovementLocked = true; lockedMovement = true; }
             photonView.RPC(nameof(RPC_SnDBusy), RpcTarget.All, local.transform.position, can == Task.Defuse);
@@ -463,6 +481,11 @@ public class SearchDestroyController : MonoBehaviourPun
 
         float needed = busy == Task.Plant ? MatchRules.PlantTime : MatchRules.DefuseTime;
         progress += Time.deltaTime;
+        if (busy == Task.Defuse && !sentHalf && progress >= needed * 0.5f)
+        {
+            sentHalf = true;
+            if (!SearchDestroyMode.DefuseHalf) photonView.RPC(nameof(RPC_SnDDefuseHalf), RpcTarget.MasterClient);
+        }
         if (Time.time >= nextBusyTick)
         {
             nextBusyTick = Time.time + 0.5f;
@@ -499,6 +522,12 @@ public class SearchDestroyController : MonoBehaviourPun
     private void RPC_SnDPlant(Vector3 at, string letter, PhotonMessageInfo info)
     {
         if (PhotonNetwork.IsMasterClient) Mode?.MasterPlant(info.Sender, at, letter);
+    }
+
+    [PunRPC]
+    private void RPC_SnDDefuseHalf(PhotonMessageInfo info)
+    {
+        if (PhotonNetwork.IsMasterClient) Mode?.MasterDefuseHalf(info.Sender);
     }
 
     [PunRPC]

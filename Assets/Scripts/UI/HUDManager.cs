@@ -423,7 +423,7 @@ public class HUDManager : MonoBehaviour
             // The sweep shows the next use coming back; it fills the card only when none are left
             s.Sweep.fillAmount = refill > 0f ? Mathf.Clamp01(refill / duration) : 0f;
             s.Sweep.color = new Color(0.05f, 0.03f, 0.12f, empty ? 0.75f : 0.35f);
-            s.Seconds.text = empty && refill > 0f ? (refill >= 10f ? $"{refill:0}" : $"{refill:0.0}") : "";
+            s.Seconds.text = !empty ? "" : refill > 0f ? (refill >= 10f ? $"{refill:0}" : $"{refill:0.0}") : Ability.Regenerating ? "" : "USED";
             s.Icon.color = empty ? new Color(1f, 1f, 1f, 0.45f) : Color.white;
 
             bool multiple = a.MaxCharges > 1;

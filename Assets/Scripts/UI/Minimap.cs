@@ -25,7 +25,8 @@ public class Minimap : MonoBehaviour
 
     private Camera cam;
     private RenderTexture texture;
-    private RectTransform card, markers, arrow, frame, radarLayer;
+    private RectTransform card, markers, arrow, frame, radarLayer, calloutLayer;
+    private readonly List<TMPro.TMP_Text> calloutLabels = new();
     private TMPro.TMP_Text mapLabel;
     private Image pulse;
     private Color pulseColor;
@@ -72,7 +73,7 @@ public class Minimap : MonoBehaviour
     {
         var theme = UITheme.Current;
         var label = mapLabel = UIKit.Text(card, "MAP", 18f, UIKit.Font.Bold, theme.textMuted);
-        UIKit.Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(18f, -8f), new Vector2(200f, 26f));
+        UIKit.Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(18f, -8f), new Vector2(250f, 26f));
         var key = UIKit.Chip(card, Keybinds.Label(Keybinds.Get(InputAction.Map)), theme.card, theme.text, 16f);
         UIKit.Place(key.rectTransform, new Vector2(1f, 1f), new Vector2(-14f, -8f), new Vector2(44f, 26f));
 
@@ -99,6 +100,8 @@ public class Minimap : MonoBehaviour
         texture = new RenderTexture(TextureSize, TextureSize, 24) { name = "Minimap" };
         view.texture = texture;
 
+        calloutLayer = UIKit.Rect("Callouts", frame); // Place names, under everything else
+        UIKit.Stretch(calloutLayer);
         radarLayer = UIKit.Rect("Radar", frame); // Under the player markers
         UIKit.Stretch(radarLayer);
         markers = UIKit.Rect("Markers", frame);
@@ -203,6 +206,7 @@ public class Minimap : MonoBehaviour
         arrow.anchoredPosition = Vector2.zero;
         arrow.localRotation = Quaternion.Euler(0f, 0f, -yaw);
 
+        DrawCallouts(local);
         DrawOthers(local);
         UpdateRadar(local);
         UpdatePulse();
@@ -234,7 +238,9 @@ public class Minimap : MonoBehaviour
 
         // Which sweep we're in and how long until the next (every screen agrees: network time, or the hunt's clock)
         var (sweepNow, secondsLeft, sweepRadius) = radarMode ? RadarSchedule(mode, manager) : (0, 0, RadarRadius);
-        mapLabel.text = radarMode && (on || target) ? $"MAP  <color=#FF5A6E>RADAR {secondsLeft}s</color>" : "MAP";
+        string place = CalloutAt(local.transform.position);
+        mapLabel.text = radarMode && (on || target) ? $"MAP  <color=#FF5A6E>RADAR {secondsLeft}s</color>"
+                      : place != null ? $"MAP  <color=#FFFFFF>{place.ToUpperInvariant()}</color>" : "MAP";
 
         // Hiders are warned when a sweep finds them, so they can move
         if (target)
@@ -423,6 +429,42 @@ public class Minimap : MonoBehaviour
         }
         for (int i = used; i < dots.Count; i++) dots[i].gameObject.SetActive(false);
         arrow.SetAsLastSibling();
+    }
+
+    // ─── Callouts: place names written over the map (MapCallout) ──────────────
+
+    private static string CalloutAt(Vector3 point)
+    {
+        foreach (var c in MapCallout.All) if (c != null && c.Contains(point)) return c.label;
+        return null;
+    }
+
+    private void DrawCallouts(Player local)
+    {
+        int used = 0;
+        float edge = mapSize * 0.5f - 18f;
+        foreach (var c in MapCallout.All)
+        {
+            if (c == null || !c.showLabel) continue;
+            Vector3 d = c.transform.position - local.transform.position;
+            Vector2 pos = new Vector2(d.x, d.z) / (radius * 2f) * mapSize;
+            if (Mathf.Abs(pos.x) > edge || Mathf.Abs(pos.y) > edge) continue;   // Only names in view
+            if (used >= calloutLabels.Count)
+            {
+                var t = UIKit.Text(calloutLayer, "", 14f, UIKit.Font.Bold, new Color(1f, 1f, 1f, 0.85f), TMPro.TextAlignmentOptions.Center, "Callout");
+                t.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                t.outlineWidth = 0.25f;
+                t.outlineColor = new Color32(20, 22, 30, 255);
+                t.rectTransform.sizeDelta = new Vector2(160f, 24f);
+                calloutLabels.Add(t);
+            }
+            var label = calloutLabels[used++];
+            label.gameObject.SetActive(true);
+            label.text = c.label.ToUpperInvariant();
+            label.fontSize = big ? 22f : 13f;
+            label.rectTransform.anchoredPosition = pos;
+        }
+        for (int i = used; i < calloutLabels.Count; i++) calloutLabels[i].gameObject.SetActive(false);
     }
 
     // One round marker at a world position (reusing the pool of dots)

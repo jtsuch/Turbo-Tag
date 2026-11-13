@@ -39,6 +39,7 @@ public static class RoomKeys
     public const string SnDReason      = "Match_SnDReason";   // ...and how (SearchDestroyMode.Reason*)
     public const string SnDHistory     = "Match_SnDHistory";  // Each finished round's winner, "R"/"B" per round
     public const string SnDFirstAttack = "Match_SnDFirst";    // The team that attacked in round 1
+    public const string SnDDefuseHalf  = "Match_SnDHalf";     // The planted bomb is half defused (bool): defuses resume from half
 
     // Last Man Standing (master-written; see LastManStandingMode)
     public const string LmsIn          = "Match_LmsIn";       // Actors playing this round (int[]): everyone, or Sudden Death's finalists

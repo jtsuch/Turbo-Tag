@@ -55,7 +55,7 @@ public abstract class BasicAbility : Ability
             if (Owner.Modifiers.Get(Stat.Cooldown) > 0f) CurrentDuration -= Time.fixedDeltaTime * DrainRate;
             if (CurrentDuration <= 0.01f) Deactivate();
         }
-        else
+        else if (Regenerating || Owner.Modifiers.Get(Stat.Cooldown) <= 0f) // S&D's live round: the bar doesn't refill
         {
             CurrentDuration = Mathf.Min(MaxDuration, CurrentDuration + Time.fixedDeltaTime * Mathf.Max(0.01f, rechargeRate));
         }

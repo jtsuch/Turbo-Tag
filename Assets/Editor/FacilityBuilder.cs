@@ -39,6 +39,8 @@ public static class FacilityBuilder
     private sealed class Room
     {
         public string Name; public int I0, I1, J0, J1, Base, Storeys = 2; public string Tile;
+        public string Callout;   // The place name on the minimap (null: none)
+        public bool Unlabelled;  // Named, but the name isn't written over it (a main's other rooms share one label)
         public float X0 => OX + 8f * I0; public float X1 => OX + 8f * (I1 + 1);
         public float Z0 => OZ + 8f * J0; public float Z1 => OZ + 8f * (J1 + 1);
         public float BaseY => 5f * Base;
@@ -50,27 +52,27 @@ public static class FacilityBuilder
     // upper corridors last
     private static readonly Room[] Rooms =
     {
-        new() { Name = "Defense Spawn",  I0 = 0,  I1 = 2,  J0 = 6,  J1 = 10, Tile = "Floor-Inlay-8m" },
-        new() { Name = "A Site",         I0 = 2,  I1 = 5,  J0 = 12, J1 = 15, Storeys = 3, Tile = "Floor-Tiles-8m" },
-        new() { Name = "B Site",         I0 = 2,  I1 = 5,  J0 = 1,  J1 = 4,  Tile = "Floor-Grate-8m" },
-        new() { Name = "Mid",            I0 = 7,  I1 = 11, J0 = 6,  J1 = 10, Storeys = 3, Tile = "Floor-Lanes-8m" },
-        new() { Name = "Offense Spawn",  I0 = 17, I1 = 19, J0 = 6,  J1 = 10, Tile = "Floor-Inlay-8m" },
+        new() { Name = "Defense Spawn", Callout = "Defense Spawn",  I0 = 0,  I1 = 2,  J0 = 6,  J1 = 10, Tile = "Floor-Inlay-8m" },
+        new() { Name = "A Site", Callout = "A Site",         I0 = 2,  I1 = 5,  J0 = 12, J1 = 15, Storeys = 3, Tile = "Floor-Tiles-8m" },
+        new() { Name = "B Site", Callout = "B Site",         I0 = 2,  I1 = 5,  J0 = 1,  J1 = 4,  Tile = "Floor-Grate-8m" },
+        new() { Name = "Mid", Callout = "Mid",            I0 = 7,  I1 = 11, J0 = 6,  J1 = 10, Storeys = 3, Tile = "Floor-Lanes-8m" },
+        new() { Name = "Offense Spawn", Callout = "Offense Spawn",  I0 = 17, I1 = 19, J0 = 6,  J1 = 10, Tile = "Floor-Inlay-8m" },
         new() { Name = "A Link",         I0 = 1,  I1 = 2,  J0 = 11, J1 = 11 },
         new() { Name = "B Link",         I0 = 1,  I1 = 2,  J0 = 5,  J1 = 5 },
-        new() { Name = "A Short",        I0 = 5,  I1 = 7,  J0 = 11, J1 = 11 },
-        new() { Name = "B Short",        I0 = 5,  I1 = 7,  J0 = 5,  J1 = 5 },
-        new() { Name = "Mid Top",        I0 = 12, I1 = 13, J0 = 10, J1 = 11 },
-        new() { Name = "Mid Bottom",     I0 = 12, I1 = 13, J0 = 5,  J1 = 6 },
-        new() { Name = "A Lobby",        I0 = 14, I1 = 17, J0 = 11, J1 = 14 },
-        new() { Name = "B Lobby",        I0 = 14, I1 = 17, J0 = 2,  J1 = 5 },
-        new() { Name = "A Main Long",    I0 = 12, I1 = 15, J0 = 15, J1 = 15 },
-        new() { Name = "A Main Hall",    I0 = 8,  I1 = 11, J0 = 14, J1 = 15 },
-        new() { Name = "A Main Corner",  I0 = 6,  I1 = 7,  J0 = 13, J1 = 14 },
-        new() { Name = "B Main Stairs",  I0 = 11, I1 = 13, J0 = 1,  J1 = 3 },
-        new() { Name = "B Main Dip",     I0 = 8,  I1 = 10, J0 = 0,  J1 = 1 },
-        new() { Name = "B Main Corner",  I0 = 6,  I1 = 7,  J0 = 0,  J1 = 3 },
-        new() { Name = "Defender Walk",  I0 = 3,  I1 = 6,  J0 = 8,  J1 = 8,  Base = 1, Storeys = 1 },
-        new() { Name = "Upper B Main",   I0 = 6,  I1 = 11, J0 = 4,  J1 = 4,  Base = 1, Storeys = 1 },
+        new() { Name = "A Short", Callout = "A Short",        I0 = 5,  I1 = 7,  J0 = 11, J1 = 11 },
+        new() { Name = "B Short", Callout = "B Short",        I0 = 5,  I1 = 7,  J0 = 5,  J1 = 5 },
+        new() { Name = "Mid Top", Callout = "Mid Top",        I0 = 12, I1 = 13, J0 = 10, J1 = 11 },
+        new() { Name = "Mid Bottom", Callout = "Mid Bottom",     I0 = 12, I1 = 13, J0 = 5,  J1 = 6 },
+        new() { Name = "A Lobby", Callout = "A Lobby",        I0 = 14, I1 = 17, J0 = 11, J1 = 14 },
+        new() { Name = "B Lobby", Callout = "B Lobby",        I0 = 14, I1 = 17, J0 = 2,  J1 = 5 },
+        new() { Name = "A Main Long", Callout = "A Main", Unlabelled = true,    I0 = 12, I1 = 15, J0 = 15, J1 = 15 },
+        new() { Name = "A Main Hall", Callout = "A Main",    I0 = 8,  I1 = 11, J0 = 14, J1 = 15 },
+        new() { Name = "A Main Corner", Callout = "A Main", Unlabelled = true,  I0 = 6,  I1 = 7,  J0 = 13, J1 = 14 },
+        new() { Name = "B Main Stairs", Callout = "B Main", Unlabelled = true,  I0 = 11, I1 = 13, J0 = 1,  J1 = 3 },
+        new() { Name = "B Main Dip", Callout = "B Main",     I0 = 8,  I1 = 10, J0 = 0,  J1 = 1 },
+        new() { Name = "B Main Corner", Callout = "B Main", Unlabelled = true,  I0 = 6,  I1 = 7,  J0 = 0,  J1 = 3 },
+        new() { Name = "Defender Walk", Callout = "Defender Walk",  I0 = 3,  I1 = 6,  J0 = 8,  J1 = 8,  Base = 1, Storeys = 1 },
+        new() { Name = "Upper B Main", Callout = "Upper B Main",   I0 = 6,  I1 = 11, J0 = 4,  J1 = 4,  Base = 1, Storeys = 1 },
     };
 
     // Openings between two rooms' cells in one storey: D a one-storey archway, O a wide opening (8 m, one storey high)
@@ -411,6 +413,18 @@ public static class FacilityBuilder
             float z = -12f + (k % 3) * 12f, x = k < 3 ? 74f : 64f;
             Spawn($"Spawn {k + 1:00} Defend", new Vector3(defend[k].x, G, defend[k].y), new Vector3(0, G, defend[k].y), SpawnPoint.Side.Defend);
             Spawn($"Spawn {k + 7:00} Attack", new Vector3(x, G, z), new Vector3(0, G, z), SpawnPoint.Side.Attack);
+        }
+        var callouts = Group("Callouts");
+        foreach (var room in Rooms)
+        {
+            if (room.Callout == null) continue;
+            var go = new GameObject($"Callout {room.Callout}");
+            go.transform.SetParent(callouts, false);
+            go.transform.position = new Vector3((room.X0 + room.X1) / 2f, room.BaseY, (room.Z0 + room.Z1) / 2f);
+            var callout = go.AddComponent<MapCallout>();
+            callout.label = room.Callout;
+            callout.showLabel = !room.Unlabelled;
+            callout.size = new Vector3(room.X1 - room.X0, room.Top - room.BaseY, room.Z1 - room.Z0);
         }
         var sites = Group("Bomb Sites");
         // Plant zones: the 16 × 16 in each site's middle (balconies, ledges and stairs are outside)

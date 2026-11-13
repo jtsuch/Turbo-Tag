@@ -83,6 +83,7 @@ public class PlayerAudio : MonoBehaviour
     private void Update()
     {
         HandleFootsteps(); // Every copy: from its own synced movement
+        HandleAirRush();
         if (!photonView.IsMine) return;
         HandleSlide();
     }
@@ -97,9 +98,10 @@ public class PlayerAudio : MonoBehaviour
         if (!mine && anim == null) anim = GetComponent<PlayerAnimatorController>();
         bool grounded = mine ? movement.OnGround : anim != null && anim.GroundedParam;
 
-        // No footsteps if airborne, hanging, climbing, sliding, caught or a ghost
+        // No footsteps if airborne (wall-runs excepted: running steps on the wall), hanging, climbing, sliding, caught or a ghost
         var state = player.State;
-        if (!grounded || state == Player.MovementState.Hang || state == Player.MovementState.Climb) return;
+        if (state == Player.MovementState.Climb) { HandleClimbScuffs(mine); return; }
+        if ((!grounded && state != Player.MovementState.WallRun) || state == Player.MovementState.Hang) return;
         if (player.IsCaught || player.IsDownAfterTag || player.Role == PlayerRole.Ghost) return;
         if (mine ? isSliding : movement != null && state == Player.MovementState.Prone && player.Velocity.magnitude > player.Stats.proneSpeed + 1f) return;
 
@@ -131,6 +133,37 @@ public class PlayerAudio : MonoBehaviour
             SoundVisualizer.Notify(transform.position, 0.8f, player.ActorNumber); // Full running shows on the edge
         Sfx.At(SfxKind.Step, transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
     }
+
+    // Climbing: quieter scuffs, a little apart, that still show on others' sound visualizers
+    private void HandleClimbScuffs(bool mine)
+    {
+        if (player.IsCaught || player.IsDownAfterTag || player.Role == PlayerRole.Ghost) return;
+        if (Mathf.Abs(player.Velocity.y) < 1.5f) return;
+        footstepTimer -= Time.deltaTime;
+        if (footstepTimer > 0f) return;
+        footstepTimer = 0.32f;
+        leftFoot = !leftFoot;
+        if (!mine) SoundVisualizer.Notify(transform.position, 0.6f, player.ActorNumber);
+        Sfx.At(SfxKind.Step, transform.position + Vector3.up, (mine ? footstepVolume : remoteStepVolume) * 0.7f,
+               mine ? 20f : remoteStepRange * 0.8f, leftFoot ? 1.2f : 1.3f);
+    }
+
+    // Others moving fast through the air (grapples, zips, dashes, launches): a rush of air you can hear coming,
+    // shown on the sound visualizer too
+    private float nextRush;
+    private void HandleAirRush()
+    {
+        if (photonView.IsMine || player.IsCaught || player.IsDownAfterTag || player.Role == PlayerRole.Ghost) return;
+        if (anim == null) anim = GetComponent<PlayerAnimatorController>();
+        if (anim != null && anim.GroundedParam) return;
+        float speed = player.Velocity.magnitude;
+        if (speed < RushSpeed || Time.time < nextRush) return;
+        nextRush = Time.time + 0.55f;
+        float loud = Mathf.InverseLerp(RushSpeed, 35f, speed);
+        Sfx.At(SfxKind.Whoosh, transform.position + Vector3.up, Mathf.Lerp(0.35f, 0.75f, loud), 40f, Mathf.Lerp(0.8f, 1.15f, loud));
+        SoundVisualizer.Notify(transform.position, Mathf.Lerp(0.6f, 1f, loud), player.ActorNumber);
+    }
+    private const float RushSpeed = 17f;   // Above a sprint jump: only ability-driven speed
 
     // ─── Sliding ──────────────────────────────────────────────────────────────
 
@@ -217,7 +250,11 @@ public class PlayerAudio : MonoBehaviour
     }
 
     [PunRPC]
-    private void RPC_PlaySlide() => PlaySlideLoop();
+    private void RPC_PlaySlide()
+    {
+        SoundVisualizer.Notify(transform.position, 0.8f, player.ActorNumber);
+        PlaySlideLoop();
+    }
 
     private void PlaySlideLoop()
     {

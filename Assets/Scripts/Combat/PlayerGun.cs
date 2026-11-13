@@ -212,7 +212,8 @@ public class PlayerGun : MonoBehaviourPun
         Transform view   = PlayerCam.Local.Camera.transform;
         // Perfect on the first shot; spraying blooms; air/moving error only with the Movement Inaccuracy rule
         float     spread = gun.Spread + bloom + (MatchRules.MovementSpread && !player.IsGrounded ? gun.AirSpread : 0f);
-        bloom = Mathf.Min(gun.MaxBloom, bloom + gun.Bloom);
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        bloom = Mathf.Min(gun.MaxBloom * (mode != null ? mode.MaxBloomScale : 1f), bloom + gun.Bloom * (mode != null ? mode.BloomScale : 1f));
         float     damage = gun.Damage * MatchRules.DamageScale * DamageMultiplier;
         bool      firstLanded = false;
 

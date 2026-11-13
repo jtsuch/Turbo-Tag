@@ -120,5 +120,7 @@ public class PlayerFx : MonoBehaviourPun
         if (player != null && player.IsDownAfterTag) return;
         if (landed) Fx.Land(feet, speed);
         else        Fx.Jump(feet);
+        // Jumps and hard landings give someone away on the sound visualizer too
+        if (player != null) SoundVisualizer.Notify(feet, landed ? Mathf.Lerp(0.6f, 1f, Mathf.InverseLerp(8f, 30f, speed)) : 0.5f, player.ActorNumber);
     }
 }

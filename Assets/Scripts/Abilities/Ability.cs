@@ -67,6 +67,7 @@ public abstract class Ability : MonoBehaviour
 
         float duration = CooldownDuration;
         if (duration <= 0f) { charges = MaxCharges; return; }
+        if (!Regenerating) { if (charges >= MaxCharges) rechargeStart = Time.time; return; } // Spent charges stay spent
         while (charges < MaxCharges && Time.time - rechargeStart >= duration)
         {
             charges++;
@@ -75,17 +76,30 @@ public abstract class Ability : MonoBehaviour
         if (charges >= MaxCharges) rechargeStart = Time.time; // Nothing refilling: the next use starts the clock
     }
 
-    /// <summary>Seconds until a use is available (0 while any charge is left).</summary>
-    public float CooldownRemaining => Charges > 0 ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
+    /// <summary>
+    /// Whether spent charges and Basic meters come back over time right now (<see cref="GameMode.AbilitiesRegenerate"/>:
+    /// Search &amp; Destroy's live rounds don't). Cheats with no cooldowns still refill.
+    /// </summary>
+    public static bool Regenerating
+    {
+        get
+        {
+            var manager = GameModeManager.Instance;
+            return manager == null || manager.Mode == null || manager.Mode.AbilitiesRegenerate(manager.Phase);
+        }
+    }
 
-    /// <summary>Seconds until the next charge comes back (0 when full).</summary>
-    public float NextChargeIn => Charges >= MaxCharges ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
+    /// <summary>Seconds until a use is available (0 while any charge is left, or when nothing regenerates).</summary>
+    public float CooldownRemaining => Charges > 0 || !Regenerating ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
+
+    /// <summary>Seconds until the next charge comes back (0 when full, or when nothing regenerates).</summary>
+    public float NextChargeIn => Charges >= MaxCharges || !Regenerating ? 0f : Mathf.Max(0f, rechargeStart + CooldownDuration - Time.time);
 
     public bool IsReady => Charges > 0;
 
     /// <summary>0 = just used up, 1 = ready. Drives the HUD.</summary>
     public virtual float Readiness =>
-        CooldownDuration <= 0f || Charges > 0 ? 1f : 1f - CooldownRemaining / CooldownDuration;
+        CooldownDuration <= 0f || Charges > 0 ? 1f : !Regenerating ? 0f : 1f - CooldownRemaining / CooldownDuration;
 
     /// <summary>Spends a charge (its cooldown starts), and counts a use for the scoreboard (quick, throw and trap abilities).</summary>
     protected void StartCooldown()

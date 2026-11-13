@@ -44,8 +44,12 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     /// Owner: an ability was used. The total goes to this player's stats a few times a second, and every
     /// screen plays the ability's sound and burst on this player (<see cref="Fx.Ability"/>).
     /// </summary>
+    /// <summary>Owner: the local player used an ability (Search &amp; Destroy: it cancels a plant or defuse).</summary>
+    public static event System.Action LocalUsed;
+
     public void CountUse(string abilityId)
     {
+        if (photonView.IsMine) LocalUsed?.Invoke();
         if (photonView.IsMine && TryGetComponent(out Player self)) self.EndSpawnProtectionNow(); // Attacking ends it
         usesThisMatch++;
         usesDirty = true;
@@ -58,8 +62,29 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         if (TryGetComponent(out Player player)) Fx.Ability(abilityId, player);
     }
 
+    private bool hadBombOut;
+
+    // Taking the bomb out ends any movement ability in use
+    private void WatchBombInHand()
+    {
+        bool holding = TryGetComponent(out Player p) && p.Has(PlayerFlag.HoldingBomb);
+        if (holding && !hadBombOut)
+            foreach (var a in equipped) if (a is BasicAbility && a.enabled) a.Cancel();
+        hadBombOut = holding;
+    }
+
+    // Modes without regeneration in a live round (Search & Destroy): every charge and meter full as it goes live
+    private void OnPhaseChanged(MatchPhase phase)
+    {
+        var manager = GameModeManager.Instance;
+        if (!photonView.IsMine || phase != MatchPhase.Active || manager == null || manager.Mode == null) return;
+        if (manager.Mode.AbilitiesRegenerate(phase)) return;
+        foreach (var a in byId.Values) a.RefillNow();
+    }
+
     private void Update()
     {
+        if (photonView.IsMine) WatchBombInHand();
         if (!usesDirty || Time.time < nextUsesWrite || !photonView.IsMine) return;
         usesDirty     = false;
         nextUsesWrite = Time.time + UsesWriteInterval;
@@ -108,12 +133,14 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         if (photonView.IsMine) Keybinds.ResetMatchBindings(); // Cheats key changes last one match
         if (photonView.IsMine && MatchRules.CheatsEnabled) RestoreCustomBindings();
         if (photonView.IsMine) Keybinds.AbilityKeyClaimed += ReleaseCustomBindingsUsing;
+        if (photonView.IsMine && GameModeManager.Instance != null) GameModeManager.Instance.PhaseChanged += OnPhaseChanged;
         ApplyLoadout();
     }
 
     private void OnDestroy()
     {
         Keybinds.AbilityKeyClaimed -= ReleaseCustomBindingsUsing;
+        if (GameModeManager.Instance != null) GameModeManager.Instance.PhaseChanged -= OnPhaseChanged;
     }
 
     // ─── Loadout ──────────────────────────────────────────────────────────────
@@ -147,6 +174,9 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     public void Use(Ability ability, AbilityInputEvent inputEvent)
     {
         if (ability == null || !ability.enabled) return;
+        // Search & Destroy: with the bomb out in hand, no movement abilities (planting commits you)
+        if (inputEvent == AbilityInputEvent.Down && ability.Slot == AbilitySlot.Basic
+            && TryGetComponent(out Player holder) && holder.Has(PlayerFlag.HoldingBomb)) return;
         if (ability.Slot == AbilitySlot.Throw && KeepAwayDisc.LocalHolding) return; // Hands full: the disc takes the throw
 
         // Starting a new aim/place ability cancels the one already in progress

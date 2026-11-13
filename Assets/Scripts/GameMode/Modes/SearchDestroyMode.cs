@@ -80,6 +80,8 @@ public class SearchDestroyMode : TeamMode
     /// <summary>Each finished round's winner in order: 'R' or 'B'.</summary>
     public static string     History    => NetProps.Room(RoomKeys.SnDHistory, "");
     public static string     FirstAttack => NetProps.Room(RoomKeys.SnDFirstAttack, Red);
+    /// <summary>Someone has defused the planted bomb half way: the next defuse starts from half (Valorant's checkpoint).</summary>
+    public static bool       DefuseHalf => NetProps.Room(RoomKeys.SnDDefuseHalf, false);
     /// <summary>Most rounds a match can last (first to N: 2N − 1).</summary>
     public static int        MaxRounds  => MatchRules.RoundsToWin * 2 - 1;
     /// <summary>Rounds played before the teams swap sides.</summary>
@@ -152,6 +154,7 @@ public class SearchDestroyMode : TeamMode
             [RoomKeys.SnDDead]        = new int[0],
             [RoomKeys.SnDRoundWinner] = "",
             [RoomKeys.SnDReason]      = "",
+            [RoomKeys.SnDDefuseHalf]  = false,
         });
     }
 
@@ -367,7 +370,15 @@ public class SearchDestroyMode : TeamMode
         props[RoomKeys.SnDCarrier] = -1;
         props[RoomKeys.SnDBombPos] = bombPos;
         props[RoomKeys.SnDSite]    = letter ?? "";
+        props[RoomKeys.SnDDefuseHalf] = false;
         NetProps.SetRoom(props);
+    }
+
+    /// <summary>Master: a defender's defuse reached half way (the checkpoint holds for the rest of this plant).</summary>
+    public void MasterDefuseHalf(PhotonPlayer who)
+    {
+        if (Phase != MatchPhase.Active || bomb != BombState.Planted || who == null || dead.Contains(who.ActorNumber)) return;
+        if (!DefuseHalf) NetProps.SetRoom(RoomKeys.SnDDefuseHalf, true);
     }
 
     /// <summary>Master: a defender finished defusing.</summary>
@@ -425,6 +436,14 @@ public class SearchDestroyMode : TeamMode
 
     // Pre-round: everyone moves (within their spawn area) and can set up with abilities
     public override bool CanMove(PlayerRole role, MatchPhase phase) => true;
+
+    // No regeneration in a live round: each ability's charges and each Basic meter last the round (refilled as it
+    // goes live; the pre-round and post-round regenerate freely)
+    public override bool AbilitiesRegenerate(MatchPhase phase) => phase != MatchPhase.Active;
+
+    // Spraying is punished: bloom builds 2.5× faster up to twice the cap, so taps stay accurate
+    public override float BloomScale    => 2.5f;
+    public override float MaxBloomScale => 2f;
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
         (phase == MatchPhase.Countdown || phase == MatchPhase.Active || phase == MatchPhase.RoundEnd) && MatchRules.GunModeAbilities;
