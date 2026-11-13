@@ -43,6 +43,8 @@ public static class EditorJobQueue
         ["BuildGunPrefabs"] = GunPrefabBuilder.Build,
         ["BuildPinnacle"] = PinnacleBuilder.Build,
         ["BuildSkyreach"] = SkyreachBuilder.Build,
+        ["BuildStairfall"] = StairfallBuilder.Build,
+        ["BuildFacility"] = FacilityBuilder.Build,
         ["BuildFracture"] = FractureBuilder.Build,
         ["BuildFoundry"] = FoundryBuilder.Build,
         ["BuildStandoff"] = SnDMapBuilder.BuildStandoff,

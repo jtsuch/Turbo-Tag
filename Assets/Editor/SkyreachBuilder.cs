@@ -238,97 +238,6 @@ public static class SkyreachBuilder
         Lamp(g, new Vector3(20, 8, -50), 20f);
     }
 
-    // ─── Mesa faces: three storeys in 8 m columns ─────────────────────────────
-
-    /// <summary>
-    /// One 8 m column of a three-storey face standing on <paramref name="baseY"/>: storeys at 0..4, 5..9 and 10..14 by
-    /// letter (D door, W window, N niche, Q squeeze, G slide gap (ground storey only), C climb, P pipes, M mixed, S solid,
-    /// X none), with 1 m bands between them (4..5, 9..10) unless a slab outside meets the wall there (an annex roof):
-    /// '4' or '9' after the letters leaves that band out. <paramref name="length"/> below 8 cuts the column short (an
-    /// inner corner). Doors, squeezes and gaps are checked with a capsule; niches and the like are listed as hides.
-    /// </summary>
-    private static void Column(Transform g, string name, float x, float z, Vector3 outward, string spec, float baseY = 0f,
-                               float length = 8f, bool bandBelow = false)
-    {
-        float sx = length / 8f;
-        // Standing on a slab's edge (a stack on the island's rim): a band covers the slab below too
-        if (bandBelow) K(g, "Wall-Mid-8m", new Vector3(x, baseY - 1f, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 0.25f, 1f));
-        for (int s = 0; s < 3; s++)
-        {
-            char k = spec[s];
-            float y = baseY + 5f * s;
-            if (k != 'X')
-            {
-                string id = k switch
-                {
-                    'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
-                    'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'S' => "Wall-Mid-8m",
-                    _ => s == 0 ? LowerWall() : UpperWall(),
-                };
-                K(g, id, new Vector3(x, y, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 1f, 1f));
-                Vector3 at = new(x, y, z), inward = -outward;
-                string where = $"{name} ({x:0}, {y:0}, {z:0})";
-                if (k == 'D') Tunnel($"{where} door", at + outward * 2.5f, at + inward * 2.5f, "run");
-                if (k == 'Q') { Tunnel($"{where} squeeze", at + outward * 4f, at + inward * 2f, "crouch"); Cubby($"{name} squeeze", at + outward * 1.5f, "crouch (2.6 m), a way through"); }
-                if (k == 'G') { Tunnel($"{where} slide gap", at + outward * 2f, at + inward * 2f, "crawl"); Cubby($"{name} slide gap", at, "prone/slide, a way through"); }
-                if (k == 'N') Cubby($"{name} niche", at + outward * 1.5f, "standing (3.5 m)");
-            }
-            if (s == 2) break;
-            // The band above this storey
-            bool slab = spec.IndexOf(s == 0 ? '4' : '9') >= 0;
-            bool both = k == 'X' && spec[s + 1] == 'X';
-            if (!slab && !both)
-                K(g, "Wall-Mid-8m", new Vector3(x, y + 4f, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 0.25f, 1f));
-        }
-    }
-
-    /// <summary>A whole side of columns, one spec per 8 m from <paramref name="from"/> along x (S/N) or z (W/E).</summary>
-    private static void Face(Transform g, string name, char side, float at, float from, float baseY, params string[] specs) =>
-        Face(g, name, side, at, from, baseY, false, specs);
-
-    private static void Face(Transform g, string name, char side, float at, float from, float baseY, bool bandBelow, params string[] specs)
-    {
-        Vector3 outward = side == 'S' ? S : side == 'N' ? N : side == 'W' ? W : E;
-        for (int i = 0; i < specs.Length; i++)
-        {
-            if (specs[i] == null) continue;
-            float a = from + 4f + 8f * i;
-            if (side == 'S' || side == 'N') Column(g, name, a, at, outward, specs[i], baseY, 8f, bandBelow);
-            else Column(g, name, at, a, outward, specs[i], baseY, 8f, bandBelow);
-        }
-    }
-
-    // A corner post as tall as three storeys (0..14)
-    private static void TallPost(Transform g, float x, float z, Vector3 a, Vector3 b, float baseY = 0f, bool bandBelow = false) =>
-        Post(g, x, bandBelow ? baseY - 1f : baseY, z, a, b, bandBelow ? 15f : 14f);
-
-    // A wall panel cut short (where it meets another wall's body at an inner corner)
-    private static void Cut(Transform g, string id, float x, float y, float z, Vector3 outward, float length) =>
-        K(g, id, new Vector3(x, y, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(length / 8f, 1f, 1f));
-
-    // Floors at 5 and 10 and the roof at 15 over a rectangle (minus the cells skip picks; hatches in the roof)
-    private static void Storeys(Transform g, Vector4 r, float baseY, System.Func<Vector2, int, bool> skip, Vector2[] roofHatches)
-    {
-        for (int s = 1; s <= 3; s++)
-        {
-            int level = s;
-            Roof(g, r.x, r.y, r.z, r.w, baseY + 5f * s, s == 3 ? roofHatches : System.Array.Empty<Vector2>(), c => skip(c, level));
-        }
-    }
-
-    /// <summary>
-    /// Stairs (Stairs-8x10m) up one storey inside a building: rising toward +z (yaw 0) or −z (180) etc, its top on the
-    /// cell edge <paramref name="topEdge"/>; the two cells before the top are left out of the floor above (the
-    /// stairwell). Returns those cells.
-    /// </summary>
-    private static Vector2[] Stairs(Transform g, float x, float topEdge, float floor, bool north)
-    {
-        float centre = north ? topEdge - 5f : topEdge + 5f;
-        K(g, "Stairs-8x10m", new Vector3(x, floor - 1f, centre), north ? 0f : 180f);
-        return north ? new[] { new Vector2(x, topEdge - 4f), new Vector2(x, topEdge - 12f) }
-                     : new[] { new Vector2(x, topEdge + 4f), new Vector2(x, topEdge + 12f) };
-    }
-
     // ─── West mesa (15) ───────────────────────────────────────────────────────
 
     private static readonly List<Vector2> wellsW5 = new(), wellsW10 = new();
@@ -531,8 +440,9 @@ public static class SkyreachBuilder
         TallPost(g, tx1, tz1, E, N, L15, true);
         Roof(g, tx0, tx1, tz0, tz1, L30, new[] { new Vector2(68, -68) });
         Cubby("East tower roof hatch", new Vector3(68, L30, -68), "a drop in, the staircase back up");
-        var steps = new[] { new Vector2(58, -70), new Vector2(62, -70), new Vector2(66, -70), new Vector2(70, -70), new Vector2(70, -66), new Vector2(68, -62) };
-        for (int i = 0; i < 4; i++)
+        // Three 3 m steps (18, 21, 24): the top one half under the hatch with 5 m of headroom (a 6 m grab out)
+        var steps = new[] { new Vector2(58, -70), new Vector2(62, -70), new Vector2(66, -70) };
+        for (int i = 0; i < steps.Length; i++)
             for (int h = 0; h <= i; h++)
                 K(g, "Block-4x4x4m", new Vector3(steps[i].x, L15 + 3f * h, steps[i].y), 0f, new Vector3(1f, 0.75f, 1f));
         K(g, "Shed-4x4m", new Vector3(62, L30, -64), 90f, Vector3.one * ShedScale);
@@ -583,8 +493,9 @@ public static class SkyreachBuilder
         TallPost(g, cx0, cz1, W, N, L30, true); TallPost(g, cx1, cz1, E, N, L30, true);
         Roof(g, cx0, cx1, cz0, cz1, L45, new[] { new Vector2(-68, 68) });
         Cubby("Crown roof hatch", new Vector3(-68, L45, 68), "a drop in, the steps back up");
-        var steps = new[] { new Vector2(-70, 58), new Vector2(-70, 62), new Vector2(-70, 66), new Vector2(-66, 70), new Vector2(-62, 68) };
-        for (int i = 0; i < 4; i++)
+        // Three 3 m steps (33, 36, 39): the top one half under the hatch with 5 m of headroom (a 6 m grab out)
+        var steps = new[] { new Vector2(-70, 58), new Vector2(-70, 62), new Vector2(-70, 66) };
+        for (int i = 0; i < steps.Length; i++)
             for (int h = 0; h <= i; h++)
                 K(g, "Block-4x4x4m", new Vector3(steps[i].x, L30 + 3f * h, steps[i].y), 0f, new Vector3(1f, 0.75f, 1f));
         K(g, "Shed-4x4m", new Vector3(-61, L45, 60), 0f, Vector3.one * ShedScale);

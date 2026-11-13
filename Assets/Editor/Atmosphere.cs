@@ -26,7 +26,8 @@ public static class Atmosphere
     /// <param name="parent">Where the wind objects go (rebuilt with the level).</param>
     /// <param name="wind">The wind's direction (horizontal).</param>
     /// <param name="area">The space the wind fills (the playable map, a little beyond).</param>
-    public static void SunnyDay(Transform parent, Vector3 wind, Bounds area)
+    /// <param name="windOn">False: no wind objects (Search &amp; Destroy maps are calm indoors).</param>
+    public static void SunnyDay(Transform parent, Vector3 wind, Bounds area, bool windOn = true)
     {
         var sun = Sun();
         var sky = Material(SkyPath, "TurboTag/Sunny Day Sky");
@@ -48,7 +49,7 @@ public static class Atmosphere
         DynamicGI.UpdateEnvironment();
 
         Grade();
-        Wind(parent, wind.normalized, area);
+        if (windOn) Wind(parent, wind.normalized, area);
     }
 
     // A warm late-morning sun, high enough that roofs and decks are lit, with soft light shadows

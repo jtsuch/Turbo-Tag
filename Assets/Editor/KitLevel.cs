@@ -208,8 +208,12 @@ public static class KitLevel
     /// closes round the opening itself.</summary>
     public static readonly HashSet<(Vector2Int, Vector2Int)> skirtOpenings = new();
 
+    // Set while a roof is laid: roof slabs are never ground the island carries, whatever their height
+    private static bool layingRoof;
+
     public static void RecordGround(Vector2Int cell, float top)
     {
+        if (layingRoof) return;
         island.Add(cell);
         islandTop[cell] = islandTop.TryGetValue(cell, out float was) ? Mathf.Max(was, top) : top;
     }
@@ -780,10 +784,12 @@ public static class KitLevel
             {
                 var c = new Vector2(x, z);
                 if (skip != null && skip(c)) continue;
-                if (System.Array.IndexOf(hatches, c) >= 0) Tile(g, "Floor-Hole-8m", x, z, top);
+                if (System.Array.IndexOf(hatches, c) >= 0) { layingRoof = true; Tile(g, "Floor-Hole-8m", x, z, top); layingRoof = false; }
                 else cells.Add(c);
             }
-        Fill(g, cells, null, top, true, x0, z0);
+        layingRoof = true;
+        try { Fill(g, cells, null, top, true, x0, z0); }
+        finally { layingRoof = false; }
     }
 
     public static void BridgeAlongZ(Transform g, float x, float z0, float z1, float y) =>
@@ -856,7 +862,7 @@ public static class KitLevel
             string id = k switch
             {
                 'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
-                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'S' => "Wall-Mid-8m", _ => LowerWall(),
+                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'R' => "WallRunPanel-8m", 'V' => "Wall-Vented-8m", 'J' => "Wall-Grid-8m", 'S' => "Wall-Mid-8m", _ => LowerWall(),
             };
             Wall(b, id, x, y, z, outward, dropped ? 5f / 4f : 1f);
         }
@@ -866,7 +872,7 @@ public static class KitLevel
             string lower = k switch
             {
                 'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
-                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", _ => LowerWall(),
+                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'R' => "WallRunPanel-8m", 'V' => "Wall-Vented-8m", 'J' => "Wall-Grid-8m", _ => LowerWall(),
             };
             float lowScale = dropped ? 5f / 4f : 1f;
             Wall(b, lower, x, y, z, outward, lowScale);
@@ -929,5 +935,98 @@ public static class KitLevel
         Side('S', S); Side('N', N); Side('W', W); Side('E', E);
         Post(c, hole.x, floor, hole.z, W, S, 0.5f); Post(c, hole.y, floor, hole.z, E, S, 0.5f);
         Post(c, hole.x, floor, hole.w, W, N, 0.5f); Post(c, hole.y, floor, hole.w, E, N, 0.5f);
+    }
+
+    // ─── Multi-storey faces, floors and stairs (from SkyreachBuilder, Nov 13) ───────────────────────────
+
+    // ─── Mesa faces: three storeys in 8 m columns ─────────────────────────────
+
+    /// <summary>
+    /// One 8 m column of a three-storey face standing on <paramref name="baseY"/>: storeys at 0..4, 5..9 and 10..14 by
+    /// letter (D door, W window, N niche, Q squeeze, G slide gap (ground storey only), C climb, P pipes, M mixed, S solid,
+    /// X none), with 1 m bands between them (4..5, 9..10) unless a slab outside meets the wall there (an annex roof):
+    /// '4' or '9' after the letters leaves that band out. <paramref name="length"/> below 8 cuts the column short (an
+    /// inner corner). Doors, squeezes and gaps are checked with a capsule; niches and the like are listed as hides.
+    /// </summary>
+    public static void Column(Transform g, string name, float x, float z, Vector3 outward, string spec, float baseY = 0f,
+                               float length = 8f, bool bandBelow = false)
+    {
+        float sx = length / 8f;
+        // Standing on a slab's edge (a stack on the island's rim): a band covers the slab below too
+        if (bandBelow) K(g, "Wall-Mid-8m", new Vector3(x, baseY - 1f, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 0.25f, 1f));
+        for (int s = 0; s < 3; s++)
+        {
+            char k = spec[s];
+            float y = baseY + 5f * s;
+            if (k != 'X')
+            {
+                string id = k switch
+                {
+                    'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
+                    'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'R' => "WallRunPanel-8m", 'V' => "Wall-Vented-8m", 'J' => "Wall-Grid-8m", 'S' => "Wall-Mid-8m",
+                    _ => s == 0 ? LowerWall() : UpperWall(),
+                };
+                K(g, id, new Vector3(x, y, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 1f, 1f));
+                Vector3 at = new(x, y, z), inward = -outward;
+                string where = $"{name} ({x:0}, {y:0}, {z:0})";
+                if (k == 'D') Tunnel($"{where} door", at + outward * 2.5f, at + inward * 2.5f, "run");
+                if (k == 'Q') { Tunnel($"{where} squeeze", at + outward * 4f, at + inward * 2f, "crouch"); Cubby($"{name} squeeze", at + outward * 1.5f, "crouch (2.6 m), a way through"); }
+                if (k == 'G') { Tunnel($"{where} slide gap", at + outward * 2f, at + inward * 2f, "crawl"); Cubby($"{name} slide gap", at, "prone/slide, a way through"); }
+                if (k == 'N') Cubby($"{name} niche", at + outward * 1.5f, "standing (3.5 m)");
+            }
+            if (s == 2) break;
+            // The band above this storey
+            bool slab = spec.IndexOf(s == 0 ? '4' : '9') >= 0;
+            bool both = k == 'X' && spec[s + 1] == 'X';
+            if (!slab && !both)
+                K(g, "Wall-Mid-8m", new Vector3(x, y + 4f, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(sx, 0.25f, 1f));
+        }
+    }
+
+    /// <summary>A whole side of columns, one spec per 8 m from <paramref name="from"/> along x (S/N) or z (W/E).</summary>
+    public static void Face(Transform g, string name, char side, float at, float from, float baseY, params string[] specs) =>
+        Face(g, name, side, at, from, baseY, false, specs);
+
+    public static void Face(Transform g, string name, char side, float at, float from, float baseY, bool bandBelow, params string[] specs)
+    {
+        Vector3 outward = side == 'S' ? S : side == 'N' ? N : side == 'W' ? W : E;
+        for (int i = 0; i < specs.Length; i++)
+        {
+            if (specs[i] == null) continue;
+            float a = from + 4f + 8f * i;
+            if (side == 'S' || side == 'N') Column(g, name, a, at, outward, specs[i], baseY, 8f, bandBelow);
+            else Column(g, name, at, a, outward, specs[i], baseY, 8f, bandBelow);
+        }
+    }
+
+    // A corner post as tall as three storeys (0..14)
+    public static void TallPost(Transform g, float x, float z, Vector3 a, Vector3 b, float baseY = 0f, bool bandBelow = false) =>
+        Post(g, x, bandBelow ? baseY - 1f : baseY, z, a, b, bandBelow ? 15f : 14f);
+
+    // A wall panel cut short (where it meets another wall's body at an inner corner)
+    public static void Cut(Transform g, string id, float x, float y, float z, Vector3 outward, float length) =>
+        K(g, id, new Vector3(x, y, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(length / 8f, 1f, 1f));
+
+    // Floors at 5 and 10 and the roof at 15 over a rectangle (minus the cells skip picks; hatches in the roof)
+    public static void Storeys(Transform g, Vector4 r, float baseY, System.Func<Vector2, int, bool> skip, Vector2[] roofHatches)
+    {
+        for (int s = 1; s <= 3; s++)
+        {
+            int level = s;
+            Roof(g, r.x, r.y, r.z, r.w, baseY + 5f * s, s == 3 ? roofHatches : System.Array.Empty<Vector2>(), c => skip(c, level));
+        }
+    }
+
+    /// <summary>
+    /// Stairs (Stairs-8x10m) up one storey inside a building: rising toward +z (yaw 0) or −z (180) etc, its top on the
+    /// cell edge <paramref name="topEdge"/>; the two cells before the top are left out of the floor above (the
+    /// stairwell). Returns those cells.
+    /// </summary>
+    public static Vector2[] Stairs(Transform g, float x, float topEdge, float floor, bool north)
+    {
+        float centre = north ? topEdge - 5f : topEdge + 5f;
+        K(g, "Stairs-8x10m", new Vector3(x, floor - 1f, centre), north ? 0f : 180f);
+        return north ? new[] { new Vector2(x, topEdge - 4f), new Vector2(x, topEdge - 12f) }
+                     : new[] { new Vector2(x, topEdge + 4f), new Vector2(x, topEdge + 12f) };
     }
 }
