@@ -46,6 +46,12 @@ public class Bulldozer : QuickAbility
     // Can't be cancelled: Cancel() (pause, other abilities, being caught) leaves the charge running
     public override void Cancel() { }
 
+    // Every screen plays the Charge animation while the synced flag is up
+    private void Update()
+    {
+        if (IsLocal && Owner != null) Owner.SetFlag(PlayerFlag.Charging, Charging);
+    }
+
     private void FixedUpdate()
     {
         if (!Charging) return;

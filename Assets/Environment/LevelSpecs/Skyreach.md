@@ -1,28 +1,41 @@
 # Skyreach
 
-A vertical map of stacked "mainlands", built entirely by `Assets/Editor/SkyreachBuilder.cs` (job `BuildSkyreach`).
-130 × 130 m. Edit the builder and rebuild.
+Built by `Assets/Editor/SkyreachBuilder.cs` (`Turbo Tag/Levels/Rebuild Skyreach`, job `BuildSkyreach`) from
+the modular kit. It replaced the greybox Skyreach (Nov 13 2026): the same design on the Fracture model. About 160 × 200 m with the
+islands.
 
-## Tiers
-| Floor | Places | What's on it |
+**Idea:** the vertical map, a flat level in layers. The town is one open floor walled in on three sides by mesas you go
+inside; their roofs are a second mainland, with taller stacks on top. Under the town is the undercroft; the Dock Isle
+floats below to the south and the Sky Isle floats above.
+
+## Heights
+Undercroft −5 · town 0 · NE terrace 10 · mesas 15 · High mesa and East tower 30 · Crown and Sky Isle 45.
+
+## Zones
+| Zone | Extent (x, z) | What's there |
 |---|---|---|
-| −8 | Undercroft (under the town), Dock Isle | 6 m corridors with baffles, a hall, crawl + crouch tunnels, windows to the pit; dock with a tunnel block and crawl hole |
-| 0 | Town | long house (tunnel), two-storey house + loft, crawl shed, market arcade (walkable roof), gatehouse, NE shed; open south border |
-| 7 | NE Terrace | tunnel to the east cliff path, hut |
-| 14 | West + North mesas (one U), East mesa | huts with a roof bridge, tunnel blocks, crawl block, watch hut, east hut |
-| 28 | High mesa (NW), East tower | hut; a hall inside the High mesa at 14 with two exits; tower hut |
-| 42 | Crown, Sky Isle (floating) | lookout hut; sky hut and a raised corner (46) |
+| Town (0) | middle, open to the void on the south | House (roof 5, doors all round) with a loft on its roof (10); a pavilion arcade; the gatehouse on the south edge (zip line down to the dock); the long house (tunnel tiles); two crawl platforms; the fan below the North mesa; two ramp trenches and two drop holes into the undercroft. |
+| West mesa (15) | −72..−40, −40..72 | Three storeys (floors 5 and 10, stairs between). A cave three storeys tall with the cave lift up through the roof; a door out west to the cliff path. Ramp terrace on its east face: ramp → annex 1 (5) → ramp → annex 2 (10) → ramp → roof. Step blocks on its south face (5, then 10, then a climb face). On the roof: two huts with a roof bridge, a crawl platform. |
+| North mesa (15) | −40..40, 40..72 (one U with the West mesa) | Three storeys with stairs, a run-through door south to north, a squeeze, a niche, a roof hatch over the top storey (a container to climb out). Step blocks on its south face. On the roof: a hut, a vent run. |
+| NE terrace (10) | 40..72, 40..72 | A two-storey hall with a mezzanine, a door out east to the cliff path, a squeeze into the North mesa. In by its annex (5): ramp → annex → ramp → terrace roof → ramp → North mesa roof. A hut on top. |
+| East mesa (15) | 40..72, −72..0 | Three storeys with stairs, a tunnel through west to east, a niche. Ramp terrace on its north face (annexes 5 and 10); step blocks on its west face. On its roof: the East tower (30), hollow, a staircase of 3 m steps up to a roof hatch, a hut on top. |
+| High mesa (30) | −72..−40, 40..72, on the U | A hall three storeys tall in its east half; a floor at 20 in its west half up stairs. Its own ramp terrace on the U roof (annexes 20 and 25). On it the Crown (45): hollow, steps up to a hatch, a lookout hut. |
+| Sky Isle (45) | −32..0, 8..24 | Two floating platforms, a hut and a raised block. The Sky lift up from the town; a catwalk from the Crown ending in a hop; a zip line down to the East mesa roof. |
+| Undercroft (−5) | −32..32, −64..24 | Grated corridors round six 16 × 16 blocks; two blocks are hide rooms (a squeeze in, a slide gap out). In by the two trenches (ramps back up) and the drop holes (bounce pads back up). Out south through the cliff (a tunnel mouth) onto a pier to the dock. |
+| Dock Isle (−5) | −16..24, −120..−96 | Tunnel tiles, a crawl platform. Back up by a long ramp onto the town's south rim; the zip line comes down from the gatehouse. |
 
 ## Ways up
-- **Easy (ramps, all ≤ 22°):** West, North and East ramps 0 → 14; NE terrace ramp 0 → 7 and terrace → North mesa 7 → 14; High ramp 14 → 28; Tower ramp 14 → 28; Crown ramp 28 → 42. Lifts: West mesa cave lift (0 → 14), Sky lift (0 → 42). Fan beside the North mesa.
-- **Hard (building climbs):** step (2.5) → short house roof (5) → upper building (9) → 5 m crouch jump / ledge grab onto the floor above. One per tier: West, North, East mesas; NE terrace; High mesa; East tower; Crown.
-- **Sky Isle:** Sky lift, or the long bridge from the Crown (one 3 m hop).
+Every stack has three:
+- **Easy:** a ramp terrace.
+- **Hard:** step blocks and climb faces.
+- **Inside:** stairs, step columns and roof hatches.
 
-## Inside and around
-- West mesa: gallery tunnel from the town → cave (lift shaft up) → tunnel out to the west cliff path.
-- North mesa: running tunnel through to the north cliff path (with a drop shaft from the top), a den with a south door and a crouch tunnel to the east face.
-- East mesa: tunnel through to the east cliff path. Cliff paths (ground height, no rail) wrap the west, north and east outsides.
-- Undercroft: ramps down from the town, drop holes with bounce pads back up, south exit to the Dock (shuttle back up).
+Lifts (cave, Sky) and the fan lift you; zip lines bring you down. There are no movers to wait for over avoidable pits; the dock shuttle became a ramp.
 
-## Review notes (v2)
-Ramps are built structures now: an embankment under each (arches where the West gallery, the den's crouch tunnel, the East mesa's new north tunnel and the High hall's tunnel pass under) and a head block at the top joined to the floor above. Extra climbs against big faces (North mesa: lean-to and a two-step block; East mesa west face; High mesa south face). Clutter on open ground and mesa tops (kiosks, stalls, SW shed, low walls, crates). The NE terrace tunnel now turns (in from the south face, out east).
+## Hides (30 in the report)
+- Niches, squeezes and slide gaps on the faces.
+- Crawl platforms.
+- The roof vent run and the container tunnel.
+- The undercroft hide rooms and the drop holes.
+- Roof hatches.
+- The loft.

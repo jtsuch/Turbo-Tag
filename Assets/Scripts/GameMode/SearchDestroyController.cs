@@ -225,7 +225,7 @@ public class SearchDestroyController : MonoBehaviourPun
 
     private static Material bodyMat, panelMat, heldLightMat;
 
-    // The bomb's shape, built from primitives (no colliders): a dark case, a yellow panel and a red bulb on top
+    // The bomb's shape: Justin's model, or (without it) primitives: a dark case, a yellow panel and a red bulb on top
     private static Transform BombMesh(string name, Transform parent, out Renderer bulbRenderer)
     {
         var lit = Shader.Find("Universal Render Pipeline/Lit");
@@ -233,6 +233,26 @@ public class SearchDestroyController : MonoBehaviourPun
         if (panelMat == null) { panelMat = new Material(lit); panelMat.SetColor("_BaseColor", new Color(0.9f, 0.75f, 0.2f)); }
         var root = new GameObject(name).transform;
         root.SetParent(parent, false);
+
+        // Justin's bomb (Resources/Object/SearchDestroyBomb: 0.8 × 0.43 × 0.54, standing on its base), with the blinking
+        // bulb on top of it
+        var model = Resources.Load<GameObject>("Object/SearchDestroyBomb");
+        if (model != null)
+        {
+            var bomb = Instantiate(model, root, false);
+            foreach (var c in bomb.GetComponentsInChildren<Collider>()) Destroy(c);
+            foreach (var r in bomb.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var bulb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Destroy(bulb.GetComponent<Collider>());
+            bulb.name = "Light";
+            bulb.transform.SetParent(root, false);
+            bulb.transform.localPosition = new Vector3(0f, 0.47f, 0f);
+            bulb.transform.localScale = Vector3.one * 0.09f;
+            bulbRenderer = bulb.GetComponent<Renderer>();
+            bulbRenderer.sharedMaterial = panelMat;
+            bulbRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return root;
+        }
 
         GameObject Part(PrimitiveType type, string partName, Vector3 at, Vector3 size, Material mat)
         {
@@ -434,6 +454,7 @@ public class SearchDestroyController : MonoBehaviourPun
         if (busy == Task.None)
         {
             busy = can;
+            local.SetFlag(can == Task.Plant ? PlayerFlag.Planting : PlayerFlag.Defusing, true); // The animation on every screen
             progress = 0f;
             if (can == Task.Plant) bombOut = true; // Planting takes it out
             if (!local.MovementLocked) { local.MovementLocked = true; lockedMovement = true; }
@@ -462,6 +483,7 @@ public class SearchDestroyController : MonoBehaviourPun
 
     private void EndTask(Player local)
     {
+        if (local != null) { local.SetFlag(PlayerFlag.Planting, false); local.SetFlag(PlayerFlag.Defusing, false); }
         busy = Task.None;
         progress = 0f;
         if (lockedMovement && local != null) local.MovementLocked = false;

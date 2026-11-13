@@ -9,7 +9,7 @@ using UnityEngine.ProBuilder;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// Shared greybox toolkit for the code-built levels (PinnacleBuilder, SkyreachBuilder): plain ProBuilder boxes in
+/// Shared greybox toolkit for the code-built levels (PinnacleBuilder; the kit levels use KitLevel): plain ProBuilder boxes in
 /// three tones plus orange-topped climbing ledges, ramps along Z or X, slabs with holes, huts with doors, plain
 /// moving platforms (no trim), kit props, bounce pads and lamps; and the self-review every build runs (capsule
 /// clearance checks through tunnels and doors, spawn points, gap lengths) plus overview pictures.

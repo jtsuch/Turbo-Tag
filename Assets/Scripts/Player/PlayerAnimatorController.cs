@@ -61,11 +61,17 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     [Tooltip("How fast the head tilt follows (degrees per second).")]
     [SerializeField] private float headTiltSpeed = 240f;
 
-    // ─── Layer Indices ────────────────────────────────────────────────────────
-    private const int LayerArm     = 1;
-    private const int LayerWallRun = 2;
-    private const int LayerClimb   = 3;
-    private const int LayerHead    = 4;
+    // ─── Layer Indices (found by name: NewMoveAnimationSetup inserts layers under these) ───
+    private int LayerArm = -1, LayerWallRun = -1, LayerClimb = -1, LayerHead = -1;
+
+    // New moves (Editor/NewMoveAnimationSetup): crouching, the Bulldozer charge, planting/defusing, the left-hand throw
+    private int crouchLayer = -1, actionLayer = -1, throwLayer = -1;
+    private float crouchWeight, actionWeight, throwWeight, throwUntil = -10f;
+    private string shownAction = "";
+    private const float ThrowLength = 1f;   // ThrowLeft.anim
+
+    /// <summary>The Animator has a crouch animation (the body isn't squashed to crouch, <see cref="Player"/>).</summary>
+    public bool AnimatesCrouch => crouchLayer >= 0;
 
     // ─── Parameter Hashes ─────────────────────────────────────────────────────
     private static readonly int H_MoveSpeed   = Animator.StringToHash("MovementSpeed");
@@ -183,6 +189,13 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         layerCount = animator.layerCount;
         flappyLayer = animator.GetLayerIndex(FlappyLayerName);
         ledgeLayer  = animator.GetLayerIndex(LedgeLayerName);
+        LayerArm     = animator.GetLayerIndex("RightArm");
+        LayerWallRun = animator.GetLayerIndex("Wall Run Layer");
+        LayerClimb   = animator.GetLayerIndex("Climb Layer");
+        LayerHead    = animator.GetLayerIndex("HeadLayer");
+        crouchLayer  = animator.GetLayerIndex("Crouch Layer");
+        actionLayer  = animator.GetLayerIndex("Action Layer");
+        throwLayer   = animator.GetLayerIndex("Throw Layer");
     }
 
     private void Update()
@@ -266,21 +279,64 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         SetBool(H_Hanging,     state == Player.MovementState.Hang);
 
         UpdateGun();
-        if (layerCount > LayerArm)  animator.SetLayerWeight(LayerArm,  gunWeight);
+        if (LayerArm >= 0) animator.SetLayerWeight(LayerArm, gunWeight);
 
         flappyWeight = Mathf.MoveTowards(flappyWeight, gliding ? 1f : 0f, Time.deltaTime * 8f);
         if (flappyLayer >= 0) animator.SetLayerWeight(flappyLayer, flappyWeight);
-        if (layerCount > LayerHead) animator.SetLayerWeight(LayerHead, 1f);
+        if (LayerHead >= 0) animator.SetLayerWeight(LayerHead, 1f);
 
         float blend = Time.deltaTime * 8f;
-        if (layerCount > LayerWallRun)
+        if (LayerWallRun >= 0)
             animator.SetLayerWeight(LayerWallRun, Mathf.MoveTowards(
                 animator.GetLayerWeight(LayerWallRun), state == Player.MovementState.WallRun ? 1f : 0f, blend));
-        if (layerCount > LayerClimb)
+        if (LayerClimb >= 0)
             animator.SetLayerWeight(LayerClimb, Mathf.MoveTowards(
                 animator.GetLayerWeight(LayerClimb), state == Player.MovementState.Climb ? 1f : 0f, blend));
 
         UpdateLedgeLayer();
+        UpdateMoveLayers(state, blend);
+    }
+
+    // Crouching (synced state), the charge and planting/defusing (synced flags), the throw (an RPC per throw)
+    private void UpdateMoveLayers(Player.MovementState state, float blend)
+    {
+        if (crouchLayer >= 0)
+        {
+            crouchWeight = Mathf.MoveTowards(crouchWeight, state == Player.MovementState.Crouch ? 1f : 0f, blend);
+            animator.SetLayerWeight(crouchLayer, crouchWeight);
+        }
+        if (actionLayer >= 0)
+        {
+            string want = player.Has(PlayerFlag.Charging) ? "Charge"
+                        : player.Has(PlayerFlag.Planting) ? "PlantBomb"
+                        : player.Has(PlayerFlag.Defusing) ? "DefuseBomb" : "";
+            if (player.IsCaught) want = "";
+            if (want != shownAction && want.Length > 0) animator.CrossFadeInFixedTime(want, shownAction.Length > 0 ? 0.15f : 0f, actionLayer);
+            if (want.Length > 0 || actionWeight <= 0f) shownAction = want;
+            actionWeight = Mathf.MoveTowards(actionWeight, want.Length > 0 ? 1f : 0f, blend);
+            animator.SetLayerWeight(actionLayer, actionWeight);
+        }
+        if (throwLayer >= 0)
+        {
+            bool throwing = Time.time < throwUntil - 0.2f;
+            throwWeight = Mathf.MoveTowards(throwWeight, throwing ? 1f : 0f, Time.deltaTime * (throwing ? 14f : 5f));
+            animator.SetLayerWeight(throwLayer, throwWeight);
+        }
+    }
+
+    /// <summary>Owner: a throw just left the hand; every screen plays the left-arm throw.</summary>
+    public void PlayThrow()
+    {
+        if (!photonView.IsMine) return;
+        photonView.RPC(nameof(RPC_AnimThrow), RpcTarget.All);
+    }
+
+    [PunRPC]
+    private void RPC_AnimThrow()
+    {
+        if (animator == null || throwLayer < 0) return;
+        animator.CrossFadeInFixedTime("ThrowLeft", 0.05f, throwLayer, 0f);
+        throwUntil = Time.time + ThrowLength;
     }
 
     // Cross-fades the Ledge Layer to the synced pose and blends the layer in while hanging (and out after)

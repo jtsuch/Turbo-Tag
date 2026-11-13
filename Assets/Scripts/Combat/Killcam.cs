@@ -326,11 +326,13 @@ public class Killcam : MonoBehaviour
             SetBool(ghost, H_Climbing,  s.State == Player.MovementState.Climb);
             SetBool(ghost, H_Crouching, s.State == Player.MovementState.Crouch);
             SetBool(ghost, H_Hanging,   s.State == Player.MovementState.Hang);
-            int layers = anim.layerCount;
-            if (layers > 1) anim.SetLayerWeight(1, s.Arm);
-            if (layers > 2) anim.SetLayerWeight(2, s.State == Player.MovementState.WallRun ? 1f : 0f);
-            if (layers > 3) anim.SetLayerWeight(3, s.State == Player.MovementState.Climb ? 1f : 0f);
-            if (layers > 4) anim.SetLayerWeight(4, 1f);
+            // Layers by name (NewMoveAnimationSetup inserts the crouch and action layers under these)
+            void Weight(string layer, float w) { int i = anim.GetLayerIndex(layer); if (i >= 0) anim.SetLayerWeight(i, w); }
+            Weight("RightArm", s.Arm);
+            Weight("Wall Run Layer", s.State == Player.MovementState.WallRun ? 1f : 0f);
+            Weight("Climb Layer", s.State == Player.MovementState.Climb ? 1f : 0f);
+            Weight("HeadLayer", 1f);
+            Weight("Crouch Layer", s.State == Player.MovementState.Crouch ? 1f : 0f);
         }
 
         // The gun they held then: the copied pistol, or that gun's model in the hand

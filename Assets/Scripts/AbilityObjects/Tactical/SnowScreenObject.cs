@@ -101,6 +101,9 @@ public class SnowScreenObject : TacticalTrapObject
         Hold(typeof(SnowedEffect), Player.Local, inSnow);
     }
 
+    private static GameObject pileModel;
+    private static readonly Vector3 PileSize = new(1.06f, 5.04f, 1.05f); // Resources/Object/SnowPile, measured
+
     // The first surface straight below this point of the path (players and triggers don't count)
     private void RaiseSegment(Vector3 above)
     {
@@ -126,6 +129,17 @@ public class SnowScreenObject : TacticalTrapObject
         var r = wall.GetComponent<Renderer>();
         r.sharedMaterial = snowMat;
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        // Justin's snow pile model (Resources/Object/SnowPile, standing on its base) fills the box instead
+        if (pileModel == null) pileModel = Resources.Load<GameObject>("Object/SnowPile");
+        if (pileModel != null)
+        {
+            r.enabled = false;
+            var pile = Instantiate(pileModel, wall.transform, false);
+            foreach (var c in pile.GetComponentsInChildren<Collider>()) Destroy(c);
+            // The model's own size (at the prefab's scale) into the unit box the wall is
+            pile.transform.localScale = new Vector3(1f / PileSize.x, 1f / PileSize.y, 1f / PileSize.z);
+            pile.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+        }
         segments.Add(new Segment { ground = ground.point, facing = facing, wall = wall.transform, bornAt = Time.time });
         Vfx.Burst(ground.point + Vector3.up * 0.5f, new Color(0.95f, 0.97f, 1f), 6, 3f, 0.25f, 0.6f, direction: Vector3.up, spread: 0.7f);
     }

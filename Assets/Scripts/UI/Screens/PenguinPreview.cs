@@ -125,7 +125,8 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
             SetBool("onGround", true);
             SetFloat("MovementSpeed", 0f);
             SetFloat("VerticalDirectionLooking", 0.5f);
-            for (int i = 1; i < animator.layerCount; i++) animator.SetLayerWeight(i, i == 4 ? 1f : 0f); // Head layer on
+            int head = animator.GetLayerIndex("HeadLayer");
+            for (int i = 1; i < animator.layerCount; i++) animator.SetLayerWeight(i, i == head ? 1f : 0f); // Head layer on
         }
     }
 

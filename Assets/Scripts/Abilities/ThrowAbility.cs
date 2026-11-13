@@ -115,6 +115,7 @@ public abstract class ThrowAbility : Ability
         var thrownObject = PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(direction, throwOrigin.up), 0,
             SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
         TrackThrown(thrownObject);
+        if (Owner.Animation != null) Owner.Animation.PlayThrow(); // The left-arm throw, on every screen
 
         StartCooldown();
     }

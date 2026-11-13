@@ -47,6 +47,7 @@ public class BoomBomb : ThrowAbility
         spawned.TryGetComponent(out live);
         tracking = true;
         Sfx.At(SfxKind.Toss, origin.position, 0.8f);
+        if (Owner.Animation != null) Owner.Animation.PlayThrow();
     }
 
     // Once the bomb is gone (set off, or its max lifetime ran out) the cooldown starts

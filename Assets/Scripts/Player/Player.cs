@@ -527,13 +527,15 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>
     /// Scales the visible mesh and collider for the current stance and size. Prone keeps the model's
     /// shape (the prone animation lays it down) and turns the collider into a capsule lying along the
-    /// body; crouch squashes the model and collider vertically (to CrouchScale), as there is no crouch animation.
+    /// body; crouch shrinks the collider vertically (to CrouchScale) and plays the crouch animation (the model was
+    /// squashed instead where the Animator has no Crouch Layer).
     /// </summary>
     private void ApplyBodyScale(bool visualOnly)
     {
         float size   = Size;
         bool  prone  = State == MovementState.Prone;
-        float squash = prone ? 1f : StanceScale;
+        // The crouch animation lowers the body itself: no squash on top (the collider still shrinks)
+        float squash = prone || (State == MovementState.Crouch && Animation != null && Animation.AnimatesCrouch) ? 1f : StanceScale;
 
         // Position scales too: the model sits at an offset from the root, and scaling only the model
         // moved its feet off the collider's bottom (into the ground when grown)
@@ -843,4 +845,7 @@ public enum PlayerFlag
     HoldingBomb = 1 << 10, // Search & Destroy: the bomb is out in the right hand (the gun is put away)
     Barrier     = 1 << 11, // Shield Bubble is up: a blue glow on every screen (PlayerHighlight)
     SpawnShield = 1 << 12, // Just spawned: no damage for a moment; flashes white on every screen (PlayerHighlight)
+    Charging    = 1 << 13, // Bulldozer's charge: the Charge animation on every screen
+    Planting    = 1 << 14, // Search & Destroy: planting the bomb (the PlantBomb animation)
+    Defusing    = 1 << 15, // Search & Destroy: defusing it (the DefuseBomb animation)
 }

@@ -63,7 +63,7 @@ public static class FractureBuilder
         CheckOverlaps();
         Bounds(Vector3.zero, 420f, -110f, 70f);
         Spawns(SpawnSpots, Vector3.zero);
-        CheckSpawnSpacing();
+        CheckSpawnSpacing(SpawnSpots);
         PlaceSpawner(new Vector3(-11, 0.1f, -11), -100f);
         Atmosphere.SunnyDay(root, new Vector3(1f, 0f, 0.35f), new Bounds(new Vector3(0, 15, 0), new Vector3(180, 40, 180)));
 
@@ -134,76 +134,6 @@ public static class FractureBuilder
             K(g, "Floor-Hole-8m", new Vector3(p.x, G - 1f, p.y), 0f);
             Curb(g, name + " Curb", new Vector4(p.x - 2.05f, p.x + 2.05f, p.y - 2.05f, p.y + 2.05f), G);
         }
-    }
-
-    private static bool Inside(Vector4 r, Vector2 c) => c.x > r.x && c.x < r.y && c.y > r.z && c.y < r.w;
-
-    /// <summary>
-    /// Lays a set of 8 m cells (floor top <paramref name="top"/>) with the biggest pieces that fit: 32 × 32 blocks lined up
-    /// with the area's origin first, then any 32 × 32, 32 × 16 either way, then single cells (plain: a Platform-8x4 pair;
-    /// patterned: the room's 8 m tile, or its 32 × 32 slab). <paramref name="ceiling"/>: a light liner under every cell
-    /// (roofs seen from inside).
-    /// </summary>
-    private static void Fill(Transform g, HashSet<Vector2> cells, string tile, float top, bool ceiling, float ox, float oz)
-    {
-        string big = tile == null ? "Floor-32x32m" : tile == "Floor-Tiles-8m" ? "Floor-32x32m-Tiles" : tile == "Floor-Inlay-8m" ? "Floor-32x32m-Inlay" : null;
-        if (ceiling) foreach (var c in cells) Ceiling(g, c.x, top - 1f, c.y);
-        var order = new List<Vector2>(cells);
-        order.Sort((a, b) => a.y != b.y ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
-        bool Free(Vector2 c, int nx, int nz)
-        {
-            for (int i = 0; i < nx; i++) for (int j = 0; j < nz; j++) if (!cells.Contains(c + new Vector2(8 * i, 8 * j))) return false;
-            return true;
-        }
-        void Take(Vector2 c, int nx, int nz) { for (int i = 0; i < nx; i++) for (int j = 0; j < nz; j++) cells.Remove(c + new Vector2(8 * i, 8 * j)); }
-        bool Aligned(float v, float o) => Mathf.Abs(Mathf.Repeat(v - 4f - o, 32f)) < 0.01f;
-        if (big != null)
-            foreach (var c in order)
-                if (Aligned(c.x, ox) && Aligned(c.y, oz) && Free(c, 4, 4)) { Take(c, 4, 4); Slab(g, big, c.x + 12, c.y + 12, top); }
-        foreach (var c in order)
-        {
-            if (!cells.Contains(c)) continue;
-            if (big != null && Free(c, 4, 4)) { Take(c, 4, 4); Slab(g, big, c.x + 12, c.y + 12, top); continue; }
-            if (tile == null && Free(c, 4, 2)) { Take(c, 4, 2); Slab(g, "Floor-32x16m", c.x + 12, c.y + 4, top, 0f); continue; }
-            if (tile == null && Free(c, 2, 4)) { Take(c, 2, 4); Slab(g, "Floor-32x16m", c.x + 4, c.y + 12, top, 90f); continue; }
-            // Strips (a cell wide): the same plain slab cut down, so narrow runs read as one piece too
-            if (tile == null)
-            {
-                int nx = 1, nz = 1;
-                while (nx < 4 && cells.Contains(c + new Vector2(8 * nx, 0))) nx++;
-                while (nz < 4 && cells.Contains(c + new Vector2(0, 8 * nz))) nz++;
-                if (nx >= nz && nx > 1) { Take(c, nx, 1); Strip(g, c.x + 4 * (nx - 1), c.y, nx * 8f, 8f, top, 0f); continue; }
-                if (nz > 1) { Take(c, 1, nz); Strip(g, c.x, c.y + 4 * (nz - 1), nz * 8f, 8f, top, 90f); continue; }
-            }
-            Take(c, 1, 1);
-            if (tile == null) foreach (float dz in new[] { -2f, 2f }) Tile(g, "Platform-8x4m", c.x, c.y + dz, top);
-            else Tile(g, tile, c.x, c.y, top);
-        }
-    }
-
-    /// <summary>A plain Floor-32x16m scaled to <paramref name="length"/> × <paramref name="width"/> (along its local x × z).</summary>
-    private static void Strip(Transform g, float x, float z, float length, float width, float top, float yaw)
-    {
-        K(g, "Floor-32x16m", new Vector3(x, top - 1f, z), yaw, new Vector3(length / 32f, 1f, width / 16f));
-        if (top == G)
-            for (float a = -length / 2f + 4f; a < length / 2f; a += 8f)
-                KitLevel.island.Add(CellOf(x + (yaw == 0f ? a : 0f), z + (yaw == 0f ? 0f : a)));
-    }
-
-    /// <summary>A roof over x0..x1 × z0..z1 (top <paramref name="top"/>): big plain slabs where they fit, a Floor-Hole at
-    /// each hatch, light liners underneath; <paramref name="skip"/> leaves cells open (courtyards, shafts).</summary>
-    private static void Roof(Transform g, float x0, float x1, float z0, float z1, float top, Vector2[] hatches, System.Func<Vector2, bool> skip = null)
-    {
-        var cells = new HashSet<Vector2>();
-        for (float x = x0 + 4; x < x1; x += 8)
-            for (float z = z0 + 4; z < z1; z += 8)
-            {
-                var c = new Vector2(x, z);
-                if (skip != null && skip(c)) continue;
-                if (System.Array.IndexOf(hatches, c) >= 0) Tile(g, "Floor-Hole-8m", x, z, top);
-                else cells.Add(c);
-            }
-        Fill(g, cells, null, top, true, x0, z0);
     }
 
     // ─── Centre: the Spire ────────────────────────────────────────────────────
@@ -531,12 +461,6 @@ public static class FractureBuilder
         gaps.Add(("South to East (jump)", new Vector3(25, G, -40), new Vector3(31, G, -40)));
     }
 
-    private static void BridgeAlongZ(Transform g, float x, float z0, float z1, float y) =>
-        PropsUnder(g, K(g, "Bridge-8x4m", new Vector3(x, y - 1f, (z0 + z1) / 2f), 90f, new Vector3((z1 - z0) / 8f, 1f, 1f)), 1f, Vector2.zero);
-
-    private static void BridgeAlongX(Transform g, float z, float x0, float x1, float y) =>
-        PropsUnder(g, K(g, "Bridge-8x4m", new Vector3((x0 + x1) / 2f, y - 1f, z), 0f, new Vector3((x1 - x0) / 8f, 1f, 1f)), 1f, Vector2.zero);
-
     // ─── Spawns ───────────────────────────────────────────────────────────────
 
     private static readonly (string name, float x, float z, float y)[] SpawnSpots =
@@ -562,147 +486,6 @@ public static class FractureBuilder
         ("Annex",              30,  72, G),
         ("Sky Deck",           32,  40, L35),
     };
-
-    private static void CheckSpawnSpacing()
-    {
-        int close = 0;
-        for (int i = 0; i < SpawnSpots.Length; i++)
-            for (int j = i + 1; j < SpawnSpots.Length; j++)
-            {
-                var a = SpawnSpots[i]; var b = SpawnSpots[j];
-                float d = Vector3.Distance(new Vector3(a.x, a.y, a.z), new Vector3(b.x, b.y, b.z));
-                if (d < 15f) { report.Add($"! spawns {a.name} and {b.name} only {d:0.0} m apart"); close++; }
-            }
-        report.Add($"spawn spacing: {close} pairs under 15 m");
-    }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// A building on the footprint x0..x1 × z0..z1 standing on <paramref name="baseY"/>: one row of panels (4 m, roof at
-    /// base + 5) or two (9 m facades, roof at base + 10; solid 'S' panels are Wall-Tall). Each
-    /// side's panels are one letter per 8 m (south/north west → east, west/east south → north): D door, W window, N niche,
-    /// Q squeeze, G slide gap, C climb, P pipes, M mixed, S solid tall, X none (something else closes it). Sides listed
-    /// in <paramref name="drop"/> start 1 m lower (stretched to fit): they stand on the edge of the slab below. Doors,
-    /// squeezes and slide gaps are checked with a running, crouched or prone capsule; niches, squeezes and gaps are listed
-    /// as hides.
-    /// </summary>
-    private static void Building(Transform g, string name, float x0, float x1, float z0, float z1, float baseY, int rows,
-                                 string south, string north, string west, string east, Vector2[] hatches = null,
-                                 string drop = "", string posts = "SW SE NW NE", bool roof = true)
-    {
-        var b = Group(name, g);
-        float h = rows == 1 ? 4f : 9f;
-        void Side(string kinds, char side, Vector3 outward)
-        {
-            if (string.IsNullOrEmpty(kinds)) return;
-            bool alongX = side == 'S' || side == 'N';
-            float a0 = alongX ? x0 : z0;
-            float at = side == 'S' ? z0 : side == 'N' ? z1 : side == 'W' ? x0 : x1;
-            bool dropped = drop.IndexOf(side) >= 0;
-            for (int i = 0; i < kinds.Length; i++)
-            {
-                float a = a0 + 4 + 8 * i;
-                float x = alongX ? a : at, z = alongX ? at : a;
-                Panel(b, name, x, z, outward, kinds[i], rows, baseY, dropped);
-            }
-        }
-        Side(south, 'S', S); Side(north, 'N', N); Side(west, 'W', W); Side(east, 'E', E);
-        void Corner(string code, float x, float z, Vector3 a, Vector3 c, char sa, char sc)
-        {
-            if (posts.IndexOf(code, System.StringComparison.Ordinal) < 0) return;
-            bool dropped = drop.IndexOf(sa) >= 0 || drop.IndexOf(sc) >= 0;
-            Post(b, x, dropped ? baseY - 1f : baseY, z, a, c, dropped ? h + 1f : h);
-        }
-        Corner("SW", x0, z0, W, S, 'W', 'S'); Corner("SE", x1, z0, E, S, 'E', 'S');
-        Corner("NW", x0, z1, W, N, 'W', 'N'); Corner("NE", x1, z1, E, N, 'E', 'N');
-        if (roof) Roof(b, x0, x1, z0, z1, baseY + 5f * rows, hatches ?? System.Array.Empty<Vector2>());
-        if (hatches != null) foreach (var c in hatches) Cubby($"{name} roof hatch", new Vector3(c.x, baseY + 5f * rows, c.y), "a drop in from the roof, a ledge grab out");
-    }
-
-    private static void Panel(Transform b, string name, float x, float z, Vector3 outward, char k, int rows, float baseY, bool dropped)
-    {
-        if (k == 'X' || k == '-') return;
-        float y = dropped ? baseY - 1f : baseY;
-        if (rows == 1)
-        {
-            string id = k switch
-            {
-                'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
-                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", 'S' => "Wall-Mid-8m", _ => LowerWall(),
-            };
-            Wall(b, id, x, y, z, outward, dropped ? 5f / 4f : 1f);
-        }
-        else if (k == 'S') Wall(b, "Wall-Tall-8m", x, y, z, outward, dropped ? 10f / 9f : 1f);
-        else
-        {
-            string lower = k switch
-            {
-                'D' => "Archway-8m", 'W' => "WallWindow-8m", 'N' => "Wall-Niche-8m", 'Q' => "Wall-NichePass-8m",
-                'G' => "Wall-SlideGap-8m", 'C' => ClimbWall, 'P' => "Wall-Pipes-8m", _ => LowerWall(),
-            };
-            float lowScale = dropped ? 5f / 4f : 1f;
-            Wall(b, lower, x, y, z, outward, lowScale);
-            Wall(b, k == 'C' ? ClimbWall : UpperWall(), x, y + 4f * lowScale, z, outward, (baseY + 9f - (y + 4f * lowScale)) / 4f);
-        }
-        // Checks and hides (at the panel's foot, from outside in)
-        Vector3 at = new(x, baseY, z), inward = -outward;
-        string where = $"{name} {(outward == S ? "south" : outward == N ? "north" : outward == W ? "west" : "east")}";
-        switch (k)
-        {
-            case 'D': Tunnel($"{where} door ({x:0}, {z:0})", at + outward * 2.5f, at + inward * 2.5f, "run"); break;
-            case 'Q':
-                Tunnel($"{where} squeeze", at + outward * 4f, at + inward * 2f, "crouch");
-                Cubby($"{where} squeeze", at + outward * 1.5f, "crouch (2.6 m), a way through as well as a hide");
-                break;
-            case 'G':
-                Tunnel($"{where} slide gap", at + outward * 2f, at + inward * 2f, "crawl");
-                Cubby($"{where} slide gap", at, "prone/slide (1.7 m), a way through");
-                break;
-            case 'N': Cubby($"{where} niche", at + outward * 1.5f, "standing (3.5 m)"); break;
-        }
-    }
-
-    /// <summary>A mezzanine (top <paramref name="top"/>) over x0..x1 × z0..z1 along a wall, 4 m or 8 m deep, on a line of
-    /// beams and pillars along its open edge (on the <paramref name="open"/> side), with railings there.</summary>
-    private static void Mezzanine(Transform g, float x0, float x1, float z0, float z1, float top, char open)
-    {
-        for (float x = x0 + 4; x < x1; x += 8)
-            for (float z = z0 + 2; z < z1; z += 4)
-            {
-                K(g, "Platform-8x4m", new Vector3(x, top - 1f, z), 0f);
-                Ceiling(g, x, top - 1f, z, 0f, 1f, 0.5f);
-            }
-        float edge = open == 'S' ? z0 : z1, inset = open == 'S' ? 1f : -1f;
-        for (float x = x0 + 4; x < x1; x += 8) K(g, "Beam-8m", new Vector3(x, top - 2f, edge + inset), 0f);
-        for (float x = x0 + 8; x < x1; x += 8) K(g, "Pillar-Round-2m", new Vector3(x, G, edge + inset), 0f, new Vector3(1f, 0.75f, 1f));
-    }
-
-    /// <summary>
-    /// A 0.5 m curb round a hole (x0..x1 × z0..z1) on the floor at <paramref name="floor"/>: squashed half walls standing
-    /// just outside it, posts on the corners; open (side, at) leaves out the 8 m piece centred there (x for S/N, z for W/E).
-    /// Walking never drops you in; a hop does.
-    /// </summary>
-    private static void Curb(Transform g, string name, Vector4 hole, float floor, params (char side, float at)[] open)
-    {
-        var c = Group(name, g);
-        void Side(char side, Vector3 outward)
-        {
-            bool alongX = side == 'S' || side == 'N';
-            float a0 = alongX ? hole.x : hole.z, a1 = alongX ? hole.y : hole.w;
-            float fixedAt = side == 'S' ? hole.z : side == 'N' ? hole.w : side == 'W' ? hole.x : hole.y;
-            for (float a = a0; a < a1 - 0.01f; a += 8f)
-            {
-                float len = Mathf.Min(8f, a1 - a), mid = a + len / 2f;
-                if (System.Array.Exists(open, o => o.side == side && Mathf.Abs(o.at - mid) < 0.5f)) continue;
-                float x = alongX ? mid : fixedAt, z = alongX ? fixedAt : mid;
-                K(c, "Wall-Half-8m", new Vector3(x, floor, z), Mathf.Atan2(-outward.x, -outward.z) * Mathf.Rad2Deg, new Vector3(len / 8f, 0.25f, 1f));
-            }
-        }
-        Side('S', S); Side('N', N); Side('W', W); Side('E', E);
-        Post(c, hole.x, floor, hole.z, W, S, 0.5f); Post(c, hole.y, floor, hole.z, E, S, 0.5f);
-        Post(c, hole.x, floor, hole.w, W, N, 0.5f); Post(c, hole.y, floor, hole.w, E, N, 0.5f);
-    }
 
     private static void RenderOverviews()
     {

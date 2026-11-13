@@ -114,6 +114,19 @@ public class Honk : QuickAbility
     private static GameObject BuildHorn()
     {
         var root = new GameObject("Honk Horn");
+        // Justin's air horn (Resources/Object/AirHorn, 0.52 tall standing on its base, the bell facing −Z): turned to
+        // blow forward, centred on the root
+        var model = Resources.Load<GameObject>("Object/AirHorn");
+        if (model != null)
+        {
+            var horn = Object.Instantiate(model, root.transform, false);
+            foreach (var c in horn.GetComponentsInChildren<Collider>()) Object.Destroy(c);
+            foreach (var r in horn.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            horn.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            horn.transform.localPosition = new Vector3(0f, -0.26f, 0f);
+            root.SetActive(false);
+            return root;
+        }
         var brass = new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = new Color(1f, 0.78f, 0.2f) };
         var rubber = new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = new Color(0.95f, 0.2f, 0.3f) };
 
