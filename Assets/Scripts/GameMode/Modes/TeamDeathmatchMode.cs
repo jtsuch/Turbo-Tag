@@ -12,6 +12,7 @@ public class TeamDeathmatchMode : TeamMode
 {
     public override string DisplayName => "Team Deathmatch";
     public override bool   UsesGuns    => true;
+    public override bool   ShowsShotsOnMap => true;
 
     public override bool CanDamage(PlayerRole attacker, PlayerRole target) => !SameTeam(attacker, target);
 

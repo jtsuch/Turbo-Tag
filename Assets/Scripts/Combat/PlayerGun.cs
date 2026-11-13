@@ -35,6 +35,10 @@ public class PlayerGun : MonoBehaviourPun
     public GunInfo Current { get; private set; }
 
     public int  Ammo        { get; private set; }
+
+    /// <summary>Owner: looking through the scope (mouse wheel up on a gun with one; wheel down, reloading or
+    /// anything taking the view drops it).</summary>
+    public bool Scoped { get; private set; }
     public bool IsReloading => Current != null && Time.time < reloadEndsAt;
     /// <summary>Reload progress 0–1, or -1 when not reloading.</summary>
     public float ReloadProgress => IsReloading ? 1f - (reloadEndsAt - Time.time) / Mathf.Max(0.01f, Current.ReloadTime) : -1f;
@@ -44,6 +48,7 @@ public class PlayerGun : MonoBehaviourPun
     private float  nextShotAt;
     private float  reloadEndsAt;
     private float  bloom;          // Extra spread from spraying (degrees), shrinking back between shots
+    private float  lastShotAt = -10f;
     private bool   reloadPending;
     private readonly RaycastHit[] hits = new RaycastHit[32];
     private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
@@ -83,6 +88,7 @@ public class PlayerGun : MonoBehaviourPun
         reloadPending = false;
         nextShotAt    = 0f;
         bloom         = 0f;
+        Scoped        = false;
         if (PhotonNetwork.InRoom) NetProps.SetLocal(PlayerKeys.Gun, Current != null ? Current.Id : "");
     }
 
@@ -110,7 +116,9 @@ public class PlayerGun : MonoBehaviourPun
             player.Animation.HoldingPistol = shown && Current.Model == null;
         }
 
-        if (photonView.IsMine && Current != null) bloom = Mathf.MoveTowards(bloom, 0f, Current.BloomRecovery * Time.deltaTime);
+        if (photonView.IsMine && Current != null && Time.time - lastShotAt >= Current.BloomDelay)
+            bloom = Mathf.MoveTowards(bloom, 0f, Current.BloomRecovery * Time.deltaTime);
+        if (photonView.IsMine) UpdateScope(shown);
         if (!photonView.IsMine || !shown) return;
         if (reloadPending && !IsReloading) { Ammo = Current.Magazine; reloadPending = false; }
 
@@ -154,6 +162,26 @@ public class PlayerGun : MonoBehaviourPun
         }
     }
 
+    // ─── Scope (owner) ────────────────────────────────────────────────────────
+
+    // Wheel up looks through the scope, wheel down comes back out; anything that takes the gun or the view away
+    // (reloading, the picker, pausing, a killcam, a camera, being caught) drops it
+    private void UpdateScope(bool shown)
+    {
+        var cam = PlayerCam.Local;
+        bool can = shown && Current != null && Current.ScopeZoom > 1f && !IsReloading && cam != null && !cam.HasViewOverride
+                   && !PauseMenuManager.IsPaused && !GunPicker.IsOpen && !Killcam.IsPlaying
+                   && !PingWheel.IsOpen && !EmoteMenu.IsOpen;
+        if (!can) Scoped = false;
+        else
+        {
+            float wheel = Input.mouseScrollDelta.y;
+            if (wheel > 0.01f && !Scoped) { Scoped = true; Sfx.Here(SfxKind.Snap, 0.35f, 1.6f); }
+            else if (wheel < -0.01f && Scoped) { Scoped = false; Sfx.Here(SfxKind.Snap, 0.3f, 1.3f); }
+        }
+        if (cam != null) cam.Zoom = Scoped ? Current.ScopeZoom : 1f;
+    }
+
     // ─── Reload ───────────────────────────────────────────────────────────────
 
     private void StartReload()
@@ -179,6 +207,7 @@ public class PlayerGun : MonoBehaviourPun
         var gun = Current;
         if (!InfiniteAmmo) Ammo--;
         nextShotAt = Time.time + gun.FireInterval / Mathf.Max(0.1f, FireRateMultiplier);
+        lastShotAt = Time.time;
 
         Transform view   = PlayerCam.Local.Camera.transform;
         // Perfect on the first shot; spraying blooms; air/moving error only with the Movement Inaccuracy rule
@@ -389,6 +418,8 @@ public class PlayerGun : MonoBehaviourPun
         var model = WorldModel(Current != null ? Current.Id : null);
         if (model != null) model.Kick();
 
+        Minimap.NoteShot(player);
+
         Vector3 from = Muzzle(false).position;
         Fx.Shot(Current != null ? Current.Id : null, from, local: false);
         if (Vector3.Distance(from, end) < (Current != null ? Current.Range : 150f) - 1f) Fx.Impact(end, from, false);
@@ -429,8 +460,9 @@ public class PlayerGun : MonoBehaviourPun
 
         if (player.Animation != null) player.Animation.ForceFirstPersonGun = killcamGun != null && gun != null && gun.Model == null;
 
+        bool scopedIn = killcamGun == null && Scoped;
         foreach (var pair in viewModels)
-            if (pair.Value != null) pair.Value.SetActive(gun != null && pair.Key == gun.Id);
+            if (pair.Value != null) pair.Value.SetActive(gun != null && pair.Key == gun.Id && !scopedIn);
 
         var model = ViewModel(id);
         if (model != null) model.Apply(killcamGun != null ? -1f : ReloadProgress);

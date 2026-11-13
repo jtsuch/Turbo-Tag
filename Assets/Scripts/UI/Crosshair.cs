@@ -63,6 +63,15 @@ public class Crosshair : MonoBehaviour
     private void OnEnable() => CrosshairSettings.Changed += Rebuild;
     private void OnDisable() => CrosshairSettings.Changed -= Rebuild;
 
+    private CanvasGroup group;
+
+    // Looking through a scope: the scope has its own reticle
+    private void LateUpdate()
+    {
+        if (group == null) group = gameObject.AddComponent<CanvasGroup>();
+        group.alpha = ScopeOverlay.Showing ? 0f : 1f;
+    }
+
     private void Rebuild()
     {
         for (int i = transform.childCount - 1; i >= 0; i--) Destroy(transform.GetChild(i).gameObject);

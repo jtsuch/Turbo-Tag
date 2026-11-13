@@ -90,6 +90,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out HunterToolHud _)) gameObject.AddComponent<HunterToolHud>();     // ...and its tool on the HUD
         if (!TryGetComponent(out LastHiderCam _)) gameObject.AddComponent<LastHiderCam>();       // Tag: hunters can watch the last hider
         if (!TryGetComponent(out ControlsHint _)) gameObject.AddComponent<ControlsHint>();       // The less obvious keys, on the right
+        if (!TryGetComponent(out ModifierHud _)) gameObject.AddComponent<ModifierHud>();         // The round modifier: announced, then beside the clock
+        if (!TryGetComponent(out ScopeOverlay _)) gameObject.AddComponent<ScopeOverlay>();       // The view through a scope
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         if (!TryGetComponent(out MapIntro _)) gameObject.AddComponent<MapIntro>();               // The pan round the map before a match
         Sfx.Prewarm();
@@ -206,11 +208,18 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     {
         if (!PhotonNetwork.IsMasterClient) return;
 
+        // Every round's countdown: a new random modifier when the rule is on (a mode may pick its own: Sudden Death),
+        // announced at the countdown's start, which is that much longer so the numbers still get their full time
+        string modifier = null;
+        if (phase == MatchPhase.Countdown)
+        {
+            modifier = MatchRules.Modifiers ? RoundModifiers.PickNext(NetProps.Room(RoomKeys.Modifier, "")) : "";
+            if (extra != null && extra.ContainsKey(RoomKeys.Modifier)) modifier = extra[RoomKeys.Modifier] as string ?? "";
+            if (modifier.Length > 0 && duration > 0f) duration += RoundModifiers.AnnounceSeconds;
+        }
         Hashtable props = Clock.BuildRestart(duration);
         props[RoomKeys.Phase] = (int)phase;
-        // Every round's countdown: a new random modifier when the rule is on
-        if (phase == MatchPhase.Countdown)
-            props[RoomKeys.Modifier] = MatchRules.Modifiers ? RoundModifiers.PickNext(NetProps.Room(RoomKeys.Modifier, "")) : "";
+        if (modifier != null) props[RoomKeys.Modifier] = modifier;
         if (extra != null)
             foreach (var entry in extra) props[entry.Key] = entry.Value;
 

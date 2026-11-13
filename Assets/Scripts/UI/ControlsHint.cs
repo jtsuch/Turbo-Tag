@@ -23,7 +23,7 @@ public class ControlsHint : MonoBehaviour
     private RectTransform list;
     private Canvas canvas;
     private string shownKey = "";
-    private readonly List<(InputAction action, string label, bool situational)> rows = new();
+    private readonly List<(string key, string label, bool situational)> rows = new();
 
     private void Start()
     {
@@ -49,40 +49,45 @@ public class ControlsHint : MonoBehaviour
         if (!show) return;
 
         rows.Clear();
-        if (SearchDestroyController.LocalBombOut) rows.Add((InputAction.DropBomb, "Drop bomb", true));
-        if (SearchDestroyController.LocalCarrying) rows.Add((InputAction.Bomb, SearchDestroyController.LocalBombOut ? "Put bomb away · hold: plant" : "Bomb · hold: plant", true));
-        if (KeepAwayDisc.LocalHolding) rows.Add((InputAction.Action, "Throw disc · hold: further", true));
-        rows.Add((InputAction.FreeSpin, "Free Spin (hold)", false));
-        rows.Add((InputAction.Emote, "Emote (hold)", false));
-        rows.Add((InputAction.Taunt, "Taunt · hold: throw it", false));
-        rows.Add((InputAction.Ping, "Ping (hold)", false));
+        var gun = local.Gun != null ? local.Gun.Current : null;
+        if (gun != null && gun.ScopeZoom > 1f && CombatManager.Instance != null)
+            rows.Add(("WHEEL", local.Gun.Scoped ? "Scroll down: leave scope" : "Scroll up: scope in", true));
+        if (SearchDestroyController.LocalBombOut) rows.Add((Key(InputAction.DropBomb), "Drop bomb", true));
+        if (SearchDestroyController.LocalCarrying) rows.Add((Key(InputAction.Bomb), SearchDestroyController.LocalBombOut ? "Put bomb away · hold: plant" : "Bomb · hold: plant", true));
+        if (KeepAwayDisc.LocalHolding) rows.Add((Key(InputAction.Action), "Throw disc · hold: further", true));
+        rows.Add((Key(InputAction.FreeSpin), "Free Spin (hold)", false));
+        rows.Add((Key(InputAction.Emote), "Emote (hold)", false));
+        rows.Add((Key(InputAction.Taunt), "Taunt · hold: throw it", false));
+        rows.Add((Key(InputAction.Ping), "Ping (hold)", false));
 
         // Rebuilt only when what's listed (or a key) changes
         var key = new System.Text.StringBuilder();
-        foreach (var r in rows) key.Append(r.action).Append(Keybinds.Get(r.action)).Append(r.label).Append('|');
+        foreach (var r in rows) key.Append(r.key).Append(r.label).Append('|');
         if (key.ToString() == shownKey) return;
         shownKey = key.ToString();
         Rebuild();
     }
 
+    private static string Key(InputAction action) => Keybinds.Label(Keybinds.Get(action));
+
     private void Rebuild()
     {
         for (int i = list.childCount - 1; i >= 0; i--) Destroy(list.GetChild(i).gameObject);
         var theme = UITheme.Current;
-        foreach (var (action, label, situational) in rows)
+        foreach (var (keyLabel, label, situational) in rows)
         {
             var row = UIKit.Rect(label, list);
             UIKit.Size(row, 260f, 26f);
             var text = UIKit.OneLine(UIKit.Text(row, label, 17f, UIKit.Font.Bold,
                 situational ? theme.primary : UIKit.WithAlpha(theme.text, 0.75f), TextAlignmentOptions.MidlineRight));
-            UIKit.Stretch(text.rectTransform, 0f, 50f, 0f, 0f);
+            UIKit.Stretch(text.rectTransform, 0f, keyLabel.Length > 3 ? 78f : 50f, 0f, 0f);
             text.outlineWidth = 0.18f;
             text.outlineColor = new Color32(20, 12, 50, 200);
             var chip = UIKit.Panel(row, situational ? theme.primary : UIKit.WithAlpha(theme.panel, 0.85f), 7f, "Key");
             chip.rectTransform.anchorMin = chip.rectTransform.anchorMax = chip.rectTransform.pivot = new Vector2(1f, 0.5f);
-            chip.rectTransform.sizeDelta = new Vector2(44f, 24f);
+            chip.rectTransform.sizeDelta = new Vector2(keyLabel.Length > 3 ? 72f : 44f, 24f);
             chip.rectTransform.anchoredPosition = Vector2.zero;
-            var keyText = UIKit.Text(chip.transform, Keybinds.Label(Keybinds.Get(action)), 15f, UIKit.Font.Display,
+            var keyText = UIKit.Text(chip.transform, keyLabel, keyLabel.Length > 3 ? 13f : 15f, UIKit.Font.Display,
                 situational ? theme.textDark : theme.text, TextAlignmentOptions.Center);
             UIKit.Stretch(keyText.rectTransform);
         }

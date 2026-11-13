@@ -34,6 +34,7 @@ public class TagMode : GameMode
     public override bool   ShowsScores => true;
     public override bool   HasRounds   => true;
     public override bool   HunterRadar => true;
+    public override bool   RadarRampsUp => true;
     public override bool   HasHunterClasses => true;
     public override float  DangerPointsPerSecond => 1f; // 2 points a second in all while a hunter is within 12 m
 

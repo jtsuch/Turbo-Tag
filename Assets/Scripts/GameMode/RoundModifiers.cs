@@ -5,8 +5,9 @@ using UnityEngine;
 
 /// <summary>
 /// Round Modifiers (the "Round Modifiers" rule, any mode): at the start of every round's countdown the host picks a
-/// random modifier (<see cref="RoomKeys.Modifier"/>, never the same twice in a row), it's announced with the
-/// countdown and shown under the clock, and every screen applies it to its own player until the round ends.
+/// random modifier (<see cref="RoomKeys.Modifier"/>, never the same twice in a row), the countdown opens with its
+/// announcement (<see cref="AnnounceSeconds"/> longer; <see cref="ModifierHud"/>) and a card beside the clock names it
+/// all round, and every screen applies it to its own player until the round ends.
 /// Lives on the GameModeManager object. <b>Add one:</b> an entry in <see cref="All"/> (stat multipliers, and/or
 /// an <c>OnStart</c>/<c>OnEnd</c>/<c>Tick</c> for anything else).
 /// </summary>
@@ -21,6 +22,10 @@ public class RoundModifiers : MonoBehaviour
     }
 
     private static readonly object Source = new(); // StatModifiers source
+
+    /// <summary>A countdown with a modifier is this much longer: it opens with the modifier's announcement
+    /// (<see cref="ModifierHud"/>), and the countdown numbers follow.</summary>
+    public const float AnnounceSeconds = 3.5f;
 
     public static readonly Modifier[] All =
     {
@@ -80,12 +85,7 @@ public class RoundModifiers : MonoBehaviour
         var phase = manager != null ? manager.Phase : MatchPhase.Waiting;
         bool live = phase == MatchPhase.Countdown || phase == MatchPhase.Hiding || phase == MatchPhase.Active;
         var want = live ? Current : null;
-        if (want != applied)
-        {
-            Apply(want);
-            if (want != null && phase == MatchPhase.Countdown && HUDManager.Instance != null)
-                HUDManager.Instance.ShowBanner($"<size=70%>MODIFIER</size>\n{want.Name.ToUpperInvariant()}\n<size=55%>{want.Description}</size>", 4f);
-        }
+        if (want != applied) Apply(want); // ModifierHud announces it and keeps it on screen
 
         // Screen-wide modifiers are held every frame on every client (a one-off set was seen on only one screen)
         if (applied != null && applied.Id == "Fog") HoldFog();

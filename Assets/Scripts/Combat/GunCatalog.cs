@@ -20,6 +20,8 @@ public sealed class GunInfo
     public float Bloom;                      // Extra degrees added per shot while spraying
     public float MaxBloom;                   // Most extra degrees spraying can add
     public float BloomRecovery = 8f;         // Degrees per second the bloom shrinks once you stop
+    public float BloomDelay;                 // Seconds without firing before the bloom starts shrinking (0: always)
+    public float ScopeZoom = 1f;             // Mouse wheel up: look through a scope this many times closer (1: no scope)
     public float Recoil;                     // Degrees the view kicks up per shot
     public int   Pellets = 1;                // Bullets per shot (shotguns)
 
@@ -46,18 +48,19 @@ public static class GunCatalog
         new GunInfo
         {
             Id = "Pistol", Name = "Pistol",
-            Description = "Reliable semi-auto. Five body shots or three headshots.",
-            Damage = 20f, HeadshotMultiplier = 2f, FireInterval = 0.17f, Automatic = false,
-            Magazine = 12, ReloadTime = 1.4f, Range = 150f, Spread = 0f, AirSpread = 1.5f, Recoil = 1.2f,
+            Description = "Quick semi-auto with a fast reload. Six body shots or three headshots.",
+            Damage = 18f, HeadshotMultiplier = 2f, FireInterval = 0.13f, Automatic = false,
+            Magazine = 12, ReloadTime = 1.1f, Range = 150f, Spread = 0f, AirSpread = 1.5f, Recoil = 1.1f,
             Bloom = 0.4f, MaxBloom = 2.5f,
         },
         new GunInfo
         {
             Id = "AR", Name = "Assault Rifle", Model = "Guns/AR",
-            Description = "Full-auto. Hold to fire; controllable recoil, a long reload.",
-            Damage = 13f, HeadshotMultiplier = 1.75f, FireInterval = 0.1f, Automatic = true,
+            // Long sprays drift: the bloom only shrinks once you let go (BloomDelay), up to 3° after ~2 s
+            Description = "Full-auto. Hold to fire; long sprays get less accurate, a long reload.",
+            Damage = 12f, HeadshotMultiplier = 1.75f, FireInterval = 0.1f, Automatic = true,
             Magazine = 30, ReloadTime = 2f, Range = 200f, Spread = 0f, AirSpread = 2.5f, Recoil = 0.45f,
-            Bloom = 0.25f, MaxBloom = 3.5f, BloomRecovery = 10f,
+            Bloom = 0.16f, MaxBloom = 3f, BloomRecovery = 10f, BloomDelay = 0.15f,
             ViewOffset = new Vector3(0.38f, -0.36f, 0.75f), ViewLength = 1.25f, WorldLength = 1.75f,
         },
         new GunInfo
@@ -74,9 +77,9 @@ public static class GunCatalog
         {
             // 80 to the body (two hits), exactly 100 to the head (one); slow and shaky in the air
             Id = "Sniper", Name = "Sniper", Model = "Guns/Sniper",
-            Description = "About 90 to the head, 55 to the body: never a one-shot kill. Slow, and dead accurate.",
-            Damage = 55f, HeadshotMultiplier = 1.65f, FireInterval = 1.3f, Automatic = false,
-            Magazine = 5, ReloadTime = 2.6f, Range = 400f, Spread = 0f, AirSpread = 4f, Recoil = 5f,
+            Description = "About 90 to the head, 55 to the body: never a one-shot kill. Slow, dead accurate, scroll up to scope.",
+            Damage = 55f, HeadshotMultiplier = 1.65f, FireInterval = 1.6f, Automatic = false,
+            Magazine = 5, ReloadTime = 2.6f, Range = 400f, Spread = 0f, AirSpread = 4f, Recoil = 5f, ScopeZoom = 4f,
             ViewOffset = new Vector3(0.36f, -0.36f, 0.85f), ViewLength = 1.55f, WorldLength = 2.1f,
         },
     };

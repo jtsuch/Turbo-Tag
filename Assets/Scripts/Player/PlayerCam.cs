@@ -67,6 +67,13 @@ public class PlayerCam : MonoBehaviour
     /// <summary>0 at running speed, 1 when really flying (≈35 m/s): drives the FOV stretch, speed lines and wind.</summary>
     public float SpeedFeel { get; private set; }
 
+    /// <summary>A scope's magnification (1 = none; set every frame by PlayerGun). The view eases in and the mouse
+    /// slows by the same factor, so aiming feels the same through the scope.</summary>
+    public float Zoom { get; set; } = 1f;
+    /// <summary>0 out of the scope, 1 fully in (eases over ~0.12 s): the scope overlay fades with it.</summary>
+    public float ZoomBlend { get; private set; }
+    private float zoomLevel = 1f;
+
     private float   sensitivity = SettingsManager.DefaultSensitivity;
     private Vector3 currentCameraOffset;
     private Vector3 cameraVelocity;
@@ -452,8 +459,8 @@ public class PlayerCam : MonoBehaviour
         }
         if (PingWheel.IsOpen || EmoteMenu.IsOpen) return; // The mouse is choosing a ping or an emote
 
-        // Sensitivity 100 = raw 1:1 mouse delta
-        float scale = sensitivity / 100f;
+        // Sensitivity 100 = raw 1:1 mouse delta; slower through a scope
+        float scale = sensitivity / 100f * Mathf.Lerp(1f, 1f / zoomLevel, ZoomBlend);
         yRotation += Input.GetAxisRaw("Mouse X") * scale;
         float mouseY = Input.GetAxisRaw("Mouse Y") * (invertY ? -1f : 1f);
         xRotation  = Mathf.Clamp(xRotation - mouseY * scale, -90f, 90f);
@@ -574,7 +581,9 @@ public class PlayerCam : MonoBehaviour
         float feel  = Mathf.InverseLerp(15f, 35f, speed);
         SpeedFeel   = Mathf.Lerp(SpeedFeel, feel, 1f - Mathf.Exp(-6f * Time.deltaTime));
         speedFov    = SpeedFeel * 12f;
-        if (cam != null) cam.fieldOfView = fovTween + speedFov;
+        if (Zoom > 1f) zoomLevel = Zoom;
+        ZoomBlend = Mathf.MoveTowards(ZoomBlend, Zoom > 1f ? 1f : 0f, Time.deltaTime / 0.12f);
+        if (cam != null) cam.fieldOfView = Mathf.Lerp(fovTween + speedFov, DefaultFov / zoomLevel, ZoomBlend);
     }
 
     public void ChangeFov(float endValue, float duration = 0.25f)

@@ -213,7 +213,10 @@ public class Minimap : MonoBehaviour
     private const float RadarInterval = 20f; // Seconds between sweeps (every hunter's screen agrees: network time)
     private const float RadarShow     = 7f;  // How long a sweep stays up (fading out)
     private const float RadarRadius   = 14f; // Metres: the hider is somewhere inside
+    // RadarRampsUp (Tag): the hunt starts with sweeps every 30 s and circles twice as wide, easing to the above
+    private const float RampStartInterval = 30f, RampStartRadius = 28f, RampSeconds = 120f;
     private int   radarSweep = -1;
+    private float radarSize = RadarRadius;   // Radius of the sweep on show
     private float radarShownAt = -99f;
     private readonly List<Vector3> radarPings = new();
     private readonly List<(Image fill, Image ring)> radarCircles = new();
@@ -229,22 +232,20 @@ public class Minimap : MonoBehaviour
         bool on = radarMode && local.Role == PlayerRole.Hunter && !local.IsCaught;
         bool target = radarMode && !local.IsCaught && local.Role != PlayerRole.Hunter && local.Role != PlayerRole.None && local.Role != PlayerRole.Ghost;
 
-        // The last hider in Tag gets swept twice as often
-        float interval = TagRoundSummary.HidersLeft() == 1 ? RadarInterval * 0.5f : RadarInterval;
-        double now = Photon.Pun.PhotonNetwork.Time;
-        int secondsLeft = Mathf.CeilToInt(interval - (float)(now % interval));
+        // Which sweep we're in and how long until the next (every screen agrees: network time, or the hunt's clock)
+        var (sweepNow, secondsLeft, sweepRadius) = radarMode ? RadarSchedule(mode, manager) : (0, 0, RadarRadius);
         mapLabel.text = radarMode && (on || target) ? $"MAP  <color=#FF5A6E>RADAR {secondsLeft}s</color>" : "MAP";
 
         // Hiders are warned when a sweep finds them, so they can move
         if (target)
         {
-            int sweep = (int)(now / interval);
+            int sweep = sweepNow;
             if (radarSweep >= 0 && sweep != radarSweep) Pulse(new Color(1f, 0.25f, 0.3f)); // Spotted: a red pulse and a ping
             radarSweep = sweep;
         }
         if (on)
         {
-            int sweep = (int)(now / interval);
+            int sweep = sweepNow;
             if (sweep != radarSweep)
             {
                 bool first = radarSweep < 0; // Not the moment the hunt starts: the first sweep is a full interval in
@@ -257,12 +258,13 @@ public class Minimap : MonoBehaviour
                     if (p.Has(PlayerFlag.Jammed)) continue; // The Jammer donut hides them from the radar
                     var rng = new System.Random(sweep * 7919 + p.ActorNumber);
                     float angle = (float)rng.NextDouble() * Mathf.PI * 2f;
-                    float r = Mathf.Sqrt((float)rng.NextDouble()) * RadarRadius * 0.8f;
+                    float r = Mathf.Sqrt((float)rng.NextDouble()) * sweepRadius * 0.8f;
                     radarPings.Add(p.transform.position + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * r);
                 }
                 if (!first && radarPings.Count > 0)
                 {
                     radarShownAt = Time.time;
+                    radarSize = sweepRadius;
                     Pulse(new Color(1f, 0.3f, 0.35f), ping: false);
                     Sfx.Here(SfxKind.Shimmer, 0.5f, 0.7f);
                 }
@@ -276,7 +278,7 @@ public class Minimap : MonoBehaviour
         if (alpha > 0f)
         {
             float edge = mapSize * 0.5f;
-            float size = RadarRadius * 2f / (radius * 2f) * mapSize;
+            float size = radarSize * 2f / (radius * 2f) * mapSize;
             float pulse = 0.75f + 0.25f * Mathf.Sin(Time.time * 6f);
             foreach (var centre in radarPings)
             {
@@ -301,6 +303,38 @@ public class Minimap : MonoBehaviour
         }
         for (int i = circles; i < radarCircles.Count; i++) { radarCircles[i].fill.gameObject.SetActive(false); radarCircles[i].ring.gameObject.SetActive(false); }
         for (int i = glows; i < radarGlows.Count; i++) radarGlows[i].gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// The sweep we're in, the seconds until the next and how wide this one's circles are. Plain modes sweep every
+    /// RadarInterval of network time. Modes that ramp up (Tag) count from the hunt's start: the first sweeps are
+    /// 30 s apart with circles twice as wide, easing to 20 s / 14 m over two minutes. The last Tag hider is swept
+    /// twice as often either way.
+    /// </summary>
+    private static (int sweep, int secondsLeft, float radius) RadarSchedule(GameMode mode, GameModeManager manager)
+    {
+        float speed = TagRoundSummary.HidersLeft() == 1 ? 2f : 1f;
+        if (!mode.RadarRampsUp)
+        {
+            float interval = RadarInterval / speed;
+            double now = Photon.Pun.PhotonNetwork.Time;
+            return ((int)(now / interval), Mathf.CeilToInt(interval - (float)(now % interval)), RadarRadius);
+        }
+        float elapsed = manager.Clock.Elapsed;
+        float at = 0f, previous = 0f;
+        int sweep = 0;
+        while (true)
+        {
+            float t = Mathf.Clamp01(at / RampSeconds);
+            float next = at + Mathf.Lerp(RampStartInterval, RadarInterval, t) / speed;
+            if (next > elapsed)
+            {
+                float radius = Mathf.Lerp(RampStartRadius, RadarRadius, Mathf.Clamp01(previous / RampSeconds));
+                return (sweep, Mathf.Max(1, Mathf.CeilToInt(next - elapsed)), radius);
+            }
+            previous = at = next;
+            sweep++;
+        }
     }
 
     private (Image fill, Image ring) RadarCircle(int index)
@@ -334,6 +368,19 @@ public class Minimap : MonoBehaviour
         return radarGlows[index];
     }
 
+    // ─── Shots (gun modes) ────────────────────────────────────────────────────
+
+    private const float ShotShow = 2.5f; // Seconds a shot stays on the map
+    private static readonly List<(Player shooter, Vector3 at, float time)> shots = new();
+
+    /// <summary>Every screen but the shooter's: <paramref name="shooter"/> just fired (their latest shot is kept).</summary>
+    public static void NoteShot(Player shooter)
+    {
+        if (shooter == null) return;
+        shots.RemoveAll(s => s.shooter == shooter || s.shooter == null || Time.time - s.time > ShotShow);
+        shots.Add((shooter, shooter.transform.position, Time.time));
+    }
+
     private void DrawOthers(Player local)
     {
         var manager = GameModeManager.Instance;
@@ -350,6 +397,16 @@ public class Minimap : MonoBehaviour
 
         // Team pings
         foreach (var (point, color) in PingMarkers.Active) Mark(ref used, point, local, color, 14f + Mathf.PingPong(Time.unscaledTime * 16f, 6f));
+
+        // Gun modes: enemies who just fired, as a red dot that fades (ShowsShotsOnMap)
+        if (mode != null && mode.ShowsShotsOnMap)
+            foreach (var (shooter, at, time) in shots)
+            {
+                float age = Time.time - time;
+                if (age > ShotShow || shooter == null || shooter == local || shooter.IsDownAfterTag) continue;
+                if (mode.SameTeam(local.Role, shooter.Role) && local.Role != PlayerRole.None) continue;
+                Mark(ref used, at, local, new Color(1f, 0.15f, 0.2f, Mathf.Clamp01((ShotShow - age) / 0.8f)), 13f);
+            }
 
         // Keep Away: the disc, always (it's the whole game)
         if (KeepAwayDisc.Instance != null)

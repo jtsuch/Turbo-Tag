@@ -245,6 +245,13 @@ public abstract class GameMode
     /// </summary>
     public virtual bool HunterRadar => false;
 
+    /// <summary>The radar starts with few, vague hints and builds up (Tag): the first sweeps come every
+    /// <see cref="Minimap"/> 30 s with circles twice as wide, easing to the usual 20 s / 14 m over the first two minutes.</summary>
+    public virtual bool RadarRampsUp => false;
+
+    /// <summary>Gun modes where every shot from an enemy shows as a red dot on the minimap for a moment.</summary>
+    public virtual bool ShowsShotsOnMap => false;
+
     /// <summary>Hunters pick a class and a left-click tool while the hiders hide (HunterClasses, HunterKit).</summary>
     public virtual bool HasHunterClasses => false;
 

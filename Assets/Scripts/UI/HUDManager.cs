@@ -498,9 +498,7 @@ public class HUDManager : MonoBehaviour
         bool paused = showClock && clock.IsPaused;
         pausedChip.SetActive(paused);
         string round = showClock && !paused && mode.HasRounds && manager.Round > 0 ? $"ROUND {manager.Round}" : "";
-        var modifier = RoundModifiers.Current;
-        bool modLive = modifier != null && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding || phase == MatchPhase.Active);
-        roundText.text = modLive ? (round.Length > 0 ? $"{round}  ·  " : "") + $"<color=#FF8A3D>{modifier.Name.ToUpperInvariant()}</color>" : round;
+        roundText.text = round; // The round modifier has its own card beside the clock (ModifierHud)
 
         // Score
         bool showScore = mode != null && mode.ShowsScores && player != null;
@@ -572,8 +570,11 @@ public class HUDManager : MonoBehaviour
         if (manager != null && manager.Clock != null && manager.Clock.HasLimit && !manager.Clock.IsPaused)
         {
             float left = manager.Clock.Remaining;
+            // A round modifier's announcement opens the countdown (ModifierHud): no numbers over it
+            float lead = manager.Phase == MatchPhase.Countdown && RoundModifiers.Current != null ? RoundModifiers.AnnounceSeconds : 0f;
+            bool announcing = manager.Clock.Elapsed < lead;
             // Long pre-rounds (Search & Destroy's 40 s) only pop the last 5 s, like the hide phase
-            bool counting = (manager.Phase == MatchPhase.Countdown && (left <= 5f || manager.Clock.Duration <= 10f))
+            bool counting = (manager.Phase == MatchPhase.Countdown && !announcing && (left <= 5f || manager.Clock.Duration - lead <= 10f))
                             || (manager.Phase == MatchPhase.Hiding && left <= 5f);
             if (counting && left > 0f) number = Mathf.CeilToInt(left);
         }

@@ -24,6 +24,7 @@ public class FreeForAllMode : GameMode
     public override string DisplayName     => "Free for All";
     public override bool   ShowsScores     => true;
     public override bool   UsesGuns        => true;
+    public override bool   ShowsShotsOnMap => true; // And Last Man Standing, a subclass
     public override bool   CrownsLeader    => true;
     public override bool   UsesSpawnPoints => true;
     public override bool   AnnouncesTags   => false;
