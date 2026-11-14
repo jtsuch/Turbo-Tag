@@ -85,6 +85,7 @@ public class PlayerAudio : MonoBehaviour
     private void Update()
     {
         HandleFootsteps(); // Every copy: from its own synced movement
+        HandleFlaps();
         HandleAirRush();
         if (!photonView.IsMine) return;
         HandleSlide();
@@ -134,6 +135,53 @@ public class PlayerAudio : MonoBehaviour
         if (!mine && isSprinting && state != Player.MovementState.Crouch && state != Player.MovementState.Prone)
             SoundVisualizer.Notify(transform.position, 0.8f, player.ActorNumber); // Full running shows on the edge
         Step(transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
+    }
+
+    // Flappy: rapid wingbeats while gliding, on every copy (the gliding flag is synced): a seamless 1.76 s loop of
+    // flaps ~9 a second (Resources/Sfx/Flappy/FlapLoop, built from the attacks of Justin's FlappingSound.mp3 flaps),
+    // on its own looping source that fades in and out; others hear it 35 m off and see it on the sound visualizer
+    private AudioSource flapSource;
+    private static AudioClip flapLoop;
+    private float nextFlapNotice;
+
+    private void HandleFlaps()
+    {
+        if (anim == null) anim = GetComponent<PlayerAnimatorController>();
+        bool gliding = anim != null && anim.IsGliding && !player.IsCaught;
+        bool mine = photonView.IsMine;
+        if (flapSource == null)
+        {
+            if (!gliding) return;
+            flapLoop ??= Resources.Load<AudioClip>("Sfx/Flappy/FlapLoop");
+            if (flapLoop == null) return;
+            var go = new GameObject("Flappy Wings");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = Vector3.up * 1.6f;
+            flapSource = go.AddComponent<AudioSource>();
+            flapSource.clip = flapLoop;
+            flapSource.loop = true;
+            flapSource.playOnAwake = false;
+            flapSource.spatialBlend = mine ? 0f : 1f;
+            flapSource.rolloffMode = AudioRolloffMode.Linear;
+            flapSource.minDistance = 2f;
+            flapSource.maxDistance = 35f;
+            flapSource.dopplerLevel = 0f;
+            flapSource.volume = 0f;
+        }
+        float target = gliding ? (mine ? 0.4f : 0.8f) : 0f;
+        flapSource.volume = Mathf.MoveTowards(flapSource.volume, target, Time.deltaTime * (gliding ? 8f : 4f));
+        if (gliding && !flapSource.isPlaying)
+        {
+            flapSource.time = Random.Range(0f, flapLoop.length);   // Two gliders never beat in step
+            flapSource.Play();
+        }
+        else if (!gliding && flapSource.isPlaying && flapSource.volume <= 0.001f) flapSource.Stop();
+
+        if (gliding && !mine && Time.time >= nextFlapNotice)
+        {
+            nextFlapNotice = Time.time + 0.4f;
+            SoundVisualizer.Notify(transform.position, 0.6f, player.ActorNumber);
+        }
     }
 
     private static AudioClip[] penguinSteps;

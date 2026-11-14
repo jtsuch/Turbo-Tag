@@ -177,11 +177,25 @@ public class PlayerMovement : MonoBehaviourPun
 
     // The only place gravity is switched: off while dashing, wall-running or hanging, on otherwise.
     // One writer means no system can leave gravity off (or on) after another one ends.
+    // Standing still on walkable ground (Justin, Nov 14: players crept down gentle slopes and slid off flat edges
+    // without moving): no input, not pushed, not on ice, not just jumped, barely moving. Gravity pauses and the
+    // velocity is held at zero, so neither a slope nor the capsule's round bottom resting on an edge can slide them.
+    private bool standingStill;
+    private bool StandingStill() =>
+        touching && !OnIce && !player.IsBeingPushed && !player.IsDashing && !player.IsSwinging && !player.IsHeld
+        && input.MoveInput.sqrMagnitude < 0.01f && groundNormal.y >= MaxWalkableSlope
+        && Time.time - lastJumpTime > 0.25f && Time.time - jumpPressedAt > 0.15f
+        && (State == Player.MovementState.Idle || State == Player.MovementState.Crouch
+            || (State == Player.MovementState.Prone && rb.linearVelocity.magnitude <= SlideThreshold))
+        && rb.linearVelocity.sqrMagnitude < 9f;
+
     private void UpdateGravity()
     {
+        standingStill = StandingStill();
         bool off = player.IsDashing || player.IsAnchored || player.OnZipLine || player.OnLadder || player.IsMagnetized || player.ZeroGravity
                 || State == Player.MovementState.WallRun || State == Player.MovementState.Hang
-                || (State == Player.MovementState.Climb && onLadder); // Resting on a ladder doesn't slide down
+                || (State == Player.MovementState.Climb && onLadder) // Resting on a ladder doesn't slide down
+                || standingStill;
         if (rb.useGravity == off) rb.useGravity = !off;
 
         // Gravity stat (cheats): add or remove the difference from normal gravity
@@ -578,6 +592,8 @@ public class PlayerMovement : MonoBehaviourPun
         if (OnIce) rate *= iceControl;
         vp = Vector3.MoveTowards(vp, target, rate * accelScale * dt);
 
+        // Standing still: nothing into or along the ground either (gravity is paused: UpdateGravity)
+        if (standingStill) vn = 0f;
         rb.linearVelocity  = vp + n * Mathf.Max(vn, 0f);
         rb.angularVelocity = Vector3.zero;
     }
@@ -1048,13 +1064,22 @@ public class PlayerMovement : MonoBehaviourPun
 
         // Moved in physics steps through the Rigidbody, so interpolation keeps it smooth; as long as the
         // climb-up animation takes at its state speed (LedgeAnimationSetup: 1.33 s clip × 1.8)
+        // Along the climb-up animation's own hip path (LedgeClimbPath: up first, then over), so the model's hips
+        // stay on the body instead of the body sliding in a straight line under them; a straight line without it
         const float duration = 0.75f;
+        var path = LedgeClimbPath.Current;
+        Vector3 travel = target - start;
+        Vector3 rise = Vector3.up * travel.y, across = travel - rise;
         for (float t = 0f; t < duration; t += Time.fixedDeltaTime)
         {
+            float k = t / duration;
             rb.linearVelocity = Vector3.zero;
-            rb.MovePosition(Vector3.Lerp(start, target, t / duration));
+            rb.MovePosition(path != null
+                ? start + across * path.forward.Evaluate(k) + rise * path.up.Evaluate(k)
+                : Vector3.Lerp(start, target, k));
             yield return new WaitForFixedUpdate();
         }
+        rb.MovePosition(target);
 
         climbingLedge = false;
         player.SetState(Player.MovementState.Idle);

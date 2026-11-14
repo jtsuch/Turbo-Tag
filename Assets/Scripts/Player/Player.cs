@@ -127,6 +127,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Owner: an "up" to turn the body and view to (a tilted ladder), like Wall Magnet's surface; null = the sky.</summary>
     public Vector3? ExternalUp { get; set; }
 
+    /// <summary>Owner: a way the body must face whatever the camera does (on a ladder: toward it); null = follows the view.</summary>
+    public Vector3? ExternalForward { get; set; }
+
     /// <summary>
     /// Wall Magnet (owner): the "up" of the surface being walked on (a wall's or ceiling's normal), or null for
     /// normal gravity. PlayerMovement walks along that surface; PlayerCam turns the body and view to match.
@@ -802,6 +805,7 @@ public class Player : MonoBehaviourPun, IPunObservable
         Abilities.CancelAll();
         MagnetUp     = null;                 // Arrive upright, not still turned to a wall (Wall Magnet)
         ExternalUp   = null;                 // ...or tilted with a ladder
+        ExternalForward = null;
         ZeroGravity  = false;
         SurfaceFrame = Quaternion.identity;
         Body.linearVelocity  = Vector3.zero;

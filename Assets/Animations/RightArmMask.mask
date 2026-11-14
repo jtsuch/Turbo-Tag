@@ -9,8 +9,6 @@ AvatarMask:
   m_Name: RightArmMask
   m_Mask: 01000000000000000000000000000000000000000000000001000000000000000100000001000000010000000100000001000000
   m_Elements:
-  - m_Path: 
-    m_Weight: 1
   - m_Path: Armature
     m_Weight: 0
   - m_Path: Armature/LeftHip
@@ -52,7 +50,7 @@ AvatarMask:
   - m_Path: Armature/Stomach/Chest/Neck/Head/Head_end
     m_Weight: 0
   - m_Path: Armature/Stomach/Chest/RightShoulder
-    m_Weight: 0
+    m_Weight: 1
   - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1
     m_Weight: 1
   - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2
@@ -63,5 +61,45 @@ AvatarMask:
     m_Weight: 1
   - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end
     m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/Pistol
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/Pistol/RemoteGunTip
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/LeafBlowerTP
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/LeafBlowerTP/Model
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/LeafBlowerTP/Model/Leafblower
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/LeafBlowerTP/Model/Leafblower/Leafblower
+    m_Weight: 1
+  - m_Path: Armature/Stomach/Chest/RightShoulder/RightArm1/RightArm2/RightArm3/RightArm4/RightArm4_end/LeafBlowerTP/Model/Leafblower/RedHandle
+    m_Weight: 1
   - m_Path: Jimmy
+    m_Weight: 0
+  - m_Path: CameraHolder
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/Pistol
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/Pistol/GunTip
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/ThrowPoint
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/ThrowPoint/Rock
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/LeafBlowerFP
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/LeafBlowerFP/Model
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/LeafBlowerFP/Model/Leafblower
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/LeafBlowerFP/Model/Leafblower/Leafblower
+    m_Weight: 0
+  - m_Path: CameraHolder/Camera/LeafBlowerFP/Model/Leafblower/RedHandle
+    m_Weight: 0
+  - m_Path: GrappleRope
+    m_Weight: 0
+  - m_Path: ThrowTrajectory
     m_Weight: 0

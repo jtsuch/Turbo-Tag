@@ -21,7 +21,9 @@ public class LadderClimb : MonoBehaviourPun
     private const float ClimbSpeed = 4.5f;    // m/s along the ladder
     private const float JumpOff = 6f;
     private const float RiderMass = 20f;      // Added to the ladder per climber (its simulating client)
-    private const float StandIn = 0.15f;      // How far the body sits into the ladder's face (collisions between them are off)
+    // How far the body's centre line stands from the ladder's face: the hands' reach in the ladder poses (measured on
+    // the recentred LadderHold/LadderClimb clips, NewMoveAnimationSetup), so the flippers rest on the rungs
+    private const float HandReach = 0.95f;   // Measured: the flipper tips reach 0.96 m forward
 
     // ─── The ladder's shape (its own space), measured once from its colliders ──
     private Vector3 axisLocal, faceLocal, centreLocal;
@@ -46,18 +48,22 @@ public class LadderClimb : MonoBehaviourPun
         measured = true;
         ladderBody = GetComponent<Rigidbody>();
         ladderColliders = GetComponentsInChildren<Collider>();
-        if (ladderColliders.Length == 0) return;
+        // The shape from the meshes' own bounds, carried into the ladder's space corner by corner: exact at any angle.
+        // (World-aligned collider bounds grow when the ladder is tilted or turned, which once read the width as the
+        // thickness, so you climbed its edge, and put you half a metre out from it even upright)
         Vector3 min = Vector3.positiveInfinity, max = Vector3.negativeInfinity;
-        foreach (var c in ladderColliders)
+        foreach (var mf in GetComponentsInChildren<MeshFilter>())
         {
-            var b = c.bounds;
+            if (mf.sharedMesh == null || mf.GetComponent<Renderer>() == null || !mf.GetComponent<Renderer>().enabled) continue;
+            var b = mf.sharedMesh.bounds;
             for (int i = 0; i < 8; i++)
             {
                 Vector3 corner = new(i % 2 == 0 ? b.min.x : b.max.x, (i / 2) % 2 == 0 ? b.min.y : b.max.y, i / 4 == 0 ? b.min.z : b.max.z);
-                Vector3 l = transform.InverseTransformPoint(corner);
+                Vector3 l = transform.InverseTransformPoint(mf.transform.TransformPoint(corner));
                 min = Vector3.Min(min, l); max = Vector3.Max(max, l);
             }
         }
+        if (float.IsInfinity(min.x)) return;
         Vector3 size = max - min;
         centreLocal = (min + max) * 0.5f;
         Vector3 s = transform.lossyScale;
@@ -118,7 +124,7 @@ public class LadderClimb : MonoBehaviourPun
         climber = player;
         side = Vector3.Dot(offLine, Face) >= 0f ? 1f : -1f;
         float radius = player.TryGetComponent(out CapsuleCollider capsule) ? capsule.radius * player.transform.lossyScale.x : 0.7f;
-        stand = halfDepth + radius - StandIn;
+        stand = halfDepth + HandReach;
         along = Mathf.Clamp(Vector3.Dot(player.transform.position - Bottom, Up), 0f, Mathf.Max(0f, length - 0.3f));
 
         // Part of the ladder now: no collisions between the two, held in place by this script
@@ -128,6 +134,7 @@ public class LadderClimb : MonoBehaviourPun
         player.OnLadder = true;
         player.SetFlag(PlayerFlag.OnLadder, true);
         player.ExternalUp = Up;
+        player.ExternalForward = -Face * side;   // The body keeps facing the ladder; the camera still looks around
         if (PlayerCam.Local != null) PlayerCam.Local.FaceAlong(-Face * side);
         Hold();
         Send(true);
@@ -140,6 +147,7 @@ public class LadderClimb : MonoBehaviourPun
         Vector3 feet = Bottom + Up * along + Face * side * stand;
         body.MovePosition(feet);
         climber.ExternalUp = Up;
+        climber.ExternalForward = -Face * side;
     }
 
     private void FixedUpdate()
@@ -173,6 +181,7 @@ public class LadderClimb : MonoBehaviourPun
         player.SetFlag(PlayerFlag.OnLadder, false);
         player.SetFlag(PlayerFlag.LadderMoving, false);
         player.ExternalUp = null;
+        player.ExternalForward = null;
         SetIgnored(climberColliders, false);
         if (body != null)
         {
@@ -242,7 +251,7 @@ public class LadderClimb : MonoBehaviourPun
         }
         float height = player != null ? player.Height : 2.9f;
         float radius = player != null && player.TryGetComponent(out CapsuleCollider own) ? own.radius * player.transform.lossyScale.x : 0.7f;
-        float depth = halfDepth + radius - StandIn;
+        float depth = halfDepth + HandReach;
         // In the ladder's own space: along its axis from the bottom, out from the face on the rider's side
         Vector3 upWorld = AxisWorld * up;
         Vector3 bottom = transform.TransformPoint(centreLocal) - upWorld * (length * 0.5f);

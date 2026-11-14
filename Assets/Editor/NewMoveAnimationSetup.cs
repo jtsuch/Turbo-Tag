@@ -8,7 +8,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb,LadderClimb,LadderHold}.fbx)
+/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb,LadderClimb,LadderHold,Reload,WeaponSwap,KnifeSwing}.fbx)
 /// and hooks them into the Animator:
 ///   1. names each FBX's take after the file, sets the loops, and writes fixed copies (same path and unit fixes as the
 ///      ledge and emote clips, <see cref="LedgeAnimationSetup.Remapped"/>) to Assets/Animations/Moves;
@@ -17,17 +17,20 @@ using UnityEngine;
 ///   3. (re)builds three layers PlayerAnimatorController drives by name:
 ///        "Crouch Layer" (full body, just above the Base Layer): Crouch ↔ CrouchWalk on MovementSpeed;
 ///        "Action Layer" (full body, under the gun arm): Charge (Bulldozer), PlantBomb, DefuseBomb, LadderClimb, LadderHold;
-///        "Throw Layer" (left arm only, on top): ThrowLeft, played once per throw.
+///        "Throw Layer" (left arm only, on top): ThrowLeft, Reload;
+///        "Swap Layer" (right arm only, on top): WeaponSwap, KnifeSwing.
 /// Re-runnable. Report: Library/TurboTag/scratch/move_setup.txt.
 /// Menu: Turbo Tag/Animation/Set Up New Move Animations (editor job: SetupNewMoveAnimations).
 /// </summary>
 public static class NewMoveAnimationSetup
 {
-    public const string CrouchLayer = "Crouch Layer", ActionLayer = "Action Layer", ThrowLayer = "Throw Layer";
+    public const string CrouchLayer = "Crouch Layer", ActionLayer = "Action Layer", ThrowLayer = "Throw Layer", SwapLayer = "Swap Layer";
+    public const string ReloadSpeed = "ReloadSpeed", SwapSpeed = "SwapSpeed";
     private const string Controller = "Assets/Animations/JimmyAnimationController.controller";
     private const string PlayerPrefab = "Assets/Resources/Player/ThePlayer.prefab";
     private const string IdleClip = "Assets/Animations/Idle.anim";
     private const string LeftArmMaskPath = "Assets/Animations/LeftArmMask.mask";
+    private const string RightArmMaskPath = "Assets/Animations/RightArmMask.mask";
     private const string Folder = "Assets/Animations/";
     private const string OutFolder = "Assets/Animations/Moves";
     private const string Report = "Library/TurboTag/scratch/move_setup.txt";
@@ -38,6 +41,7 @@ public static class NewMoveAnimationSetup
         ("Crouch", true), ("CrouchWalk", true), ("Charge", true),
         ("ThrowLeft", false), ("PlantBomb", true), ("DefuseBomb", true),
         ("LadderClimb", true), ("LadderHold", true),
+        ("Reload", false), ("WeaponSwap", false), ("KnifeSwing", false),
     };
 
     [MenuItem("Turbo Tag/Animation/Set Up New Move Animations")]
@@ -76,6 +80,16 @@ public static class NewMoveAnimationSetup
 
     // ─── Feet on the floor ────────────────────────────────────────────────────
 
+    // Poses leaned forward a little (degrees, round the Armature root; Justin, Nov 14: the crouch looked upright)
+    private static readonly Dictionary<string, float> Lean = new() { ["Crouch"] = 8f, ["CrouchWalk"] = 8f };
+
+    /// <summary>The throw plays this many times faster than it was made (Justin, Nov 14: "greatly sped up").</summary>
+    public const float ThrowSpeed = 3f;
+
+    // Feet on the floor, measured on the skinned mesh itself (the lowest vertex against Idle's; bone positions let the
+    // crouch hover 6–12 cm), after an optional forward lean. Ladder poses hang on the rungs, so they're not lowered:
+    // they're moved forward instead so the body sits on its capsule (they were made ~0.6 m behind it, so the climber
+    // looked a body's width off the ladder), matching Idle's Stomach across the ground.
     private static void Ground(Dictionary<string, AnimationClip> clips, StringBuilder report)
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefab);
@@ -84,52 +98,129 @@ public static class NewMoveAnimationSetup
         var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
         try
         {
-            go.transform.position = new Vector3(0f, 500f, 0f);
+            go.transform.SetPositionAndRotation(new Vector3(0f, 500f, 0f), Quaternion.identity);
             var animatorObject = go.GetComponentInChildren<Animator>().gameObject;
-            var armature = go.transform.Find("Armature");
-            float Lowest()
+            var skins = go.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            var mesh = new Mesh();
+            float LowestMesh()
             {
                 float low = float.MaxValue;
-                foreach (var t in armature.GetComponentsInChildren<Transform>(true)) low = Mathf.Min(low, t.position.y);
+                foreach (var s in skins)
+                {
+                    if (s.sharedMesh == null) continue;
+                    s.BakeMesh(mesh, true);
+                    foreach (var v in mesh.vertices) low = Mathf.Min(low, s.transform.TransformPoint(v).y);
+                }
                 return low;
             }
+            Transform Find(string n) => go.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == n);
             idle.SampleAnimation(animatorObject, 0f);
-            float reference = Lowest();
+            float reference = LowestMesh();
+            var stomach = Find("Stomach");
+            Vector3 idleStomach = stomach != null ? stomach.position : Vector3.zero;
 
             foreach (var (name, _) in Clips)
             {
                 if (!clips.TryGetValue(name, out var clip)) continue;
-                // Ladder poses hang on the rungs, not on the floor (and only move the Stomach): left as Justin made them
-                if (name.StartsWith("Ladder")) { report.AppendLine($"{name}: {clip.length:0.00} s, not grounded (a ladder pose)"); continue; }
-                clip.SampleAnimation(animatorObject, 0f);
-                float lift = Lowest() - reference;
-                if (Mathf.Abs(lift) < 0.03f) { report.AppendLine($"{name}: {clip.length:0.00} s, on the floor already"); continue; }
-
-                // The top-most bone with position curves carries the body: move it down by the lift, in its parent's space
                 var bindings = AnimationUtility.GetCurveBindings(clip)
                     .Where(b => b.type == typeof(Transform) && b.propertyName.StartsWith("m_LocalPosition")).ToList();
-                if (bindings.Count == 0) { report.AppendLine($"! {name}: no position curves to lower"); continue; }
+                if (bindings.Count == 0) { report.AppendLine($"! {name}: no position curves to move"); continue; }
+                // The top-most bone with position curves carries the body
                 string path = bindings.Select(b => b.path).OrderBy(p => p.Count(c => c == '/')).First();
                 var bone = animatorObject.transform.Find(path);
                 if (bone == null || bone.parent == null) { report.AppendLine($"! {name}: bone {path} not found"); continue; }
-                Vector3 delta = bone.parent.InverseTransformVector(Vector3.down * lift);
-                string[] axes = { "x", "y", "z" };
-                for (int a = 0; a < 3; a++)
-                {
-                    var binding = EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalPosition." + axes[a]);
-                    var curve = AnimationUtility.GetEditorCurve(clip, binding)
-                                ?? AnimationCurve.Constant(0f, clip.length, bone.localPosition[a]);
-                    var keys = curve.keys;
-                    for (int k = 0; k < keys.Length; k++) keys[k].value += delta[a];
-                    curve.keys = keys;
-                    AnimationUtility.SetEditorCurve(clip, binding, curve);
-                }
-                EditorUtility.SetDirty(clip);
+
+                if (Lean.TryGetValue(name, out float lean)) report.AppendLine($"{name}: {LeanForward(clip, bone, path, lean, animatorObject)}");
+
                 clip.SampleAnimation(animatorObject, 0f);
-                report.AppendLine($"{name}: {clip.length:0.00} s, lowered {lift:0.00} m on {path} (now {Lowest() - reference:+0.00;-0.00} from idle)");
+                Vector3 move;
+                if (name.StartsWith("Ladder"))
+                {
+                    if (stomach == null) { report.AppendLine($"! {name}: no Stomach bone"); continue; }
+                    Vector3 off = idleStomach - stomach.position;
+                    move = new Vector3(off.x, 0f, off.z);   // Across the ground only: the height is the pose's own
+                }
+                else
+                {
+                    float lift = LowestMesh() - reference;
+                    if (Mathf.Abs(lift) < 0.01f) { report.AppendLine($"{name}: {clip.length:0.00} s, on the floor already"); continue; }
+                    move = Vector3.down * lift;
+                }
+                Shift(clip, bone, path, move);
+                // Ladder poses: the hips (LeftHip / RigthHip) are the Stomach's siblings, not its children, so they move
+                // with it too (Justin, Nov 14: the legs stuck out further from the ladder than the arms)
+                if (name.StartsWith("Ladder"))
+                {
+                    string parentPath = path.Contains("/") ? path.Substring(0, path.LastIndexOf('/')) : "";
+                    foreach (var sibling in bindings.Select(b => b.path).Distinct())
+                    {
+                        if (sibling == path || !sibling.Contains("/") || sibling.Substring(0, sibling.LastIndexOf('/')) != parentPath) continue;
+                        var sib = animatorObject.transform.Find(sibling);
+                        if (sib != null) { Shift(clip, sib, sibling, move); report.AppendLine($"  {name}: also moved {sibling}"); }
+                    }
+                }
+                clip.SampleAnimation(animatorObject, 0f);
+                string after = name.StartsWith("Ladder") && stomach != null
+                    ? $"stomach now {(stomach.position - idleStomach).z:+0.00;-0.00} m from idle's (forward)"
+                    : $"mesh now {LowestMesh() - reference:+0.000;-0.000} m from idle's lowest point";
+                report.AppendLine($"{name}: {clip.length:0.00} s, moved ({move.x:0.00}, {move.y:0.00}, {move.z:0.00}) on {path}; {after}");
             }
+            Object.DestroyImmediate(mesh);
         }
         finally { Object.DestroyImmediate(go); }
+    }
+
+    // Adds a world-space offset to a bone's position curves (in its parent's space; curves made where missing)
+    private static void Shift(AnimationClip clip, Transform bone, string path, Vector3 world)
+    {
+        Vector3 delta = bone.parent.InverseTransformVector(world);
+        string[] axes = { "x", "y", "z" };
+        for (int a = 0; a < 3; a++)
+        {
+            var binding = EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalPosition." + axes[a]);
+            var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? AnimationCurve.Constant(0f, clip.length, bone.localPosition[a]);
+            var keys = curve.keys;
+            for (int k = 0; k < keys.Length; k++) keys[k].value += delta[a];
+            curve.keys = keys;
+            AnimationUtility.SetEditorCurve(clip, binding, curve);
+        }
+        EditorUtility.SetDirty(clip);
+    }
+
+    // Tips the whole pose forward by turning the carrying bone's rotation curves (quaternion keys, re-keyed at every
+    // key time of any of the four; made where missing) about the character's right axis
+    private static string LeanForward(AnimationClip clip, Transform bone, string path, float degrees, GameObject animatorObject)
+    {
+        string[] comps = { "x", "y", "z", "w" };
+        var curves = new AnimationCurve[4];
+        var times = new SortedSet<float> { 0f, clip.length };
+        for (int c = 0; c < 4; c++)
+        {
+            curves[c] = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalRotation." + comps[c]));
+            if (curves[c] != null) foreach (var k in curves[c].keys) times.Add(k.time);
+        }
+        clip.SampleAnimation(animatorObject, 0f);
+        Quaternion parent = bone.parent.rotation;
+        Quaternion turn = Quaternion.Inverse(parent) * Quaternion.AngleAxis(degrees, Vector3.right) * parent;   // World tilt → parent space
+        Quaternion rest = bone.localRotation;
+        var outCurves = new AnimationCurve[4];
+        for (int c = 0; c < 4; c++) outCurves[c] = new AnimationCurve();
+        foreach (float t in times)
+        {
+            Quaternion q = curves.All(cv => cv != null)
+                ? new Quaternion(curves[0].Evaluate(t), curves[1].Evaluate(t), curves[2].Evaluate(t), curves[3].Evaluate(t)).normalized
+                : rest;
+            Quaternion r = turn * q;
+            for (int c = 0; c < 4; c++) outCurves[c].AddKey(new Keyframe(t, r[c]));
+        }
+        for (int c = 0; c < 4; c++)
+        {
+            for (int k = 0; k < outCurves[c].length; k++) AnimationUtility.SetKeyLeftTangentMode(outCurves[c], k, AnimationUtility.TangentMode.Linear);
+            for (int k = 0; k < outCurves[c].length; k++) AnimationUtility.SetKeyRightTangentMode(outCurves[c], k, AnimationUtility.TangentMode.Linear);
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalRotation." + comps[c]), outCurves[c]);
+        }
+        EditorUtility.SetDirty(clip);
+        return $"leaned {degrees:0}° forward on {path} ({times.Count} keys)";
     }
 
     // ─── Layers ───────────────────────────────────────────────────────────────
@@ -138,7 +229,7 @@ public static class NewMoveAnimationSetup
     {
         var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(Controller);
         if (controller == null) { report.AppendLine("! no controller at " + Controller); return; }
-        foreach (var name in new[] { CrouchLayer, ActionLayer, ThrowLayer })
+        foreach (var name in new[] { CrouchLayer, ActionLayer, ThrowLayer, SwapLayer })
         {
             int old = controller.layers.ToList().FindIndex(l => l.name == name);
             if (old >= 0) controller.RemoveLayer(old);
@@ -164,7 +255,35 @@ public static class NewMoveAnimationSetup
 
         var throwMachine = Machine(controller, ThrowLayer);
         throwMachine.defaultState = throwMachine.AddState("Empty");
-        if (clips.TryGetValue("ThrowLeft", out var throwClip)) throwMachine.AddState("ThrowLeft").motion = throwClip;
+        if (clips.TryGetValue("ThrowLeft", out var throwClip))
+        {
+            var throwState = throwMachine.AddState("ThrowLeft");
+            throwState.motion = throwClip;
+            throwState.speed = ThrowSpeed;   // PlayerAnimatorController.ThrowLength follows
+        }
+        // Reload and weapon swap play at a speed set per use (ReloadSpeed / SwapSpeed: the clip's length ÷ the gun's
+        // reload or draw time), so every gun's reload and draw match their animations
+        foreach (var p in new[] { ReloadSpeed, SwapSpeed })
+            if (!controller.parameters.Any(x => x.name == p))
+                controller.AddParameter(new AnimatorControllerParameter { name = p, type = AnimatorControllerParameterType.Float, defaultFloat = 1f });
+        if (clips.TryGetValue("Reload", out var reloadClip))
+        {
+            var reloadState = throwMachine.AddState("Reload");   // left arm only, same layer as the throw
+            reloadState.motion = reloadClip;
+            reloadState.speedParameterActive = true;
+            reloadState.speedParameter = ReloadSpeed;
+        }
+
+        var swapMachine = Machine(controller, SwapLayer);
+        swapMachine.defaultState = swapMachine.AddState("Empty");
+        if (clips.TryGetValue("WeaponSwap", out var swapClip))
+        {
+            var swapState = swapMachine.AddState("WeaponSwap");
+            swapState.motion = swapClip;
+            swapState.speedParameterActive = true;
+            swapState.speedParameter = SwapSpeed;
+        }
+        if (clips.TryGetValue("KnifeSwing", out var knifeClip)) swapMachine.AddState("KnifeSwing").motion = knifeClip;   // right arm only, same layer as the weapon swap
 
         // Order: Crouch and Action just above the Base Layer (so the gun arm, wall run, climb, head, emote and ledge
         // layers still win over them); Throw on top of everything, on the left arm only
@@ -175,6 +294,7 @@ public static class NewMoveAnimationSetup
         layers.Insert(1, actionLayer);
         layers.Insert(1, crouchLayer);
         layers.Add(throwLayer);
+        layers.Add(new AnimatorControllerLayer { name = SwapLayer, stateMachine = swapMachine, blendingMode = AnimatorLayerBlendingMode.Override, defaultWeight = 0f, avatarMask = ArmMask(RightArmMaskPath, "Right", report) });
         controller.layers = layers.ToArray();
         EditorUtility.SetDirty(controller);
         report.AppendLine("Layers: " + string.Join(", ", controller.layers.Select(l => l.name)));
@@ -188,13 +308,15 @@ public static class NewMoveAnimationSetup
     }
 
     // Every transform of the player's model, on only for the left arm's chain
-    private static AvatarMask LeftArmMask(StringBuilder report)
+    private static AvatarMask LeftArmMask(StringBuilder report) => ArmMask(LeftArmMaskPath, "Left", report);
+
+    private static AvatarMask ArmMask(string maskPath, string side, StringBuilder report)
     {
-        var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(LeftArmMaskPath);
+        var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(maskPath);
         if (mask == null)
         {
             mask = new AvatarMask();
-            AssetDatabase.CreateAsset(mask, LeftArmMaskPath);
+            AssetDatabase.CreateAsset(mask, maskPath);
         }
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefab);
         var root = prefab.GetComponentInChildren<Animator>().transform;
@@ -203,13 +325,13 @@ public static class NewMoveAnimationSetup
         int on = 0;
         for (int i = 0; i < paths.Count; i++)
         {
-            bool left = paths[i].Split('/').Any(s => s.StartsWith("LeftShoulder") || s.StartsWith("LeftArm") || s.StartsWith("LeftHand"));
+            bool left = paths[i].Split('/').Any(s => s.StartsWith(side + "Shoulder") || s.StartsWith(side + "Arm") || s.StartsWith(side + "Hand"));
             mask.SetTransformPath(i, paths[i]);
             mask.SetTransformActive(i, left);
             if (left) on++;
         }
         EditorUtility.SetDirty(mask);
-        report.AppendLine($"Left arm mask: {on} of {paths.Count} transforms");
+        report.AppendLine($"{side} arm mask: {on} of {paths.Count} transforms");
         return mask;
     }
 }

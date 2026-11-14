@@ -91,6 +91,12 @@ public class PlayerGun : MonoBehaviourPun
         nextShotAt    = Time.time + drawTime;
         drawStart     = Time.time;
         drawEnd       = Time.time + drawTime;
+        // The arm animations (others see them through the Gun property changing: UpdateSwapAnimation)
+        if (player != null && player.Animation != null)
+        {
+            player.Animation.CancelReload();
+            if (drawTime > 0f && Current != null) player.Animation.PlayWeaponSwap(drawTime);
+        }
         bloom         = 0f;
         Scoped        = false;
         if (PhotonNetwork.InRoom) NetProps.SetLocal(PlayerKeys.Gun, Current != null ? Current.Id : "");
@@ -106,6 +112,7 @@ public class PlayerGun : MonoBehaviourPun
         nextShotAt = Mathf.Max(nextShotAt, Time.time + seconds);
         drawStart  = Time.time;
         drawEnd    = Time.time + seconds;
+        if (player.Animation != null) player.Animation.PlayWeaponSwap(seconds);
     }
 
     /// <summary>0 while the gun is still coming out, 1 once it's up.</summary>
@@ -126,7 +133,10 @@ public class PlayerGun : MonoBehaviourPun
     private void Update()
     {
         if (!photonView.IsMine)
+        {
             Current = GunsActive ? GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, "")) : null;
+            UpdateSwapAnimation();
+        }
 
         bool shown = GunsActive && Current != null && !player.IsCaught && !player.IsDownAfterTag && !Stowed;
         UpdateGunSounds();
@@ -215,6 +225,7 @@ public class PlayerGun : MonoBehaviourPun
         reloadEndsAt  = Time.time + Current.ReloadTime;
         reloadPending = true;
         reloadCue = 0;
+        if (player.Animation != null) player.Animation.PlayReload(Current.ReloadTime);
         if (GunAudio.For(Current.Id) is not { HasReload: true }) Sfx.Here(SfxKind.Reload, 0.6f);
         photonView.RPC(nameof(RPC_Reload), RpcTarget.Others);
     }
@@ -225,6 +236,7 @@ public class PlayerGun : MonoBehaviourPun
         var gun = GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, ""));
         if (gun != null) reloadEndsAt = Time.time + gun.ReloadTime;
         reloadCue = 0;
+        if (gun != null && player.Animation != null) player.Animation.PlayReload(gun.ReloadTime);
         if (gun == null || GunAudio.For(gun.Id) is not { HasReload: true }) Sfx.At(SfxKind.Reload, transform.position + Vector3.up, 0.6f, 20f);
     }
 
@@ -344,6 +356,7 @@ public class PlayerGun : MonoBehaviourPun
 
         var model = ViewModel(gun.Id);
         if (model != null) model.Slash();
+        if (player.Animation != null) player.Animation.PlayKnifeSwing();
         Sfx.Here(SfxKind.Whoosh, 0.5f, 1.4f);
         photonView.RPC(nameof(RPC_SwingFx), RpcTarget.Others);
         if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt();
@@ -366,7 +379,23 @@ public class PlayerGun : MonoBehaviourPun
         if (Killcam.IsPlaying) return;
         var model = WorldModel(Current != null ? Current.Id : null);
         if (model != null) model.Slash();
+        if (player.Animation != null) player.Animation.PlayKnifeSwing();
         Sfx.At(SfxKind.Whoosh, transform.position + Vector3.up, 0.7f, 25f, 1.4f);
+    }
+
+    // Others' copies: the held gun changed (a weapon switch) → the swap animation, over that gun's draw time
+    private string shownGunId;
+    private void UpdateSwapAnimation()
+    {
+        string id = Current != null ? Current.Id : null;
+        if (id == shownGunId) return;
+        bool swapped = shownGunId != null && id != null;
+        shownGunId = id;
+        if (swapped && player.Animation != null)
+        {
+            player.Animation.CancelReload();
+            player.Animation.PlayWeaponSwap(Loadout.DrawTimeFor(Current));
+        }
     }
 
     // ─── Recorded gun sounds (every copy) ─────────────────────────────────────

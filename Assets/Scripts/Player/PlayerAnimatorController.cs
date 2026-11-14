@@ -65,10 +65,16 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     private int LayerArm = -1, LayerWallRun = -1, LayerClimb = -1, LayerHead = -1;
 
     // New moves (Editor/NewMoveAnimationSetup): crouching, the Bulldozer charge, planting/defusing, the left-hand throw
-    private int crouchLayer = -1, actionLayer = -1, throwLayer = -1;
+    private int crouchLayer = -1, actionLayer = -1, throwLayer = -1, swapLayer = -1;
     private float crouchWeight, actionWeight, throwWeight, throwUntil = -10f;
+    private float swapWeight, swapUntil = -10f;
+    private static readonly int H_ReloadSpeed = Animator.StringToHash("ReloadSpeed");
+    private static readonly int H_SwapSpeed   = Animator.StringToHash("SwapSpeed");
+    private const float ReloadClipLength = 1.75f;   // Moves/Reload.anim
+    private const float SwapClipLength   = 0.79f;   // Moves/WeaponSwap.anim
+    private const float KnifeClipLength  = 0.58f;   // Moves/KnifeSwing.anim (plays at its own speed)
     private string shownAction = "";
-    private const float ThrowLength = 1f;   // ThrowLeft.anim
+    private const float ThrowLength = 1f / 3f;   // ThrowLeft.anim (1 s) played 3× faster (NewMoveAnimationSetup.ThrowSpeed)
 
     /// <summary>The Animator has a crouch animation (the body isn't squashed to crouch, <see cref="Player"/>).</summary>
     public bool AnimatesCrouch => crouchLayer >= 0;
@@ -196,6 +202,7 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         crouchLayer  = animator.GetLayerIndex("Crouch Layer");
         actionLayer  = animator.GetLayerIndex("Action Layer");
         throwLayer   = animator.GetLayerIndex("Throw Layer");
+        swapLayer    = animator.GetLayerIndex("Swap Layer");
     }
 
     private void Update()
@@ -323,6 +330,50 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
             throwWeight = Mathf.MoveTowards(throwWeight, throwing ? 1f : 0f, Time.deltaTime * (throwing ? 14f : 5f));
             animator.SetLayerWeight(throwLayer, throwWeight);
         }
+        if (swapLayer >= 0)
+        {
+            bool swapping = Time.time < swapUntil - 0.08f;
+            swapWeight = Mathf.MoveTowards(swapWeight, swapping ? 1f : 0f, Time.deltaTime * (swapping ? 16f : 6f));
+            animator.SetLayerWeight(swapLayer, swapWeight);
+        }
+    }
+
+    /// <summary>True while gliding with Flappy (synced: every copy knows).</summary>
+    public bool IsGliding => gliding;
+
+    /// <summary>Any copy: plays the reload (left arm, Justin's Reload clip) over <paramref name="seconds"/>, the gun's
+    /// reload time. PlayerGun calls it on the shooter's copy and from RPC_Reload on everyone else's.</summary>
+    public void PlayReload(float seconds)
+    {
+        if (animator == null || throwLayer < 0 || seconds <= 0.05f) return;
+        animator.SetFloat(H_ReloadSpeed, ReloadClipLength / seconds);
+        animator.CrossFadeInFixedTime("Reload", 0.08f, throwLayer, 0f);
+        throwUntil = Time.time + seconds;
+    }
+
+    /// <summary>Any copy: a reload cut short (a weapon switch): the arm goes back.</summary>
+    public void CancelReload()
+    {
+        if (throwUntil > Time.time) throwUntil = Time.time;
+    }
+
+    /// <summary>Any copy: plays the weapon swap (right arm, Justin's WeaponSwap clip) over <paramref name="seconds"/>,
+    /// the draw time of the gun coming out.</summary>
+    public void PlayWeaponSwap(float seconds)
+    {
+        if (animator == null || swapLayer < 0 || seconds <= 0.05f) return;
+        animator.SetFloat(H_SwapSpeed, SwapClipLength / seconds);
+        animator.CrossFadeInFixedTime("WeaponSwap", 0.05f, swapLayer, 0f);
+        swapUntil = Time.time + seconds;
+    }
+
+    /// <summary>Any copy: a knife swing (right arm, Justin's KnifeSwing clip, on the Swap Layer). PlayerGun calls it on
+    /// the swinger's copy (Swing) and everyone else's (RPC_SwingFx).</summary>
+    public void PlayKnifeSwing()
+    {
+        if (animator == null || swapLayer < 0) return;
+        animator.CrossFadeInFixedTime("KnifeSwing", 0.04f, swapLayer, 0f);
+        swapUntil = Time.time + KnifeClipLength;
     }
 
     /// <summary>Owner: a throw just left the hand; every screen plays the left-arm throw.</summary>
@@ -543,7 +594,7 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
     // left arm's weight, and hold the pistol in that hand pointing where the player looks
     private void AimLeftArm()
     {
-        if (leftWeight <= 0.001f || leftUpperArm == null || leftHandEnd == null) return;
+        if (leftWeight <= 0.001f || leftUpperArm == null || leftHandEnd == null) { PlaceLeftHandItem(AimRotation); return; }
         Quaternion aim = AimRotation;
         Vector3 dir = aim * Vector3.forward;
         Vector3 want = (dir + transform.right * -0.15f).normalized; // A little across the body, like holding it out
@@ -560,6 +611,27 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
 
         if (leftGunThirdPerson != null && leftGunThirdPerson.activeSelf)
             leftGunThirdPerson.transform.SetPositionAndRotation(leftHandEnd.position, aim * leftGunViewRotation);
+        PlaceLeftHandItem(aim);
+    }
+
+    // ─── Something held in the left hand (a throwable being aimed, on other players' screens) ─
+
+    private Transform leftHandItem;
+    private Quaternion leftHandItemRotation = Quaternion.identity;
+
+    /// <summary>Holds <paramref name="item"/> in the left hand (just in front of the flipper's tip, turned
+    /// <paramref name="rotation"/> from the aim) until it's destroyed. The arm is raised by the ability (RaisesArm).</summary>
+    public void SetLeftHandItem(Transform item, Quaternion rotation)
+    {
+        leftHandItem = item;
+        leftHandItemRotation = rotation;
+        PlaceLeftHandItem(AimRotation);
+    }
+
+    private void PlaceLeftHandItem(Quaternion aim)
+    {
+        if (leftHandItem == null || leftHandEnd == null) return;
+        leftHandItem.SetPositionAndRotation(leftHandEnd.position + aim * Vector3.forward * 0.12f, aim * leftHandItemRotation);
     }
 
     private void SetFloat(int hash, float value)

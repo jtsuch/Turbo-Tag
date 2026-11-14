@@ -74,11 +74,17 @@ public static class LedgeAnimationSetup
             bool root = b.path == rootPath;
             if (root && b.propertyName.StartsWith("m_LocalScale")) curve = Scaled(curve, factor);
             else if (!root && b.propertyName.StartsWith("m_LocalPosition")) curve = Scaled(curve, 1f / factor);
-            // Climb-up: physics lifts the body in a straight line over the clip's length, so take the clip's own
-            // straight-line travel out of the hips and keep only its arc (up first, then over). Removing the hips'
-            // motion completely left them behind while the legs swung forward.
-            if (straightenStomach && b.path == "Stomach" && b.propertyName.StartsWith("m_LocalPosition"))
-                curve = Ramped(curve, -(curve.Evaluate(source.length) - curve.Evaluate(0f)), 0f, source.length);
+            // Climb-up: the body now moves along the hips' own measured path (LedgeClimbPath, written by Run), so the
+            // hips' travel comes out of the clip completely: they stay where they start, on the body, and the body
+            // carries them up and over exactly as animated (Nov 14, Justin: the hips jumped ahead of the animation
+            // when the body slid in a straight line and only the straight part of their travel was taken out)
+            // Every bone straight under the Armature (the Stomach and the two hips: the legs aren't the Stomach's
+            // children) loses the same travel, the Stomach's, so the legs don't run ahead of the body either
+            if (straightenStomach && !root && !b.path.Contains("/") && b.propertyName.StartsWith("m_LocalPosition"))
+            {
+                var hips = AnimationUtility.GetEditorCurve(source, EditorCurveBinding.FloatCurve("Stomach", typeof(Transform), b.propertyName));
+                if (hips != null) curve = Scaled(WithoutTravel(AnimationUtility.GetEditorCurve(source, b), hips, source.length), 1f / factor);
+            }
             var to = b;
             to.path = armatureRooted ? b.path : root ? "Armature" : "Armature/" + b.path;
             AnimationUtility.SetEditorCurve(clip, to, curve);
@@ -92,6 +98,22 @@ public static class LedgeAnimationSetup
         if (existing != null) { EditorUtility.CopySerialized(clip, existing); EditorUtility.SetDirty(existing); return existing; }
         AssetDatabase.CreateAsset(clip, path);
         return clip;
+    }
+
+    // `curve` minus the hips' travel since the start (`hips(t) − hips(0)`), resampled at 60 fps
+    private static AnimationCurve WithoutTravel(AnimationCurve curve, AnimationCurve hips, float length)
+    {
+        int n = Mathf.Max(2, Mathf.CeilToInt(length * 60f) + 1);
+        var keys = new Keyframe[n];
+        float h0 = hips.Evaluate(0f);
+        for (int i = 0; i < n; i++)
+        {
+            float t = length * i / (n - 1);
+            keys[i] = new Keyframe(t, curve.Evaluate(t) - (hips.Evaluate(t) - h0));
+        }
+        var result = new AnimationCurve(keys);
+        for (int k = 0; k < result.length; k++) result.SmoothTangents(k, 0f);
+        return result;
     }
 
     // Adds a straight ramp to a curve: `atStart` at t = 0, rising by `change` by t = length
@@ -173,6 +195,49 @@ public static class LedgeAnimationSetup
             report.AppendLine($"Hang pose: lean {best.lean:0} deg, model {best.forward:0.00} m toward the wall, {best.down:0.00} m down " +
                               $"(belly front {BellyFront(smr) + best.forward:0.00} m, flipper tips {tips.Average(t => t.position.z) + best.forward:0.00} m; wall at {WallFaceAhead})");
             return best;
+        }
+        finally { EditorSceneManager.ClosePreviewScene(scene); }
+    }
+
+    private const string ClimbPathAsset = "Assets/Resources/Player/LedgeClimbPath.asset";
+
+    // Samples the climb-up on a copy of the player and records where the hips (Stomach) are, as shares of their total
+    // forward and upward travel over the climb (a straight line when a direction barely moves)
+    private static string WriteClimbPath(AnimationClip raw)
+    {
+        var prefab = Resources.Load<GameObject>("Player/ThePlayer");
+        if (prefab == null || raw == null) return "! climb path: no player or clip";
+        var scene = EditorSceneManager.NewPreviewScene();
+        try
+        {
+            var copy = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            copy.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            var hips = copy.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Stomach");
+            if (hips == null) return "! climb path: no Stomach bone";
+            const int n = 48;
+            var at = new Vector3[n + 1];
+            for (int i = 0; i <= n; i++)
+            {
+                raw.SampleAnimation(copy, raw.length * i / n);
+                at[i] = hips.position;
+            }
+            float dz = at[n].z - at[0].z, dy = at[n].y - at[0].y;
+            var forward = new AnimationCurve();
+            var up = new AnimationCurve();
+            for (int i = 0; i <= n; i++)
+            {
+                float t = i / (float)n;
+                forward.AddKey(t, Mathf.Abs(dz) > 0.05f ? (at[i].z - at[0].z) / dz : t);
+                up.AddKey(t, Mathf.Abs(dy) > 0.05f ? (at[i].y - at[0].y) / dy : t);
+            }
+            for (int k = 0; k < forward.length; k++) { forward.SmoothTangents(k, 0f); up.SmoothTangents(k, 0f); }
+            var asset = AssetDatabase.LoadAssetAtPath<LedgeClimbPath>(ClimbPathAsset);
+            if (asset == null) { asset = ScriptableObject.CreateInstance<LedgeClimbPath>(); AssetDatabase.CreateAsset(asset, ClimbPathAsset); }
+            asset.forward = forward;
+            asset.up = up;
+            EditorUtility.SetDirty(asset);
+            string Sample(AnimationCurve c) => string.Join(" ", new[] { 0.25f, 0.5f, 0.75f }.Select(t => c.Evaluate(t).ToString("0.00")));
+            return $"Climb path: hips travel {dz:0.00} m forward, {dy:0.00} m up; forward share at 25/50/75%: {Sample(forward)}; up share: {Sample(up)}";
         }
         finally { EditorSceneManager.ClosePreviewScene(scene); }
     }
@@ -291,7 +356,15 @@ public static class LedgeAnimationSetup
         {
             var source = AssetDatabase.LoadAllAssetsAtPath(Folder + name + ".fbx").OfType<AnimationClip>()
                                       .FirstOrDefault(c => !c.name.StartsWith("__preview__"));
-            if (source != null) clips[name] = Remapped(source, name, loop, straightenStomach: name == "LedgeClimbUp");
+            if (source == null) continue;
+            if (name == "LedgeClimbUp")
+            {
+                // The hips' real path first (an untouched copy, measured then deleted), then the stripped clip
+                var raw = Remapped(source, name + "_Path", loop, straightenStomach: false);
+                report.AppendLine(WriteClimbPath(raw));
+                AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(raw));
+            }
+            clips[name] = Remapped(source, name, loop, straightenStomach: name == "LedgeClimbUp");
         }
         clips.TryGetValue("LedgeIdle", out var idleClip);
         var (forward, down, lean, shift) = MeasureHang(idleClip, report);

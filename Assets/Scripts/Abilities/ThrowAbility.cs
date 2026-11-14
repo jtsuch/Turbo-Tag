@@ -41,6 +41,9 @@ public abstract class ThrowAbility : Ability
     private ThrowState state = ThrowState.Idle;
     private float      chargeStartTime;
     private GameObject heldVisual;
+
+    /// <summary>Others' copies raise the left arm while the throwable is out in that hand.</summary>
+    public override bool RaisesArm => enabled && heldVisual != null && !IsLocal;
     private Vector3[]  trajectoryBuffer;
 
     public override AbilitySlot Slot             => AbilitySlot.Throw;
@@ -209,15 +212,20 @@ public abstract class ThrowAbility : Ability
         var prefab = Resources.Load<GameObject>(ResourcePath);
         if (prefab == null) return;
 
-        Transform parent = IsLocal ? throwOrigin : remoteHoldPoint != null ? remoteHoldPoint : transform;
-        heldVisual = VisualProxy.Create(prefab, parent);
-
-        Vector3 offset = IsLocal || remoteHoldPoint != null
-            ? HeldOffset
-            : new Vector3(0.4f, Owner.Height * 0.75f, 0.6f);
-        // Held the way it will leave the hand (a frisbee lies flat)
         var projectile = prefab.GetComponent<NetworkedProjectile>();
-        heldVisual.transform.SetLocalPositionAndRotation(offset, projectile != null ? projectile.LaunchRotation : Quaternion.identity);
+        Quaternion held = projectile != null ? projectile.LaunchRotation : Quaternion.identity;   // A frisbee lies flat
+        if (IsLocal)
+        {
+            heldVisual = VisualProxy.Create(prefab, throwOrigin);
+            heldVisual.transform.SetLocalPositionAndRotation(HeldOffset, held);
+            return;
+        }
+        // Other players: in the left hand, the arm held out forward (PlayerAnimatorController raises it for
+        // RaisesArm and places the object at the hand after the pose: LeftHandItem)
+        heldVisual = VisualProxy.Create(prefab, null);
+        var anim = Owner != null ? Owner.Animation : null;
+        if (anim != null) anim.SetLeftHandItem(heldVisual.transform, held);
+        else heldVisual.transform.SetParent(transform, false);
     }
 
     // ─── Trajectory preview ───────────────────────────────────────────────────

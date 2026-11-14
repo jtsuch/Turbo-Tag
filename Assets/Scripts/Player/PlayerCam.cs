@@ -226,7 +226,15 @@ public class PlayerCam : MonoBehaviour
         // rate is close to the physics rate.)
         Quaternion previousView = transform.rotation;
 
-        Quaternion upright = frame * Quaternion.Euler(0f, yRotation, 0f);
+        // The body's heading: the view's, unless something holds it (on a ladder it faces the rungs while you look round)
+        float bodyYaw = yRotation;
+        if (player.ExternalForward.HasValue)
+        {
+            Vector3 f = Quaternion.Inverse(frame) * player.ExternalForward.Value;
+            f.y = 0f;
+            if (f.sqrMagnitude > 0.0001f) bodyYaw = Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+        }
+        Quaternion upright = frame * Quaternion.Euler(0f, bodyYaw, 0f);
         if (frame != Quaternion.identity)
         {
             RotateBodyAroundCenter(upright); // Standing on a wall or ceiling (Wall Magnet), or turning back upright

@@ -17,7 +17,7 @@ public class TippingProp : MonoBehaviourPun
     [Tooltip("Centre of mass height as a fraction of the object's height (0 = base, 1 = top). Higher tips sooner.")]
     [SerializeField] private float centreOfMassHeight = 0.45f;
     [Tooltip("Lean (degrees) away from the placer when it appears, around its base, so it topples faster.")]
-    [SerializeField] private float startTilt = 0f;
+    [SerializeField] private float startTilt = 5f;   // Nov 14: a slight lean away from the placer, so it tends to fall that way
 
     private void Awake()
     {
