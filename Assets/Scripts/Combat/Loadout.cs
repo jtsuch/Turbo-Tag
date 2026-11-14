@@ -15,14 +15,24 @@ using UnityEngine;
 ///     attacker on a plant, capped at <see cref="Economy.Max"/>; every half starts at <see cref="Economy.Start"/> with
 ///     the starting kit and no upgrades. Survivors keep their guns and what's left of their shield; dying drops the
 ///     best gun (<see cref="GunDrops"/>) and loses the shield.
-///   - Ability upgrades: one use a round each (Basic: its bar), up to two upgrades a half (+1 use, or +40% bar).
+///   - Ability upgrades: up to two a half per ability; what each does is AbilityUpgrades' table (bar length,
+///     strength or uses a round).
 /// </summary>
 public class Loadout : MonoBehaviour
 {
     public static Loadout Instance { get; private set; }
 
     private const string PrimaryPref = "LastPrimary", SecondaryPref = "LastSecondary";
-    private const float DrawTime = 0.35f;   // A weapon switch: no shot for this long
+    /// <summary>Taking a gun out (a weapon switch, after a Teleport): no shot for this long, and the gun rises into view.
+    /// The knife's; secondaries take 20% longer, primaries twice as long (Justin, Nov 14).</summary>
+    public const float DrawTime = 0.35f;
+
+    public static float DrawTimeFor(GunInfo gun) => gun == null ? DrawTime : gun.Slot switch
+    {
+        GunSlot.Primary   => DrawTime * 2f,
+        GunSlot.Secondary => DrawTime * 1.2f,
+        _                 => DrawTime,
+    };
 
     public string  Primary   { get; private set; }                         // Null: none
     public string  Secondary { get; private set; } = GunCatalog.DefaultId;
@@ -248,6 +258,7 @@ public class Loadout : MonoBehaviour
         string id = GunIn(slot);
         if (id == null) { slot = GunSlot.Secondary; id = Secondary; }
         Slot = slot;
+        if (draw > 0f) draw = DrawTimeFor(GunCatalog.Find(id));
         local.Gun.Equip(id, ammo.TryGetValue(id, out int left) ? left : -1, draw);
     }
 
@@ -365,9 +376,8 @@ public class Loadout : MonoBehaviour
     public int UpgradeLevel(string abilityId) => upgrades.TryGetValue(abilityId, out int n) ? n : 0;
     public bool UpgradeBoughtThisRound(string abilityId) => bought.Exists(p => p.Kind == Kind.Upgrade && p.Id == abilityId);
 
-    /// <summary>What the next upgrade of <paramref name="ability"/> does, for the shop.</summary>
-    public static string UpgradeEffect(Ability ability) =>
-        ability is BasicAbility ? $"+{Economy.DurationPerUpgrade * 100f:0}% bar" : "+1 use a round";
+    /// <summary>What the next upgrade of <paramref name="ability"/> does, for the shop ("bar 6 s → 10.5 s").</summary>
+    public string UpgradeEffect(Ability ability) => AbilityUpgrades.Describe(ability, UpgradeLevel(ability.Id));
 
     public void BuyUpgrade(Ability ability)
     {
@@ -405,14 +415,6 @@ public class Loadout : MonoBehaviour
         var local = Local;
         if (local == null || local.Abilities == null) return;
         foreach (var (ability, _) in local.Abilities.Usable())
-        {
-            int level = UpgradeLevel(ability.Id);
-            if (ability is BasicAbility basic)
-            {
-                basic.ChargesOverride = null;
-                basic.DurationScale = HasEconomy ? 1f + Economy.DurationPerUpgrade * level : 1f;
-            }
-            else ability.ChargesOverride = HasEconomy ? 1 + level : null;
-        }
+            AbilityUpgrades.Apply(ability, UpgradeLevel(ability.Id), HasEconomy);
     }
 }

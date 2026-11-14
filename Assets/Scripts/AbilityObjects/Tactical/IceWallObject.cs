@@ -18,6 +18,7 @@ public class IceWallObject : TacticalTrapObject
     protected override void Start()
     {
         base.Start();
+        if (TryGetComponent(out Shootable shootable)) shootable.health *= Upgrade;   // S&D: 150 / 250 / 350
         fullScale = transform.localScale;
         box = GetComponent<BoxCollider>();
         transform.localScale = new Vector3(fullScale.x, fullScale.y * 0.1f, fullScale.z);

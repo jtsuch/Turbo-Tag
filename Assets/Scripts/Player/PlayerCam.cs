@@ -208,7 +208,7 @@ public class PlayerCam : MonoBehaviour
             cam.transform.localPosition = bobOffset + Vector3.up * (bumpOffset * size) + shakeOffset;
 
         // Free Spin (hold the Free Spin key, default 3): the mouse turns the whole body on every axis (backflips, barrel turns)
-        bool spinHeld = !paused && player.CanMove && !IsLured && !EmoteMenu.IsOpen && !player.IsMagnetized && player.SurfaceFrame == Quaternion.identity
+        bool spinHeld = !paused && player.CanMove && !IsLured && !EmoteMenu.IsOpen && !player.IsMagnetized && !player.ExternalUp.HasValue && player.SurfaceFrame == Quaternion.identity
                      && Input.GetKey(Keybinds.Get(InputAction.FreeSpin));
         if (spinHeld)
         {
@@ -324,20 +324,30 @@ public class PlayerCam : MonoBehaviour
 
     // ─── Wall Magnet surface frame ────────────────────────────────────────────
 
+    /// <summary>Turns the view (and body) to face <paramref name="worldDir"/> (getting on a ladder), keeping the pitch.</summary>
+    public void FaceAlong(Vector3 worldDir)
+    {
+        Vector3 local = Quaternion.Inverse(player.SurfaceFrame) * worldDir;
+        local.y = 0f;
+        if (local.sqrMagnitude < 0.0001f) return;
+        yRotation = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg;
+    }
+
     // Turns the view's "up" toward the surface being walked on (Wall Magnet) by the smallest turn each frame,
     // so the heading carries over smoothly. Back on normal gravity, the leftover turn around the vertical is
     // folded into the yaw and the frame resets to identity.
     private Quaternion UpdateSurfaceFrame()
     {
         Quaternion frame = player.SurfaceFrame;
-        if (!player.IsMagnetized && frame == Quaternion.identity) return frame;
+        bool turned = player.IsMagnetized || player.ExternalUp.HasValue;   // Wall Magnet, or tilted with a ladder
+        if (!turned && frame == Quaternion.identity) return frame;
 
-        Vector3    goalUp  = player.MagnetUp ?? Vector3.up;
+        Vector3    goalUp  = player.MagnetUp ?? player.ExternalUp ?? Vector3.up;
         Vector3    frameUp = frame * Vector3.up;
         Quaternion goal    = Quaternion.FromToRotation(frameUp, goalUp) * frame;
         frame = Quaternion.Slerp(frame, goal, 1f - Mathf.Exp(-12f * Time.deltaTime));
 
-        if (!player.IsMagnetized && Vector3.Angle(frame * Vector3.up, Vector3.up) < 0.5f)
+        if (!turned && Vector3.Angle(frame * Vector3.up, Vector3.up) < 0.5f)
         {
             Vector3 frameForward = Vector3.ProjectOnPlane(frame * Vector3.forward, Vector3.up);
             if (frameForward.sqrMagnitude > 0.0001f)

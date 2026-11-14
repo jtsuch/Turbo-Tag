@@ -29,7 +29,7 @@ public class InfiniteClimb : BasicAbility
         if (IsLocal && held)
         {
             bool canClimb = CurrentDuration > 0.01f;
-            Owner.SteadyClimbSpeed = canClimb ? climbSpeed : 0f;
+            Owner.SteadyClimbSpeed = canClimb ? climbSpeed * UpgradePower : 0f;   // S&D: 8 → 10 m/s with upgrades
             IsActive = canClimb && Owner.State == Player.MovementState.Climb;
         }
 

@@ -444,6 +444,10 @@ public class SearchDestroyMode : TeamMode
     // Spraying is punished: bloom builds 2.5× faster up to twice the cap, so taps stay accurate
     public override float BloomScale    => 2.5f;
     public override bool  UsesEconomy   => true;
+    // Justin (Nov 14): the swinging grapples cover too much ground for a round-based mode
+    public override bool  AllowsAbility(string id) => !NotInSearchDestroy.Contains(id);
+    private static readonly System.Collections.Generic.HashSet<string> NotInSearchDestroy = new()
+        { "SpringyGrapple", "SwingGrapple", "Launch", "BoomStick", "BouncePadTrap" };   // Justin, Nov 14
     public override float MaxBloomScale => 2f;
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>

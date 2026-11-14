@@ -86,7 +86,7 @@ public class Honk : QuickAbility
     }
 
     // The honker's Ability Overdrive is known only on their own screen; others honk at normal strength
-    private static float PowerOf(Player p) => p != null && p.IsLocal ? Mathf.Sqrt(p.AbilityPower) : 1f;
+    private float PowerOf(Player p) => p != null && p.IsLocal ? Mathf.Sqrt(p.AbilityPower) * UpgradePower : 1f;   // S&D: 75–125%
 
     // ─── Horn (every client) ──────────────────────────────────────────────────
 

@@ -33,7 +33,10 @@ public class TacticalNet : MonoBehaviourPun
         if (harmful && !player.AffectedBy(source)) return; // Shielded / a ghost
         switch (kind)
         {
-            case Status.Ink:      PlayerEffect.Apply(typeof(InkedEffect), player, seconds); break;
+            case Status.Ink:
+                PlayerEffect.Apply(typeof(InkedEffect), player, seconds);
+                photonView.RPC(nameof(RPC_TInkFace), RpcTarget.Others, seconds);   // Everyone else sees the splats
+                break;
             case Status.Suppress: PlayerEffect.Apply(typeof(SuppressedEffect), player, seconds); break;
             case Status.Shock:    PlayerEffect.Apply(typeof(ShockedEffect), player, seconds); break;
             case Status.Heal:     PlayerEffect.Apply(typeof(HealingEffect), player, seconds); break;
@@ -44,6 +47,57 @@ public class TacticalNet : MonoBehaviourPun
                 player.NotePushed(source, "BellySlide");
                 break;
         }
+    }
+
+    // Ink splats on this player's face for everyone else (the inked player sees the ink over their screen instead):
+    // dark glossy blobs on the front of the head, following the Head bone, gone when the ink wears off
+    [PunRPC]
+    private void RPC_TInkFace(float seconds)
+    {
+        if (player == null) return;
+        Transform head = player.HeadBone;
+        if (head == null) return;
+        var old = head.Find("Ink Splats");
+        if (old != null) Destroy(old.gameObject);
+        var root = new GameObject("Ink Splats").transform;
+        root.SetParent(head, false);
+        if (inkMaterial == null)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            inkMaterial = new Material(shader) { color = new Color(0.05f, 0.03f, 0.09f) };
+            if (inkMaterial.HasProperty("_Smoothness")) inkMaterial.SetFloat("_Smoothness", 0.9f);
+        }
+        // Placed in world terms round the face (the head's own axes vary by model), then kept on the bone
+        Vector3 centre = player.HeadCentre;
+        float r = player.HeadRadius;
+        Vector3 fwd = player.transform.forward, right = player.transform.right, up = player.transform.up;
+        var rng = new System.Random(player.ActorNumber * 31 + Time.frameCount);
+        for (int i = 0; i < 7; i++)
+        {
+            float x = (float)(rng.NextDouble() * 2 - 1) * 0.7f, y = (float)(rng.NextDouble() * 2 - 1) * 0.55f;
+            Vector3 dir = (fwd * 0.9f + right * x + up * y).normalized;
+            var blob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Destroy(blob.GetComponent<Collider>());
+            blob.name = "Splat";
+            blob.transform.SetParent(root, true);
+            blob.transform.position = centre + dir * r * 0.92f;
+            blob.transform.rotation = Quaternion.LookRotation(dir);
+            float size = r * (0.35f + (float)rng.NextDouble() * 0.35f);
+            blob.transform.localScale = Vector3.one;   // Set in world terms below
+            blob.transform.localScale = WorldToLocalScale(blob.transform, new Vector3(size, size * 0.8f, size * 0.25f));
+            var rend = blob.GetComponent<Renderer>();
+            rend.sharedMaterial = inkMaterial;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        Destroy(root.gameObject, seconds);
+    }
+
+    private static Material inkMaterial;   // Shared by every player's splats
+
+    private static Vector3 WorldToLocalScale(Transform t, Vector3 world)
+    {
+        Vector3 parent = t.parent != null ? t.parent.lossyScale : Vector3.one;
+        return new Vector3(world.x / Mathf.Max(1e-4f, parent.x), world.y / Mathf.Max(1e-4f, parent.y), world.z / Mathf.Max(1e-4f, parent.z));
     }
 
     /// <summary>

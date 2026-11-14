@@ -35,6 +35,7 @@ public class CombatHud : MonoBehaviour
     private TMP_Text      healthText;
     private RectTransform healthFill;
     private Image         healthFillImage;
+    private RectTransform armorFill, shieldFill;   // The bonus bar over the health bar: bought shield, then Armored
     private TMP_Text      ammoText;
     private TMP_Text      gunText;
     private TMP_Text      slotsText;   // "1 ICEPICK  2 PEBBLE  3 BLIZZARD" over the ammo card, the one in hand lit
@@ -146,6 +147,18 @@ public class CombatHud : MonoBehaviour
         healthFill.anchorMin = Vector2.zero;
         healthFill.anchorMax = Vector2.one;
         healthFill.sizeDelta = Vector2.zero;
+
+        // Bonus bar just above it (Justin, Nov 14: show Armored on the health bar): the bought shield in cyan, then
+        // the Armored ability's soak in blue, each as a share of max health
+        var bonus = UIKit.Rect("Bonus", health);
+        bonus.anchorMin = new Vector2(0f, 0f);
+        bonus.anchorMax = new Vector2(1f, 0f);
+        bonus.pivot = new Vector2(0.5f, 0f);
+        bonus.sizeDelta = new Vector2(-48f, 7f);
+        bonus.anchoredPosition = new Vector2(0f, 39f);
+        armorFill  = UIKit.Panel(bonus, new Color(0.13f, 0.83f, 0.93f), 3.5f, "Bought Shield").rectTransform;
+        shieldFill = UIKit.Panel(bonus, new Color(0.3f, 0.55f, 1f), 3.5f, "Armored").rectTransform;
+        foreach (var f in new[] { armorFill, shieldFill }) { f.sizeDelta = Vector2.zero; f.pivot = new Vector2(0f, 0.5f); }
 
         var ammo = UIKit.Card(vitals.transform, Panel, 22f, 0.4f, "Ammo");
         ammoCard = ammo.gameObject;
@@ -267,9 +280,17 @@ public class CombatHud : MonoBehaviour
         if (healthCard.activeSelf == ghost) healthCard.SetActive(!ghost);
 
         var health = local.Health;
-        healthText.text = health.Armor > 0f
-            ? $"{Mathf.CeilToInt(health.Current)}<size=60%><color=#22D3EE>  +{Mathf.CeilToInt(health.Armor)}</color></size>"
-            : Mathf.CeilToInt(health.Current).ToString();
+        string text = Mathf.CeilToInt(health.Current).ToString();
+        if (health.Armor > 0f)  text += $"<size=60%><color=#22D3EE>  +{Mathf.CeilToInt(health.Armor)}</color></size>";
+        if (health.Shield > 0f) text += $"<size=60%><color=#4D8CFF>  +{Mathf.CeilToInt(health.Shield)}</color></size>";
+        healthText.text = text;
+        // Bonus bar: bought shield then Armored, laid end to end (capped at the bar's width)
+        float max = Mathf.Max(1f, health.Max);
+        float a = Mathf.Clamp01(health.Armor / max), b = Mathf.Clamp01(health.Shield / max);
+        armorFill.anchorMin  = new Vector2(0f, 0f); armorFill.anchorMax  = new Vector2(a, 1f);
+        shieldFill.anchorMin = new Vector2(Mathf.Min(1f, a), 0f); shieldFill.anchorMax = new Vector2(Mathf.Min(1f, a + b), 1f);
+        armorFill.gameObject.SetActive(a > 0f);
+        shieldFill.gameObject.SetActive(b > 0f);
         healthFill.anchorMax = new Vector2(health.Fraction, 1f);
         healthFillImage.color = Color.Lerp(Theme.danger, Theme.lime, Mathf.InverseLerp(0.25f, 0.6f, health.Fraction));
         healthText.color = health.Fraction <= 0.25f ? Color.Lerp(Theme.danger, Color.white, Mathf.PingPong(Time.time * 3f, 1f)) : Theme.text;

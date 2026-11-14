@@ -32,6 +32,8 @@ public class FlashbangObject : NetworkedProjectile
     [Tooltip("Layers that block line of sight to the flash. Exclude the Player layer.")]
     [SerializeField] private LayerMask obstacleMask;
 
+    private const float NearRange = 5f;
+
     [Header("Effects")]
     [SerializeField] private GameObject popVFX;
     [SerializeField] private AudioClip  popSFX;
@@ -77,11 +79,12 @@ public class FlashbangObject : NetworkedProjectile
             return;
 
         float dot = Vector3.Dot(cam.transform.forward, dir);
-        if (dot <= 0f) return; // Looking away
-
-        float look      = Mathf.Clamp01((dot - 0.35f) / (0.82f - 0.35f));        // ~70° → 0, ~35° → 1
+        float look      = Mathf.Clamp01((dot - 0.35f) / (0.82f - 0.35f));        // ~70° → 0, ~35° → 1 (away: 0)
         float distance  = 1f - Mathf.Clamp01((dist - full) / Mathf.Max(0.01f, range - full));
         float intensity = look * distance;
+        // Close by (within 5 m, in the open) it partly flashes you even off screen (Justin, Nov 14): 45% at the bomb
+        // fading to 20% at 5 m
+        if (dist < NearRange) intensity = Mathf.Max(intensity, Mathf.Lerp(0.45f, 0.2f, dist / NearRange));
         if (intensity > 0.02f)
             ScreenFlash.Apply(intensity, maxBlindDuration * intensity);
     }

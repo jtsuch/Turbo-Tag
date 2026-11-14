@@ -21,7 +21,11 @@ public class MouseTrapObject : MonoBehaviourPun
 
     private bool sprung;
 
-    private void Awake() => ObjectTunables.Apply(photonView); // Cheat values from the placer
+    private void Awake()
+    {
+        ObjectTunables.Apply(photonView);
+        Shootable.Ensure(gameObject, 25f, 0.45f);   // Has health (Justin, Nov 14): a few hits break it
+    } // Cheat values from the placer
 
     // Placement leaves a small gap above the surface; settle the base onto it (same result on every client)
     private void Start()

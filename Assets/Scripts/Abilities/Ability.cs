@@ -51,6 +51,10 @@ public abstract class Ability : MonoBehaviour
     /// null = the prefab's own). Set by Loadout.</summary>
     public int? ChargesOverride { get; set; }
 
+    /// <summary>Owner: × this ability's main strength (Search &amp; Destroy "power" upgrades, AbilityUpgrades; 1 elsewhere).
+    /// Abilities with a power upgrade read it (Flappy's jump boost, Infinite Climb's speed).</summary>
+    public float UpgradePower { get; set; } = 1f;
+
     private int   charges = -1;   // -1 until first read (then full)
     private float rechargeStart;  // When the charge currently refilling started
 

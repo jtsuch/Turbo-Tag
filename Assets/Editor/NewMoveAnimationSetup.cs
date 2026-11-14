@@ -8,7 +8,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb}.fbx)
+/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb,LadderClimb,LadderHold}.fbx)
 /// and hooks them into the Animator:
 ///   1. names each FBX's take after the file, sets the loops, and writes fixed copies (same path and unit fixes as the
 ///      ledge and emote clips, <see cref="LedgeAnimationSetup.Remapped"/>) to Assets/Animations/Moves;
@@ -16,7 +16,7 @@ using UnityEngine;
 ///      the idle pose's), so the top animated bone's position curves are shifted down by the measured amount;
 ///   3. (re)builds three layers PlayerAnimatorController drives by name:
 ///        "Crouch Layer" (full body, just above the Base Layer): Crouch ↔ CrouchWalk on MovementSpeed;
-///        "Action Layer" (full body, under the gun arm): Charge (Bulldozer), PlantBomb, DefuseBomb;
+///        "Action Layer" (full body, under the gun arm): Charge (Bulldozer), PlantBomb, DefuseBomb, LadderClimb, LadderHold;
 ///        "Throw Layer" (left arm only, on top): ThrowLeft, played once per throw.
 /// Re-runnable. Report: Library/TurboTag/scratch/move_setup.txt.
 /// Menu: Turbo Tag/Animation/Set Up New Move Animations (editor job: SetupNewMoveAnimations).
@@ -37,6 +37,7 @@ public static class NewMoveAnimationSetup
     {
         ("Crouch", true), ("CrouchWalk", true), ("Charge", true),
         ("ThrowLeft", false), ("PlantBomb", true), ("DefuseBomb", true),
+        ("LadderClimb", true), ("LadderHold", true),
     };
 
     [MenuItem("Turbo Tag/Animation/Set Up New Move Animations")]
@@ -98,6 +99,8 @@ public static class NewMoveAnimationSetup
             foreach (var (name, _) in Clips)
             {
                 if (!clips.TryGetValue(name, out var clip)) continue;
+                // Ladder poses hang on the rungs, not on the floor (and only move the Stomach): left as Justin made them
+                if (name.StartsWith("Ladder")) { report.AppendLine($"{name}: {clip.length:0.00} s, not grounded (a ladder pose)"); continue; }
                 clip.SampleAnimation(animatorObject, 0f);
                 float lift = Lowest() - reference;
                 if (Mathf.Abs(lift) < 0.03f) { report.AppendLine($"{name}: {clip.length:0.00} s, on the floor already"); continue; }
@@ -156,7 +159,7 @@ public static class NewMoveAnimationSetup
 
         var actionMachine = Machine(controller, ActionLayer);
         actionMachine.defaultState = actionMachine.AddState("Empty");
-        foreach (var name in new[] { "Charge", "PlantBomb", "DefuseBomb" })
+        foreach (var name in new[] { "Charge", "PlantBomb", "DefuseBomb", "LadderClimb", "LadderHold" })
             if (clips.TryGetValue(name, out var clip)) actionMachine.AddState(name).motion = clip;
 
         var throwMachine = Machine(controller, ThrowLayer);

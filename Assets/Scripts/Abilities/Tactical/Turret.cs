@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>Place a small turret that shoots enemies in front of it (30 s). Can be shot down. Health modes only. Behaviour: AbilityObjects/Tactical/TurretObject.</summary>
-[AbilityInfo("Place a small turret that shoots enemies in front of it (30 s). Can be shot down.", HealthModesOnly = true)]
+[AbilityInfo("Place a small turret that shoots enemies in front of it. It stays until it's shot down.", HealthModesOnly = true)]
 public class Turret : TrapAbility
 {
     // On floors, facing where you look (walls and the snow curtain stand across your view)

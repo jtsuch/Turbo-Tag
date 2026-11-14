@@ -3,7 +3,8 @@ using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
-/// Fire bottle (Resources/Object/Molly): bursts on the first floor it hits (or after 3 s) into a pool of flames
+/// Fire bottle (Resources/Object/Molly): bursts only on flat ground (Justin, Nov 14): walls, slopes and players bounce it
+/// on until it lands on a floor (lying still on one after 3 s also bursts it; nothing after 8 s: it's gone), into a pool of flames
 /// <see cref="radius"/> across for <see cref="burnSeconds"/>. The thrower's client burns everyone standing in it
 /// (<see cref="damagePerSecond"/>, ticking 4 times a second; the thrower and teammates too).
 /// </summary>
@@ -17,6 +18,7 @@ public class MollyObject : NetworkedProjectile
     [SerializeField] private float damagePerSecond = 30f;
 
     private bool lit;
+    private float lastBounce = -1f;
     private float litAt = -1f;
     private Vector3 pool;
     private Light glow;
@@ -24,14 +26,29 @@ public class MollyObject : NetworkedProjectile
 
     protected override void OnLaunched()
     {
+        launchedAt = Time.time;
         if (IsAuthority) StartCoroutine(Timeout());
     }
 
+    // Settled on a floor without a clean hit (rolled to a stop): burst there; never found one: gone
     private IEnumerator Timeout()
     {
         yield return new WaitForSeconds(3f);
-        if (!lit) Ignite(transform.position);
+        while (!lit && Time.time - launchedAt < 8f)
+        {
+            if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out RaycastHit floor, 0.6f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                && floor.normal.y >= FlatFloor && floor.collider.GetComponentInParent<Player>() == null)
+            {
+                Ignite(floor.point);
+                yield break;
+            }
+            yield return new WaitForSeconds(0.2f);
+        }
+        if (!lit) DestroyNetworked();
     }
+
+    private const float FlatFloor = 0.8f;   // Surface normal's up part: about 37° of slope at most
+    private float launchedAt;
 
     private void OnCollisionStay(Collision collision) => OnCollisionEnter(collision);
 
@@ -39,7 +56,16 @@ public class MollyObject : NetworkedProjectile
     {
         if (!IsAuthority || lit || collision.contactCount == 0 || !RealContact(collision)) return;
         var contact = collision.GetContact(0);
-        if (contact.normal.y < 0.5f) return; // Walls bounce it on
+        // Walls, slopes and players: it bounces off (a lively rebound, half the speed) and flies on to the floor
+        if (contact.normal.y < FlatFloor || collision.collider.GetComponentInParent<Player>() != null)
+        {
+            if (collision.relativeVelocity.sqrMagnitude > 4f && Time.time - lastBounce > 0.1f)
+            {
+                lastBounce = Time.time;
+                Body.linearVelocity = Vector3.Reflect(-collision.relativeVelocity, contact.normal) * 0.5f;
+            }
+            return;
+        }
         Ignite(contact.point);
     }
 

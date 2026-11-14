@@ -35,6 +35,7 @@ public class FreeplayMode : GameMode
 
     // The sandbox: every ability can be tried here, health-mode ones included (damage only lands in modes with health)
     public override bool AllowsEveryAbility => true;
+    public override bool AllowsAbility(string id) => true;
 
     // No objective text once playing
     public override string GetPhaseLabel(MatchPhase phase) =>

@@ -34,7 +34,7 @@ public class Cloak : QuickAbility
         if (!cloaked || !IsLocal) return;
 
         float elapsed = Time.time - startTime;
-        if (elapsed > cloakDuration) { EndCloak(); return; }
+        if (elapsed > cloakDuration * UpgradePower) { EndCloak(); return; }   // S&D: 4 → 5 → 6 s
         if (elapsed < settleTime) return;
 
         var input = Owner.Input;

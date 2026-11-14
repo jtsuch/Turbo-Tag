@@ -2,10 +2,10 @@ using Photon.Pun;
 using UnityEngine;
 
 /// <summary>
-/// Makes a placed object a real, top-heavy physics object that topples easily (Ladder): the placer's client
-/// simulates it (light, centre of mass high up), and every other screen follows it through
-/// <see cref="PlayerNetworkSync"/> (snapshot interpolation; remote copies stay kinematic). Players pushing or
-/// climbing it knock it over. It starts leaning <c>startTilt</c> degrees away from the placer, so it falls sooner.
+/// Makes a placed object a real physics object (the Ladder): the placer's client simulates it, and every other screen
+/// follows it through <see cref="PlayerNetworkSync"/> (snapshot interpolation; remote copies stay kinematic). Since
+/// Nov 14 (Justin: "revert the ladder to a normal object") it stands upright where placed (no starting lean), with
+/// a normal weight and balance, and players climb it with F (<see cref="LadderClimb"/>, added here on every screen).
 /// Attach to the prefab root next to its Rigidbody, PhotonView and PlayerNetworkSync.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -13,11 +13,20 @@ using UnityEngine;
 public class TippingProp : MonoBehaviourPun
 {
     [Tooltip("Mass (kg). Light enough that a player bumping into it tips it.")]
-    [SerializeField] private float mass = 3f;
+    [SerializeField] private float mass = 15f;
     [Tooltip("Centre of mass height as a fraction of the object's height (0 = base, 1 = top). Higher tips sooner.")]
-    [SerializeField] private float centreOfMassHeight = 0.7f;
+    [SerializeField] private float centreOfMassHeight = 0.45f;
     [Tooltip("Lean (degrees) away from the placer when it appears, around its base, so it topples faster.")]
-    [SerializeField] private float startTilt = 20f;
+    [SerializeField] private float startTilt = 0f;
+
+    private void Awake()
+    {
+        if (!TryGetComponent(out LadderClimb _))
+        {
+            gameObject.AddComponent<LadderClimb>();
+            photonView.RefreshRpcMonoBehaviourCache();   // It receives the riders' RPCs on this PhotonView
+        }
+    }
 
     private void Start()
     {
@@ -51,9 +60,10 @@ public class TippingProp : MonoBehaviourPun
             foreach (var c in colliders) bounds.Encapsulate(c.bounds);
         }
 
-        // Top-heavy: the centre of mass well up the object's height (in world space, whatever its rotation)
-        Vector3 worldCom = new(bounds.center.x, bounds.min.y + bounds.size.y * centreOfMassHeight, bounds.center.z);
-        body.centerOfMass = transform.InverseTransformPoint(worldCom);
+        // Normal physics (Justin, Nov 14: "just let it fall with normal gravity"): the centre of mass follows its colliders
+        // (and any climbers' capsules, LadderClimb), never set by hand, which made it right itself
+        body.ResetCenterOfMass();
         body.WakeUp();
+        _ = centreOfMassHeight;
     }
 }

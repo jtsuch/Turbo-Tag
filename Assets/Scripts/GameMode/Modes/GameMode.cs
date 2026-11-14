@@ -200,6 +200,10 @@ public abstract class GameMode
     /// are free picks on each spawn. See <see cref="Economy"/>.</summary>
     public virtual bool UsesEconomy => false;
 
+    /// <summary>Whether ability <paramref name="id"/> may be picked in this mode (Pregame, loadouts, Cheats). Search &amp;
+    /// Destroy leaves out the swinging grapples and Launch.</summary>
+    public virtual bool AllowsAbility(string id) => id != "UpdraftVent";   // Search & Destroy only (it overrides this)
+
     /// <summary>Without an economy: the shop opens with the Shop key at any time and not by itself on spawning
     /// (Freeplay); otherwise it opens on each spawn for the Gun Pick Time.</summary>
     public virtual bool ShopAnytime => false;

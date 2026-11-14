@@ -23,7 +23,7 @@ public class GrowRay : QuickAbility
     [TunableParam("Size Multiplier", 1f, 5f)]
     [SerializeField] private float growMultiplier = 2f;
     [TunableParam("Grow Duration", 1f, 60f)]
-    [SerializeField] private float growDuration = 8f;
+    [SerializeField] private float growDuration = 3f;
     [Tooltip("How long the gun stays out after a shot (s).")]
     [SerializeField] private float gunShowTime = 0.6f;
 
@@ -57,7 +57,8 @@ public class GrowRay : QuickAbility
         }
 
         if (target != null && !target.IsCaught && target.AffectedBy(Owner.ActorNumber))
-            target.RequestTimedModifier(Stat.Size, nameof(GrowRay), growMultiplier, growDuration);
+            // S&D upgrades: ×1.4 → ×1.7 → ×2
+            target.RequestTimedModifier(Stat.Size, nameof(GrowRay), 1f + (growMultiplier - 1f) * UpgradePower, growDuration);
 
         ShowShot(end);
         Handler.BroadcastBeam(end);

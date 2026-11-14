@@ -121,6 +121,12 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Riding a zip line (World/ZipLine moves the body): no movement and no gravity until it lets go.</summary>
     public bool OnZipLine { get; set; }
 
+    /// <summary>Owner: climbing a placed ladder (LadderClimb moves the body; PlayerMovement stands aside like a zip line).</summary>
+    public bool OnLadder { get; set; }
+
+    /// <summary>Owner: an "up" to turn the body and view to (a tilted ladder), like Wall Magnet's surface; null = the sky.</summary>
+    public Vector3? ExternalUp { get; set; }
+
     /// <summary>
     /// Wall Magnet (owner): the "up" of the surface being walked on (a wall's or ceiling's normal), or null for
     /// normal gravity. PlayerMovement walks along that surface; PlayerCam turns the body and view to match.
@@ -601,6 +607,12 @@ public class Player : MonoBehaviourPun, IPunObservable
     private Transform headBone;
     private bool headLooked;
 
+    /// <summary>The Head bone (null if the model has none), any copy.</summary>
+    public Transform HeadBone
+    {
+        get { _ = HeadCentre; return headBone; }
+    }
+
     /// <summary>Middle of the head (follows the Head bone: crouching, prone, spinning, flinching), any copy.</summary>
     public Vector3 HeadCentre
     {
@@ -789,6 +801,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     {
         Abilities.CancelAll();
         MagnetUp     = null;                 // Arrive upright, not still turned to a wall (Wall Magnet)
+        ExternalUp   = null;                 // ...or tilted with a ladder
         ZeroGravity  = false;
         SurfaceFrame = Quaternion.identity;
         Body.linearVelocity  = Vector3.zero;
@@ -848,4 +861,6 @@ public enum PlayerFlag
     Charging    = 1 << 13, // Bulldozer's charge: the Charge animation on every screen
     Planting    = 1 << 14, // Search & Destroy: planting the bomb (the PlantBomb animation)
     Defusing    = 1 << 15, // Search & Destroy: defusing it (the DefuseBomb animation)
+    OnLadder    = 1 << 16, // Climbing a placed ladder: LadderHold on every screen (the gun is put away)
+    LadderMoving = 1 << 17, // ...and moving up or down it: LadderClimb
 }

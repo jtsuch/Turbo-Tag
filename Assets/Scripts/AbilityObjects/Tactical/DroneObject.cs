@@ -23,6 +23,7 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
     public void OnPhotonInstantiate(PhotonMessageInfo info)
     {
         velocity = SpawnData.Impulse(photonView);
+        scanRadius *= Mathf.Clamp(SpawnData.Power(photonView), 0.25f, 4f);   // S&D upgrades (the Drone ability's UpgradePower)
         spawnedAt = Time.time;
         nextScan = Time.time + 0.3f;
         if (photonView.IsMine) Invoke(nameof(Remove), lifetime);
@@ -56,12 +57,21 @@ public class DroneObject : MonoBehaviourPun, IPunInstantiateMagicCallback
     {
         if (rotors != null) foreach (var r in rotors) if (r != null) r.Rotate(0f, 1440f * Time.deltaTime, 0f, Space.Self);
 
-        // Straight ahead until something is in the way; then hover, bobbing
+        // Straight ahead; an angled surface in the way turns it to slide along it at the same speed (Justin, Nov 14:
+        // it stuck on slopes and slanted walls); head-on (or a player): it stops and hovers, bobbing
         if (!blocked)
         {
             Vector3 step = velocity * Time.deltaTime;
-            if (Physics.SphereCast(transform.position, 0.3f, velocity.normalized, out _, step.magnitude + 0.3f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                blocked = true;
+            if (Physics.SphereCast(transform.position, 0.3f, velocity.normalized, out RaycastHit hit, step.magnitude + 0.3f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 slide = Vector3.ProjectOnPlane(velocity, hit.normal);
+                if (hit.collider.GetComponentInParent<Player>() == null && slide.magnitude > velocity.magnitude * 0.3f)
+                {
+                    velocity = slide.normalized * velocity.magnitude;
+                    transform.position += hit.normal * Mathf.Max(0f, 0.3f - hit.distance) + velocity * Time.deltaTime;
+                }
+                else blocked = true;
+            }
             else transform.position += step;
         }
         transform.position += Vector3.up * Mathf.Sin((Time.time - spawnedAt) * 5f) * 0.15f * Time.deltaTime;

@@ -67,7 +67,7 @@ public class PlayerGun : MonoBehaviourPun
     private static bool GunsActive => CombatManager.Instance != null;
 
     // Something else is in the right hand (the S&D bomb): the gun is put away and can't fire
-    private bool Stowed => player != null && player.Has(PlayerFlag.HoldingBomb);
+    private bool Stowed => player != null && (player.Has(PlayerFlag.HoldingBomb) || player.Has(PlayerFlag.OnLadder));
 
     private void Awake() => player = GetComponent<Player>();
 
@@ -89,10 +89,27 @@ public class PlayerGun : MonoBehaviourPun
         reloadEndsAt  = 0f;
         reloadPending = false;
         nextShotAt    = Time.time + drawTime;
+        drawStart     = Time.time;
+        drawEnd       = Time.time + drawTime;
         bloom         = 0f;
         Scoped        = false;
         if (PhotonNetwork.InRoom) NetProps.SetLocal(PlayerKeys.Gun, Current != null ? Current.Id : "");
     }
+
+    private float drawStart, drawEnd;
+
+    /// <summary>Owner: takes the gun in hand out again (after a Teleport): it rises into view and can't fire for
+    /// <paramref name="seconds"/>.</summary>
+    public void Draw(float seconds)
+    {
+        if (!photonView.IsMine || Current == null) return;
+        nextShotAt = Mathf.Max(nextShotAt, Time.time + seconds);
+        drawStart  = Time.time;
+        drawEnd    = Time.time + seconds;
+    }
+
+    /// <summary>0 while the gun is still coming out, 1 once it's up.</summary>
+    private float DrawProgress => drawEnd > drawStart ? Mathf.Clamp01((Time.time - drawStart) / (drawEnd - drawStart)) : 1f;
 
     /// <summary>Owner: shows <paramref name="gunId"/> on the killcam view (null hides it).</summary>
     public void ShowKillcamGun(string gunId) => killcamGun = GunCatalog.Find(gunId) != null ? gunId : null;
@@ -473,27 +490,27 @@ public class PlayerGun : MonoBehaviourPun
             return origin + dir * Vector3.Dot(grazed.HeadCentre - origin, dir);
         }
 
-        // A Trip Wire is a line, not a collider: a shot passing within a hair of a set wire (before anything else)
-        // breaks it (1 health)
+        // Small traps with only trigger colliders (Ice Trap, Mouse Trap, the Trip Wire's box on the wall): a shot
+        // passing within their hit radius (before anything else) hits them. The trip wire's line itself doesn't count
         {
             float limit = hitIndex >= 0 ? best : range;
-            TripWireObject wireHit = null;
-            float wireAt = limit;
-            foreach (var wire in TripWireObject.Live)
+            Shootable pointHit = null;
+            float pointAt = limit;
+            foreach (var shootable in Shootable.ByDistance)
             {
-                if (wire == null || wire.Shootable == null) continue;
-                Vector3 shotEnd = origin + dir * limit;
-                if (TripWireObject.SegmentDistance(origin, shotEnd, wire.WireStart, wire.WireEnd) > 0.2f) continue;
-                // Roughly where along the shot it crosses: the nearest point of the wire to the shot line
-                float along = Mathf.Clamp(Vector3.Dot(ClosestOnSegment(wire.WireStart, wire.WireEnd, origin, dir) - origin, dir), 0f, limit);
-                if (along < wireAt) { wireAt = along; wireHit = wire; }
+                if (shootable == null) continue;
+                Vector3 c = shootable.Centre;
+                float along = Vector3.Dot(c - origin, dir);
+                if (along < 0f || along > pointAt) continue;
+                if ((origin + dir * along - c).magnitude > shootable.hitRadius) continue;
+                pointAt = along; pointHit = shootable;
             }
-            if (wireHit != null)
+            if (pointHit != null)
             {
                 lastTraceHit = true;
-                lastShootable = wireHit.Shootable;
+                lastShootable = pointHit;
                 lastTraceNormal = -dir;
-                return origin + dir * wireAt;
+                return origin + dir * pointAt;
             }
         }
 
@@ -602,7 +619,11 @@ public class PlayerGun : MonoBehaviourPun
             if (pair.Value != null) pair.Value.SetActive(gun != null && pair.Key == gun.Id && !scopedIn);
 
         var model = ViewModel(id);
-        if (model != null) model.Apply(killcamGun != null ? -1f : ReloadProgress);
+        if (model != null)
+        {
+            model.Drawing = killcamGun != null ? 1f : DrawProgress;
+            model.Apply(killcamGun != null ? -1f : ReloadProgress);
+        }
     }
 
     // Others: the gun in the right hand

@@ -266,7 +266,7 @@ public class ShopMenu : MonoBehaviour
             {
                 int level = loadout.UpgradeLevel(ability.Id);
                 price = level < Economy.MaxUpgrades ? Economy.UpgradePrice[level] : 0;
-                item.Stats.text = $"Level {level}/{Economy.MaxUpgrades}   ·   next: {Loadout.UpgradeEffect(ability)}";
+                item.Stats.text = $"Level {level}/{Economy.MaxUpgrades}   ·   {loadout.UpgradeEffect(ability)}";
                 item.Price.text = level < Economy.MaxUpgrades ? Economy.Format(price) : "MAX";
             }
             else

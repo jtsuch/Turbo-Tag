@@ -21,7 +21,7 @@ public abstract class ThrowAbility : Ability
     [TunableParam("Max Force", 1f, 200f)]
     [SerializeField] protected float maxForce = 60f;
     [TunableParam("Charge Time", 0.1f, 5f, HardMin = 0.01f)]
-    [SerializeField] protected float chargeSeconds = 1f;
+    [SerializeField] protected float chargeSeconds = 0.4f;   // Nov 14: much quicker to full strength
     [Tooltip("Multiplier passed to the thrown object (explosion force, pull strength…).")]
     [TunableParam("Power", 0.1f, 10f)]
     [SerializeField] protected float power = 1f;
@@ -113,7 +113,7 @@ public abstract class ThrowAbility : Ability
         PutAway();
 
         var thrownObject = PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(direction, throwOrigin.up), 0,
-            SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
+            SpawnData.Create(impulse, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides(), UpgradePower));
         TrackThrown(thrownObject);
         if (Owner.Animation != null) Owner.Animation.PlayThrow(); // The left-arm throw, on every screen
 

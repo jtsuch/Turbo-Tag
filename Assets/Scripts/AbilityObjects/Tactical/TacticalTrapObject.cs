@@ -15,6 +15,12 @@ public abstract class TacticalTrapObject : MonoBehaviourPun
     [SerializeField] protected float lifetime = 15f;
 
     protected float Power { get; private set; } = 1f;
+
+    /// <summary>The S&amp;D upgrade multiplier from the placer (1 elsewhere): each trap decides what it scales.</summary>
+    protected float Upgrade { get; private set; } = 1f;
+
+    /// <summary>Upgrades lengthen its lifetime (Suppression).</summary>
+    protected virtual bool UpgradeScalesLifetime => false;
     protected int PlacerActor => photonView.OwnerActorNr;
     protected float PlacedAt { get; private set; }
 
@@ -23,6 +29,8 @@ public abstract class TacticalTrapObject : MonoBehaviourPun
     protected virtual void Start()
     {
         Power = SpawnData.Power(photonView);
+        Upgrade = SpawnData.Upgrade(photonView);
+        if (UpgradeScalesLifetime) lifetime *= Upgrade;
         PlacedAt = Time.time;
         if (lifetime > 0f && photonView.IsMine) Invoke(nameof(Remove), lifetime);
         Sfx.At(SfxKind.Place, transform.position, 0.8f, 30f);

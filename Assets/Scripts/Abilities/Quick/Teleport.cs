@@ -71,6 +71,8 @@ public class Teleport : QuickAbility
 
         Body.position      = feet;
         transform.position = feet;
+        // The gun comes back out (it can't fire until it's up: the same draw as switching weapons)
+        if (Owner.Gun != null) Owner.Gun.Draw(Loadout.DrawTimeFor(Owner.Gun.Current));
 
         if (PlayerCam.Local != null)
         {

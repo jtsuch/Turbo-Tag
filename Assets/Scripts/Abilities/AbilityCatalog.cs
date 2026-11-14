@@ -85,9 +85,18 @@ public static class AbilityCatalog
         return has;
     }
 
-    /// <summary>Whether the ability may be used in the room's current mode (health-only abilities need a health mode).</summary>
-    public static bool AllowedInMode(string id) =>
-        !HealthModesOnly(id) || (PhotonNetwork.InRoom && ModeHasHealth(MatchRules.GameModeKey));
+    private static readonly Dictionary<string, GameMode> modeByKey = new();
+
+    /// <summary>Whether the ability may be used in the room's current mode (health-only abilities need a health mode;
+    /// the mode can leave others out: <see cref="GameMode.AllowsAbility"/>).</summary>
+    public static bool AllowedInMode(string id)
+    {
+        if (HealthModesOnly(id) && !(PhotonNetwork.InRoom && ModeHasHealth(MatchRules.GameModeKey))) return false;
+        if (!PhotonNetwork.InRoom) return true;
+        string key = MatchRules.GameModeKey ?? "";
+        if (!modeByKey.TryGetValue(key, out var mode)) modeByKey[key] = mode = GameModeRegistry.Create(key);
+        return mode == null || mode.AllowsAbility(id);
+    }
 
     /// <summary>Available (on the player prefab, objects present) and allowed in this room's mode: what Pregame, Cheats and loadouts offer.</summary>
     public static bool IsUsable(string id) => IsAvailable(id) && AllowedInMode(id);

@@ -13,7 +13,7 @@ public abstract class BasicAbility : Ability
     [Tooltip("Meter refilled per second of rest, in seconds of use (1 = an empty meter takes as long to fill as it " +
              "lasts; 0.5 = twice as long, so strong movers can't be chained).")]
     [TunableParam("Refill Rate", 0.1f, 5f)]
-    [SerializeField] protected float rechargeRate = 1f;
+    [SerializeField] protected float rechargeRate = 0.6f;
 
     public override AbilitySlot Slot => AbilitySlot.Basic;
 
@@ -32,6 +32,9 @@ public abstract class BasicAbility : Ability
 
     /// <summary>Owner: the meter's size × this (Search &amp; Destroy's duration upgrades; 1 = the prefab's). Set by Loadout.</summary>
     public float DurationScale { get; set; } = 1f;
+
+    /// <summary>The prefab's bar in seconds, before <see cref="DurationScale"/>.</summary>
+    public float BaseMaxDuration => maxDuration;
 
     protected override void Awake()
     {

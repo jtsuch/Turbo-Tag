@@ -309,7 +309,8 @@ public class PlayerAnimatorController : MonoBehaviourPun, IPunObservable
         {
             string want = player.Has(PlayerFlag.Charging) ? "Charge"
                         : player.Has(PlayerFlag.Planting) ? "PlantBomb"
-                        : player.Has(PlayerFlag.Defusing) ? "DefuseBomb" : "";
+                        : player.Has(PlayerFlag.Defusing) ? "DefuseBomb"
+                        : player.Has(PlayerFlag.OnLadder) ? (player.Has(PlayerFlag.LadderMoving) ? "LadderClimb" : "LadderHold") : "";
             if (player.IsCaught) want = "";
             if (want != shownAction && want.Length > 0) animator.CrossFadeInFixedTime(want, shownAction.Length > 0 ? 0.15f : 0f, actionLayer);
             if (want.Length > 0 || actionWeight <= 0f) shownAction = want;

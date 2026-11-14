@@ -7,14 +7,21 @@ using Hashtable = ExitGames.Client.Photon.Hashtable;
 /// objects, so every client receives the launch impulse, power multiplier and owner without
 /// a follow-up RPC.
 /// Layout: [0] Vector3 impulse, [1] float power, [2] int owner player's ViewID,
-/// [3] optional Hashtable of cheat values for the object's [TunableParam] fields (see ObjectTunables).
+/// [3] optional Hashtable of cheat values for the object's [TunableParam] fields (see ObjectTunables),
+/// [4] optional S&amp;D upgrade multiplier (the ability's UpgradePower; 1 when absent).
 /// </summary>
 public static class SpawnData
 {
-    public static object[] Create(Vector3 impulse, float power, int ownerViewId, Hashtable tunables = null) =>
-        tunables != null && tunables.Count > 0
-            ? new object[] { impulse, power, ownerViewId, tunables }
-            : new object[] { impulse, power, ownerViewId };
+    public static object[] Create(Vector3 impulse, float power, int ownerViewId, Hashtable tunables = null, float upgrade = 1f)
+    {
+        bool hasTunables = tunables != null && tunables.Count > 0;
+        if (!Mathf.Approximately(upgrade, 1f))
+            return new object[] { impulse, power, ownerViewId, hasTunables ? tunables : new Hashtable(), upgrade };
+        return hasTunables ? new object[] { impulse, power, ownerViewId, tunables } : new object[] { impulse, power, ownerViewId };
+    }
+
+    /// <summary>The S&amp;D upgrade multiplier the ability sent (1 when absent).</summary>
+    public static float Upgrade(PhotonView view) => Read(view, 4, 1f);
 
     /// <summary>Cheat values for the object's tunable fields (null when none were changed).</summary>
     public static Hashtable Tunables(PhotonView view) =>

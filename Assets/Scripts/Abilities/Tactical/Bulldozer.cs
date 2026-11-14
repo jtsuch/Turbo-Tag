@@ -58,7 +58,7 @@ public class Bulldozer : QuickAbility
         if (Owner.IsCaught) { until = 0f; return; } // Down: the charge ends with you
         Owner.NotePushed(); // An outside force: movement mustn't brake or steer it
         Vector3 v = Body.linearVelocity;
-        Body.linearVelocity = direction * speed + Vector3.up * Mathf.Min(v.y, 0f);
+        Body.linearVelocity = direction * (speed * UpgradePower) + Vector3.up * Mathf.Min(v.y, 0f);   // S&D: 90–110%
 
         Vector3 at = Owner.transform.position;
         foreach (var p in Player.All)

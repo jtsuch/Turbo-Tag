@@ -3,7 +3,9 @@ using UnityEngine;
 /// <summary>
 /// Glider: while held in the air, caps fall speed, boosts air control and lets you go a little faster across (×1.15); while still rising it holds up
 /// part of gravity, so a jump (or launch) with Flappy held goes higher and further. Jumping off the ground with it
-/// held adds an extra upward kick (<c>groundJumpBoost</c>). Drains duration only while actually airborne.
+/// held adds an extra upward kick (<c>groundJumpBoost</c>). Drains duration only while actually airborne. In S&amp;D the
+/// jump boost and lift start at half and are upgraded to full (<see cref="Ability.UpgradePower"/>). Going prone while
+/// gliding gives no dive boost (PlayerMovement).
 /// </summary>
 [AbilityInfo("Hold in the air to glide: you fall slowly, steer much better and jumps carry higher.")]
 public class Flappy : BasicAbility
@@ -41,7 +43,7 @@ public class Flappy : BasicAbility
     {
         if (!IsLocal || !held || !groundedLastStep || groundJumpBoost <= 0f) return;
         Vector3 v = Body.linearVelocity;
-        Body.linearVelocity = new Vector3(v.x, v.y + groundJumpBoost * Mathf.Sqrt(Owner.AbilityPower), v.z);
+        Body.linearVelocity = new Vector3(v.x, v.y + groundJumpBoost * UpgradePower * Mathf.Sqrt(Owner.AbilityPower), v.z);
     }
 
     /// <summary>True while gliding (held in the air), on the owner. The animation controller syncs it.</summary>
@@ -70,7 +72,7 @@ public class Flappy : BasicAbility
                 Owner.Modifiers.Set(Stat.AirControl, this, airControlMultiplier);
                 Owner.Modifiers.Set(Stat.Speed, this, glideSpeedMultiplier); // A little faster across while flapping
                 if (Body.linearVelocity.y > 0f && Body.useGravity)
-                    Body.AddForce(-Physics.gravity * risingLift, ForceMode.Acceleration);
+                    Body.AddForce(-Physics.gravity * risingLift * UpgradePower, ForceMode.Acceleration);
                 if (Body.linearVelocity.y < -glideFallSpeed)
                     Body.linearVelocity = new Vector3(Body.linearVelocity.x, -glideFallSpeed, Body.linearVelocity.z);
             }

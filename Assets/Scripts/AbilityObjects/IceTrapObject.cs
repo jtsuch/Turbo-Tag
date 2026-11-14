@@ -15,6 +15,9 @@ public class IceTrapObject : MonoBehaviourPun
     [TunableParam("Trigger Radius", 0.5f, 20f)]
     [SerializeField] private float triggerRadius = 3f;
 
+    /// <summary>How close a body has to come (m, before the placer's power).</summary>
+    public float TriggerRadius => triggerRadius;
+
     [Header("Ice")]
     [TunableParam("Ice Duration", 1f, 30f)]
     [SerializeField] private float iceDuration = 5f;
@@ -34,7 +37,11 @@ public class IceTrapObject : MonoBehaviourPun
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
-    private void Awake() => ObjectTunables.Apply(photonView); // Cheat values from the placer
+    private void Awake()
+    {
+        ObjectTunables.Apply(photonView);
+        Shootable.Ensure(gameObject, 25f, 0.45f);   // Has health (Justin, Nov 14): a few hits break it
+    } // Cheat values from the placer
 
     private void Start()
     {

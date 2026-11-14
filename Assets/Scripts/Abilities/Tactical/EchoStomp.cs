@@ -15,6 +15,7 @@ public class EchoStomp : QuickAbility
 
     protected override void Activate()
     {
+        float radius = this.radius * UpgradePower;   // S&D: 75–125%
         foreach (var p in Player.All)
         {
             if (!TacticalNet.IsTarget(Owner, p, enemiesOnly: true)) continue;

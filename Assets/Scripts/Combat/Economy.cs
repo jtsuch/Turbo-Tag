@@ -20,12 +20,11 @@ public static class Economy
     };
 
     /// <summary>
-    /// Ability upgrades: every ability starts each round with one use (Basic abilities: their bar), and each can be
-    /// upgraded twice for the half: +1 use for Quick/Throw/Trap abilities, +40% bar for Basic ones.
+    /// Ability upgrades: each ability can be upgraded twice a half; what an upgrade does (a longer bar, more strength,
+    /// another use a round) is <see cref="AbilityUpgrades"/>' table.
     /// </summary>
     public const int MaxUpgrades = 2;
     public static readonly int[] UpgradePrice = { 250, 400 };
-    public const float DurationPerUpgrade = 0.4f;
 
     public static string Format(int credits) => $"${credits:#,0}";
 }

@@ -50,6 +50,7 @@ public class TripWireObject : TacticalTrapObject
 
         Live.Add(this);
         Shootable = GetComponent<Shootable>();
+        if (Shootable != null) global::Shootable.Ensure(gameObject, Shootable.health, 0.35f);   // Its box on the wall, not the wire
         if (Shootable != null) Shootable.Broken += () => NotifyBroken("shot down");
     }
 

@@ -15,6 +15,8 @@ public class BubbleShield : QuickAbility
     protected override void Activate()
     {
         PlayerEffect.Apply(typeof(BubbleShieldEffect), Owner, seconds);
+        // S&D upgrades: 25 → 50 → 75 soaked (the effect has just set the normal 50)
+        if (Owner.Health != null) Owner.Health.Shield = BubbleShieldEffect.Amount * UpgradePower;
         Owner.photonView.RPC(nameof(RPC_BubbleFx), RpcTarget.All, Owner.transform.position + Vector3.up * 1.4f);
     }
 

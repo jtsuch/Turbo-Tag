@@ -3,9 +3,11 @@ using UnityEngine;
 
 /// <summary>
 /// Gravity orb: floats slowly in a straight line (no gravity, passes through everything: its colliders are
-/// triggers, so nothing can bounce or redirect it) and pulls nearby players and physics
-/// objects toward itself for its lifetime. The pull fades gently: near full strength for most of
-/// <see cref="pullRadius"/>, reaching zero at the edge.
+/// triggers, so nothing can bounce or redirect it) and draws nearby players and physics objects toward itself for its
+/// lifetime. Since Nov 14 (Justin: "don't fling players around") it's a glide, not a force: each body's velocity eases
+/// toward "the way to the middle × <see cref="pullRate"/>" (plus the orb's own drift), strongest near the middle and
+/// fading to nothing at <see cref="pullRadius"/>, so things arrive and settle instead of being slingshot through it.
+/// The reach shows as a faint purple shell with motes drifting inward.
 /// Each client pulls the bodies it has authority over (its own player and local props).
 /// Attach to: Resources/Object/GravBall (with Rigidbody, small SphereCollider, PhotonView).
 /// </summary>
@@ -19,9 +21,12 @@ public class GravBallObject : NetworkedProjectile
     [Header("Gravity")]
     [TunableParam("Pull Radius", 2f, 50f)]
     [SerializeField] private float pullRadius = 14f;
-    [Tooltip("Pull at the orb's centre (m/s²), fading to 0 at the edge.")]
-    [TunableParam("Pull Force", 10f, 400f)]
-    [SerializeField] private float pullForce  = 90f;
+    [Tooltip("Speed toward the middle per metre away (1/s): 10 m out it draws you in at about this × 10 m/s.")]
+    [TunableParam("Pull Rate", 0.1f, 4f)]
+    [SerializeField] private float pullRate = 0.9f;
+    [Tooltip("How quickly a body's velocity eases to the pull (1/s) at the middle, fading to 0 at the edge.")]
+    [TunableParam("Grip", 0.5f, 20f)]
+    [SerializeField] private float grip = 3.5f;
 
     [Tooltip("The thrower isn't pulled until they have been outside the pull radius once (so it never drags them " +
              "along by surprise), or this many seconds have passed, whichever comes first.")]
@@ -57,6 +62,7 @@ public class GravBallObject : NetworkedProjectile
         launchTime  = Time.time;
         throwerBody = Thrower != null ? Thrower.GetComponent<Rigidbody>() : null;
         if (orbVFX != null) Instantiate(orbVFX, transform.position, transform.rotation, transform);
+        BuildShell();
         if (IsAuthority) StartCoroutine(Expire());
     }
 
@@ -92,10 +98,60 @@ public class GravBallObject : NetworkedProjectile
             float   dist  = toOrb.magnitude;
             if (dist < 0.1f || dist > radius) continue;
 
-            // An acceleration, so it pulls a player as hard as a crate, and through movement braking
+            // Ease the velocity toward a glide to the middle (no overshoot: the closer, the slower it wants to go)
+            var player = rb.GetComponent<Player>();
+            if (player != null && !player.AffectedBy(photonView.OwnerActorNr)) continue; // Shielded / a ghost
             float t = dist / radius;
-            WorldFx.Push(rb, toOrb.normalized * (pullForce * Power * (1f - t * t)), ForceMode.Acceleration, photonView.OwnerActorNr, "GravBall");
+            float weight = 1f - Mathf.Exp(-grip * (1f - t * t) * Mathf.Sqrt(Power) * Time.fixedDeltaTime);
+            Vector3 want = toOrb * pullRate + Body.linearVelocity;
+            rb.linearVelocity = Vector3.Lerp(rb.linearVelocity, want, weight);
+            if (player != null) player.NotePushed(photonView.OwnerActorNr, "GravBall");
         }
+    }
+
+    // ─── The reach, visible (every screen) ────────────────────────────────────
+
+    private Transform shell;
+    private Material shellMaterial;
+    private float nextMote;
+
+    private void BuildShell()
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        Destroy(go.GetComponent<Collider>());
+        go.name = "GravBall Reach";
+        shell = go.transform;
+        shell.SetParent(transform, false);
+        shell.localScale = Vector3.one * 0.1f;
+        shellMaterial = new Material(Shader.Find("Sprites/Default"));   // Both faces: seen from inside too
+        var r = go.GetComponent<Renderer>();
+        r.sharedMaterial = shellMaterial;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    }
+
+    private void Update()
+    {
+        if (shell == null) return;
+        float radius = pullRadius * Mathf.Sqrt(Power);
+        // The shell grows out to the reach over half a second, then breathes; never scaled by the orb's own size
+        float grow = Mathf.Clamp01((Time.time - launchTime) / 0.5f);
+        float scale = 2f * radius * grow / Mathf.Max(0.0001f, transform.lossyScale.x);
+        shell.localScale = Vector3.one * scale;
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 4f);
+        shellMaterial.color = new Color(0.65f, 0.35f, 1f, 0.05f + 0.04f * pulse);
+        // Motes drifting in from the edge
+        if (Time.time >= nextMote)
+        {
+            nextMote = Time.time + 0.05f;
+            Vector3 dir = Random.onUnitSphere;
+            Vfx.Burst(transform.position + dir * radius * Random.Range(0.6f, 1f), new Color(0.75f, 0.5f, 1f, 0.9f), 1,
+                      radius * 0.9f, 0.18f, 0.9f, direction: -dir, spread: 0.05f);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (shellMaterial != null) Destroy(shellMaterial);
     }
 
 #if UNITY_EDITOR

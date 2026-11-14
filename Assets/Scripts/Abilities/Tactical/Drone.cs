@@ -16,7 +16,7 @@ public class Drone : QuickAbility
         var cam = PlayerCam.Local != null ? PlayerCam.Local.Camera.transform : transform;
         Vector3 start = cam.position + cam.forward * 1.2f;
         PhotonNetwork.Instantiate(ResourcePath, start, Quaternion.LookRotation(cam.forward), 0,
-            SpawnData.Create(cam.forward * flightSpeed, Owner.AbilityPower, Owner.photonView.ViewID));
+            SpawnData.Create(cam.forward * flightSpeed, UpgradePower, Owner.photonView.ViewID));   // S&D: the scan radius ×
         Sfx.Here(SfxKind.ZapUp, 0.6f, 1.4f);
     }
 }

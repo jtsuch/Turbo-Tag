@@ -152,7 +152,7 @@ public class PlayerMovement : MonoBehaviourPun
         jumpedThisStep = false;
 
         // On a zip line: the line carries the body
-        if (player.OnZipLine) return;
+        if (player.OnZipLine || player.OnLadder) return;
 
         // Stuck to a surface (Chameleon): no movement, no gravity
         if (player.IsAnchored)
@@ -179,7 +179,7 @@ public class PlayerMovement : MonoBehaviourPun
     // One writer means no system can leave gravity off (or on) after another one ends.
     private void UpdateGravity()
     {
-        bool off = player.IsDashing || player.IsAnchored || player.OnZipLine || player.IsMagnetized || player.ZeroGravity
+        bool off = player.IsDashing || player.IsAnchored || player.OnZipLine || player.OnLadder || player.IsMagnetized || player.ZeroGravity
                 || State == Player.MovementState.WallRun || State == Player.MovementState.Hang
                 || (State == Player.MovementState.Climb && onLadder); // Resting on a ladder doesn't slide down
         if (rb.useGravity == off) rb.useGravity = !off;
@@ -344,8 +344,9 @@ public class PlayerMovement : MonoBehaviourPun
         // Infinite Climb looks further, so drifting off the wall or glancing sideways doesn't end the climb
         float reach = player.SteadyClimbSpeed > 0f ? SteadyClimbReach : 1f;
         wallForward = Physics.Raycast(chest, transform.forward, out RaycastHit ahead, reach, structureLayer);
-        // A placed Ladder (the only TippingProp) at any lean: climbed from a standstill, and you can rest on it
-        onLadder = wallForward && ahead.collider.GetComponentInParent<TippingProp>() != null;
+        // A placed Ladder (the only TippingProp) isn't a wall to climb: it's climbed with F (LadderClimb, Nov 14)
+        if (wallForward && ahead.collider.GetComponentInParent<TippingProp>() != null) wallForward = false;
+        onLadder = false;
         if (!onLadder && State == Player.MovementState.Climb && ladderGrip > 0f && Time.time - ladderGrip < 0.15f)
             onLadder = true; // A rung's gap for a moment doesn't drop you
         if (onLadder && wallForward) ladderGrip = Time.time;
@@ -697,6 +698,8 @@ public class PlayerMovement : MonoBehaviourPun
     }
 
     private float nextDiveTime;
+    private Flappy flappy;
+    private bool Gliding => (flappy != null || TryGetComponent(out flappy)) && flappy.enabled && flappy.IsGliding;
 
     private void ToggleProne()
     {
@@ -705,7 +708,8 @@ public class PlayerMovement : MonoBehaviourPun
         player.ToggleProne();
 
         // Airborne dive
-        if (State == Player.MovementState.Prone && !OnGround && Time.time >= nextDiveTime)
+        // (Not while gliding with Flappy: prone + glide was a free speed boost)
+        if (State == Player.MovementState.Prone && !OnGround && Time.time >= nextDiveTime && !Gliding)
         {
             rb.AddForce(transform.forward * proneDiveImpulse, ForceMode.Impulse);
             nextDiveTime = Time.time + proneDiveCooldown; // Invisible cooldown: going prone still works, the boost waits
@@ -793,6 +797,9 @@ public class PlayerMovement : MonoBehaviourPun
             else currentClimbSpeed = 0f; // Resting spends the climb: like a wall, it doesn't come back
             return;
         }
+        // Infinite Climb pressed while sliding down a wall after a normal climb ran out (or falling): straight up at its
+        // steady speed, whatever the momentum (the state was already Climb, so StartClimb never ran to reset it)
+        if (player.SteadyClimbSpeed > 0f) currentClimbSpeed = player.SteadyClimbSpeed;
         if (currentClimbSpeed <= MinClimbSpeed)
         {
             ClampFallSpeed();

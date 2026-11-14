@@ -127,14 +127,35 @@ public abstract class TrapAbility : Ability
         VisualProxy.ApplyMaterial(hologram, hologramMaterial);
         hologramRenderers = hologram.GetComponentsInChildren<Renderer>();
         hologramBox      = hologram.GetComponentInChildren<BoxCollider>(true);
+        // Its reach, while placing (Ice Trap): a see-through sphere round the hologram, added after the renderers are
+        // listed so it doesn't count toward the hologram's size or colour
+        float reach = PreviewRadius;
+        if (reach > 0f)
+        {
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Destroy(sphere.GetComponent<Collider>());
+            sphere.name = "Reach";
+            sphere.transform.localScale = Vector3.one * 2f * reach;
+            reachPreview = sphere;   // Not a child: the hologram's colour tint would repaint it
+            var r = sphere.GetComponent<Renderer>();
+            r.sharedMaterial = new Material(Shader.Find("Sprites/Default")) { color = new Color(0.4f, 0.95f, 1f, 0.1f) };
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
         shownValid       = null;
         placing          = true;
         UpdateHologram();
     }
 
+    private GameObject reachPreview;
+
     private void Update()
     {
         if (placing) UpdateHologram();
+        if (reachPreview != null)
+        {
+            if (!placing || hologram == null) { Destroy(reachPreview); reachPreview = null; }
+            else reachPreview.transform.position = hologram.transform.position;
+        }
     }
 
     private void UpdateHologram()
@@ -191,6 +212,9 @@ public abstract class TrapAbility : Ability
     /// <summary>False lets the object overlap walls and players (Ice Wall: only its centre has to be on a floor).</summary>
     protected virtual bool NeedsFreeSpace => true;
 
+    /// <summary>Above 0: while placing, a see-through sphere this big shows what the trap will reach (Ice Trap).</summary>
+    protected virtual float PreviewRadius => 0f;
+
     /// <summary>Whether the trap may go on a surface facing <paramref name="normal"/> (all surfaces by default).</summary>
     protected virtual bool IsValidSurface(Vector3 normal) => true;
 
@@ -225,7 +249,7 @@ public abstract class TrapAbility : Ability
         if (!canPlace) return;
 
         var placed = PhotonNetwork.Instantiate(ResourcePath, targetPosition, targetRotation, 0,
-            SpawnData.Create(Vector3.zero, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides()));
+            SpawnData.Create(Vector3.zero, power * Owner.AbilityPower, Owner.photonView.ViewID, ObjectTunableOverrides(), UpgradePower));
 
         Cancel();
         StartCooldown();

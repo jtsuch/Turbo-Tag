@@ -41,6 +41,9 @@ public class GunViewModel : MonoBehaviour
 
     public void Kick(float amount = 1f) => kick = Mathf.Min(1.5f, kick + amount);
 
+    /// <summary>Taking the gun out: 0 = still down out of view, 1 = up (PlayerGun sets it each frame).</summary>
+    public float Drawing { get; set; } = 1f;
+
     /// <summary>A knife swing: a quick slash across and forward, then back to rest.</summary>
     public void Slash() => slashAt = Time.time;
     private float slashAt = -10f;
@@ -62,6 +65,14 @@ public class GunViewModel : MonoBehaviour
         Quaternion turn   = hasMag
             ? Quaternion.Euler(18f * r - 6f * kick, 0f, -28f * r)     // Tip down and roll to show the magazine well
             : Quaternion.Euler(-35f * r - 6f * kick, 0f, -15f * r);   // Tilt up to check the chamber
+        // Drawing: rises from below the view, tipped down, easing in
+        if (Drawing < 1f)
+        {
+            float lowered = 1f - Smooth(Drawing);
+            offset += new Vector3(0f, -0.35f * lowered, -0.1f * lowered);
+            turn   *= Quaternion.Euler(40f * lowered, 0f, -12f * lowered);
+        }
+
         // Slash: wind back a touch (first 25%), sweep forward and across to the left, ease back
         float s = (Time.time - slashAt) / SlashTime;
         if (s >= 0f && s < 1f)

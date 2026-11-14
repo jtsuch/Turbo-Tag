@@ -13,6 +13,39 @@ public class Shootable : MonoBehaviourPun
     [Tooltip("Damage it takes before breaking.")]
     public float health = 50f;
 
+    /// <summary>Above 0: a shot passing within this distance of the object's centre hits it, even with no solid
+    /// collider (small traps with only trigger colliders: Ice Trap, Mouse Trap, the Trip Wire's box). PlayerGun.Trace.</summary>
+    public float hitRadius;
+
+    /// <summary>Every shootable hit by distance (<see cref="hitRadius"/> above 0).</summary>
+    public static readonly System.Collections.Generic.List<Shootable> ByDistance = new();
+
+    /// <summary>Where a shot aims for it (the centre of its renderers, or its position).</summary>
+    public Vector3 Centre
+    {
+        get
+        {
+            var r = GetComponentInChildren<Renderer>();
+            return r != null && r.enabled ? r.bounds.center : transform.position;
+        }
+    }
+
+    private void OnEnable()  { if (hitRadius > 0f && !ByDistance.Contains(this)) ByDistance.Add(this); }
+    private void OnDisable() => ByDistance.Remove(this);
+
+    /// <summary>Makes <paramref name="go"/> shootable by distance with <paramref name="hp"/> health (adds the
+    /// component if it's missing). Call from Awake, before any RPC goes out on its PhotonView.</summary>
+    public static Shootable Ensure(GameObject go, float hp, float radius)
+    {
+        if (!go.TryGetComponent(out Shootable s)) s = go.AddComponent<Shootable>();
+        s.health = hp;
+        s.hitRadius = radius;
+        if (!ByDistance.Contains(s)) ByDistance.Add(s);
+        // Its PhotonView may have listed its RPC receivers already: add this one
+        if (go.TryGetComponent(out PhotonView view)) view.RefreshRpcMonoBehaviourCache();
+        return s;
+    }
+
     /// <summary>Owner: it broke (before it's removed).</summary>
     public event Action Broken;
 
@@ -48,6 +81,7 @@ public class Shootable : MonoBehaviourPun
         Vfx.Burst(at, new Color(0.9f, 0.9f, 1f), 24, 6f, 0.25f, 0.6f);
         foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = false;
         foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
+        ByDistance.Remove(this);
     }
 
     private void Remove()
