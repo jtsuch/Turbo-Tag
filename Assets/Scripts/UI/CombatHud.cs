@@ -63,6 +63,13 @@ public class CombatHud : MonoBehaviour
 
     // ─── Creation ─────────────────────────────────────────────────────────────
 
+    /// <summary>Takes the HUD away (Freeplay's Guns switch turned off).</summary>
+    public static void Remove()
+    {
+        if (instance != null) Destroy(instance.gameObject);
+        instance = null;
+    }
+
     public static void Create()
     {
         if (instance != null) return;

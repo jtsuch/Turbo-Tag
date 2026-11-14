@@ -21,6 +21,15 @@ public class FreeplayMode : GameMode
 
     public override float CooldownMultiplier(PlayerRole role) => 0f;
 
+    // The Guns switch (Match Rules → Combat): guns and health for practice; the shop on B at any time. Turned on or
+    // off mid-session, GameModeManager adds or removes the gun systems.
+    public override bool   UsesGuns          => MatchRules.FreeplayGuns;
+    public override bool   ShopAnytime       => true;
+    public override bool   AllowsHealthDrops => false;
+    public override bool   AnnouncesTags     => false;
+    public override string CaughtBanner      => "";
+    public override string RespawnBanner     => "";
+
     // Practice: everyone on the map
     public override bool ShowsOnMap(PlayerRole viewer, PlayerRole target) => true;
 

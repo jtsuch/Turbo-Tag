@@ -42,6 +42,35 @@ public static class Sfx
         Play(source, kind, volume, pitch);
     }
 
+    /// <summary>Plays a recorded <paramref name="clip"/> in 3D at <paramref name="position"/> from the same pool
+    /// (footsteps: <c>Resources/Sfx/PenguinSteps</c>).</summary>
+    public static void ClipAt(AudioClip clip, Vector3 position, float volume = 1f, float maxDistance = 45f, float pitch = 1f)
+    {
+        if (clip == null) return;
+        var source = Source();
+        source.transform.position = position;
+        source.spatialBlend = 1f;
+        source.maxDistance = maxDistance;
+        source.Stop();
+        source.clip = clip;
+        source.volume = Mathf.Clamp01(volume);
+        source.pitch = pitch;
+        source.Play();
+    }
+
+    /// <summary>Plays a recorded <paramref name="clip"/> flat (2D): the local player's own gun.</summary>
+    public static void ClipHere(AudioClip clip, float volume = 1f, float pitch = 1f)
+    {
+        if (clip == null) return;
+        var source = Source();
+        source.spatialBlend = 0f;
+        source.Stop();
+        source.clip = clip;
+        source.volume = Mathf.Clamp01(volume);
+        source.pitch = pitch;
+        source.Play();
+    }
+
     /// <summary>Plays <paramref name="kind"/> flat (2D): the local player's own feedback.</summary>
     public static void Here(SfxKind kind, float volume = 1f, float pitch = 1f)
     {

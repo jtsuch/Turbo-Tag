@@ -19,7 +19,7 @@ public static class LevelPlayability
     private const string LevelsFolder = "Assets/Scenes/Levels";
     private const string AuditPath    = "Library/TurboTag/scratch/level_audit.txt";
     private const int    Structure = 6, WantedSpawns = 12;
-    private static readonly HashSet<string> Skip = new() { "PenguinsEdge" };
+    private static readonly HashSet<string> Skip = new();
     // Lowest floor a spawn may use, where the bottom of the level isn't somewhere to start (Pitfall's pit)
     private static readonly Dictionary<string, float> MinSpawnY = new() { ["Pitfall"] = 20f };
 

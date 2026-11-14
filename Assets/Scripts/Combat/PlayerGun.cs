@@ -112,6 +112,7 @@ public class PlayerGun : MonoBehaviourPun
             Current = GunsActive ? GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, "")) : null;
 
         bool shown = GunsActive && Current != null && !player.IsCaught && !player.IsDownAfterTag && !Stowed;
+        UpdateGunSounds();
         if (player.Animation != null)
         {
             player.Animation.HoldingGun    = shown;
@@ -196,7 +197,8 @@ public class PlayerGun : MonoBehaviourPun
     {
         reloadEndsAt  = Time.time + Current.ReloadTime;
         reloadPending = true;
-        Sfx.Here(SfxKind.Reload, 0.6f);
+        reloadCue = 0;
+        if (GunAudio.For(Current.Id) is not { HasReload: true }) Sfx.Here(SfxKind.Reload, 0.6f);
         photonView.RPC(nameof(RPC_Reload), RpcTarget.Others);
     }
 
@@ -205,7 +207,8 @@ public class PlayerGun : MonoBehaviourPun
     {
         var gun = GunCatalog.Find(NetProps.Of(photonView.Owner, PlayerKeys.Gun, ""));
         if (gun != null) reloadEndsAt = Time.time + gun.ReloadTime;
-        Sfx.At(SfxKind.Reload, transform.position + Vector3.up, 0.6f, 20f);
+        reloadCue = 0;
+        if (gun == null || GunAudio.For(gun.Id) is not { HasReload: true }) Sfx.At(SfxKind.Reload, transform.position + Vector3.up, 0.6f, 20f);
     }
 
     // ─── Shooting (owner) ─────────────────────────────────────────────────────
@@ -282,7 +285,7 @@ public class PlayerGun : MonoBehaviourPun
         }
 
         GunFx.Flash(muzzle);
-        Fx.Shot(gun.Id, muzzle, local: true);
+        ShotSound(gun, muzzle, local: true);
         var model = ViewModel(gun.Id);
         if (model != null) model.Kick();
         PlayerCam.Local.AddRecoil(gun.Recoil);
@@ -348,6 +351,77 @@ public class PlayerGun : MonoBehaviourPun
         if (model != null) model.Slash();
         Sfx.At(SfxKind.Whoosh, transform.position + Vector3.up, 0.7f, 25f, 1.4f);
     }
+
+    // ─── Recorded gun sounds (every copy) ─────────────────────────────────────
+
+    private float  lastShotSoundAt = -10f;
+    private bool   tailPending;
+    private int    reloadCue = 3;
+    private string tailGun;
+    private float  cycleAt = -1f;   // When the pump/bolt after a shot plays (-1: none waiting)
+    private string cycleGun;
+
+    // A tap or the first shot of a spray: the full shot with its echo; every later shot of a held spray (automatic
+    // guns): one short shot body (about the fire interval, so they run together); when the spray stops, the echo
+    // (Tail). Pump and bolt guns work the action a moment after each shot (Cycle). Each gun's recipe sets the pitch
+    // (GunAudio). Guns without recordings keep the code-made shot.
+    private void ShotSound(GunInfo gun, Vector3 muzzle, bool local)
+    {
+        var bank = GunAudio.For(gun.Id);
+        if (bank == null) { Fx.Shot(gun.Id, muzzle, local); return; }
+        float interval = gun.FireInterval / Mathf.Max(0.1f, local ? FireRateMultiplier : 1f);
+        bool automatic = gun.Automatic || (local && ForceAutomatic);
+        bool spraying = automatic && Time.time - lastShotSoundAt < interval * 1.6f && bank.Autos.Count > 0;
+        float range = gun.Id == "Sniper" ? 160f : gun.Id == "Shotgun" ? 90f : 85f;
+        GunAudio.Play(spraying ? bank.Auto() : bank.Shot(), local, muzzle, local ? 0.5f : 1f, range, bank.Pitch);
+        lastShotSoundAt = Time.time;
+        tailPending = spraying && bank.Tail != null;
+        tailGun = gun.Id;
+        if (bank.Cycle != null) { cycleAt = Time.time + bank.CycleDelay; cycleGun = gun.Id; }
+    }
+
+    private void UpdateGunSounds()
+    {
+        bool local = photonView.IsMine;
+        // The spray stopped (no shot for a fire interval): its echo, straight after the last shot's body
+        if (tailPending)
+        {
+            var gun = GunCatalog.Find(tailGun);
+            float interval = gun != null ? gun.FireInterval / Mathf.Max(0.1f, local ? FireRateMultiplier : 1f) : 0.1f;
+            if (Time.time - lastShotSoundAt >= interval || Current == null || Current.Id != tailGun)
+            {
+                tailPending = false;
+                var bank = GunAudio.For(tailGun);
+                if (bank != null && !Killcam.IsPlaying)
+                    GunAudio.Play(bank.Tail, local, Muzzle(local).position, local ? 0.5f : 1f, 85f, bank.Pitch);
+            }
+        }
+
+        // The pump or bolt after a shot (not if the gun was put away or the player went down meanwhile)
+        if (cycleAt >= 0f && Time.time >= cycleAt)
+        {
+            cycleAt = -1f;
+            var bank = GunAudio.For(cycleGun);
+            if (bank != null && Current != null && Current.Id == cycleGun && !player.IsCaught && !Killcam.IsPlaying)
+                GunAudio.Play(bank.Cycle, local, transform.position + Vector3.up, local ? 0.5f : 0.8f, 25f, bank.Pitch);
+        }
+
+        // Reload: magazine out, magazine in, bolt, on the reload animation's beats (GunViewModel: the magazine drops
+        // at 20-40% and is back by 80%); a cancelled reload (weapon switch, death) plays no more of it
+        if (Current == null || !IsReloading) { reloadCue = 3; return; }
+        var reload = GunAudio.For(Current.Id);
+        if (reload == null || !reload.HasReload) return;
+        float p = ReloadProgress;
+        Vector3 at = transform.position + Vector3.up;
+        while (reloadCue < 3 && p >= ReloadBeats[reloadCue])
+        {
+            var clip = reloadCue == 0 ? reload.ReloadOut : reloadCue == 1 ? reload.ReloadIn : reload.ReloadBolt;
+            GunAudio.Play(clip, local, at, local ? 0.55f : 0.8f, 22f, reload.ReloadPitch);
+            reloadCue++;
+        }
+    }
+
+    private static readonly float[] ReloadBeats = { 0.12f, 0.6f, 0.8f };
 
     private static Vector3 Spread(Transform view, float degrees)
     {
@@ -483,7 +557,8 @@ public class PlayerGun : MonoBehaviourPun
         Minimap.NoteShot(player);
 
         Vector3 from = Muzzle(false).position;
-        Fx.Shot(Current != null ? Current.Id : null, from, local: false);
+        if (Current != null) ShotSound(Current, from, local: false);
+        else Fx.Shot(null, from, local: false);
         if (Vector3.Distance(from, end) < (Current != null ? Current.Range : 150f) - 1f) Fx.Impact(end, from, false);
         GunFx.Tracer(from, end);
         for (int i = 1; i < pellets; i++)

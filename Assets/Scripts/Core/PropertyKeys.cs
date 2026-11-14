@@ -93,6 +93,7 @@ public static class RuleKeys
     public const string FallPenalty        = "Rule_FallPenalty";
     public const string Killcam            = "Rule_Killcam";
     public const string HealthDrops        = "Rule_HealthDrops";
+    public const string FreeplayGuns       = "Rule_FreeplayGuns";   // Freeplay: guns, health and the shop on (B)
     public const string GunPickTime        = "Rule_GunPickTime";
     public const string GunModeAbilities   = "Rule_GunModeAbilities";
     public const string MovementSpread     = "Rule_MovementSpread";

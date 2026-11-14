@@ -103,6 +103,40 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         TryInitialize();
     }
 
+    private bool gunSystemsOn;
+
+    // Adds the gun systems when the mode uses guns, and takes them away again when it stops (Freeplay's Guns switch):
+    // CombatManager (health, deaths, kill feed, killcam, HUD), Loadout (slots and shop) and GunDrops. They share this
+    // PhotonView, so its RPC list is refreshed after a change.
+    private void SyncGunSystems()
+    {
+        gunSystemsOn = Mode.UsesGuns;
+        if (gunSystemsOn)
+        {
+            if (!TryGetComponent(out CombatManager _)) gameObject.AddComponent<CombatManager>();
+            if (!TryGetComponent(out Loadout _)) gameObject.AddComponent<Loadout>();
+            if (!TryGetComponent(out GunDrops _)) gameObject.AddComponent<GunDrops>();
+        }
+        else
+        {
+            var local = Player.Local;
+            if (local != null)
+            {
+                local.Gun.Equip(null);
+                local.Health.Armor = 0f;
+                local.Health.Refill();
+            }
+            if (TryGetComponent(out GunDrops drops)) Destroy(drops);
+            if (TryGetComponent(out Loadout loadout)) Destroy(loadout);
+            if (TryGetComponent(out CombatManager combat)) Destroy(combat);
+            if (TryGetComponent(out Killcam killcam)) Destroy(killcam);
+            CombatHud.Remove();
+            CombatFeedback.Remove();
+            ShopMenu.Remove();
+        }
+        if (photonView != null) photonView.RefreshRpcMonoBehaviourCache();
+    }
+
     // The room may not exist yet when a level is opened directly in the editor (offline debug
     // mode), so the mode is created as soon as it does.
     private bool TryInitialize()
@@ -115,9 +149,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         Mode.Attach(this);
 
         // Gun modes: health, guns, kill feed, health drops and killcam (RPCs share this scene PhotonView)
-        if (Mode.UsesGuns && !TryGetComponent(out CombatManager _)) gameObject.AddComponent<CombatManager>();
-        if (Mode.UsesGuns && !TryGetComponent(out Loadout _)) gameObject.AddComponent<Loadout>();
-        if (Mode.UsesGuns && !TryGetComponent(out GunDrops _)) gameObject.AddComponent<GunDrops>();
+        SyncGunSystems();
         // Search & Destroy: the bomb, planting/defusing, its HUD and spectating (shares this PhotonView too)
         if (Mode is SearchDestroyMode && !TryGetComponent(out SearchDestroyController _)) gameObject.AddComponent<SearchDestroyController>();
         // Modes that keep dead players out (Last Man Standing): watch a survivor
@@ -136,6 +168,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     private void Update()
     {
         if (!TryInitialize()) return;
+        if (Mode.UsesGuns != gunSystemsOn) SyncGunSystems();   // Freeplay's Guns switch, mid-session
         NetworkConfig.FitToRoom();
         Mode.ClientUpdate();
         if (!PhotonNetwork.IsMasterClient) return;

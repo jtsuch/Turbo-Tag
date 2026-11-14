@@ -104,6 +104,8 @@ public static class MatchRules
     public static float FallPenalty => UnityEngine.Mathf.Max(0f, NetProps.Room(RuleKeys.FallPenalty, DefaultFallPenalty));
     public static bool  Killcam     => NetProps.Room(RuleKeys.Killcam, true);
     public static bool  HealthDrops => NetProps.Room(RuleKeys.HealthDrops, true);
+    /// <summary>Freeplay's Guns switch (Match Rules): guns, health and the shop (B, any time). Off by default.</summary>
+    public static bool  FreeplayGuns => NetProps.Room(RuleKeys.FreeplayGuns, false);
     public static float GunPickTime => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.GunPickTime, DefaultGunPickTime));
     public static bool  GunModeAbilities => NetProps.Room(RuleKeys.GunModeAbilities, true);
     /// <summary>Guns get less accurate in the air (off by default: flip and snipe with perfect aim).</summary>

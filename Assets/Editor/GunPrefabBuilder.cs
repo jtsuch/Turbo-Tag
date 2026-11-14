@@ -27,13 +27,27 @@ public static class GunPrefabBuilder
             log.AppendLine(BuildOne(path.Replace('\\', '/'), id));
         }
         AssetDatabase.SaveAssets();
+        GunIcons.Build();   // The shop's silhouettes follow the models
         Debug.Log("[GunPrefabBuilder]\n" + log);
     }
 
     private static string BuildOne(string modelPath, string id)
     {
+        var root = Align(modelPath, id, out string info);
+        if (root == null) return info;
+        string outPath = $"{OutputFolder}/{id}.prefab";
+        PrefabUtility.SaveAsPrefabAsset(root, outPath);
+        Object.DestroyImmediate(root);
+        return $"{id}: {outPath}, {info}";
+    }
+
+    /// <summary>The model in a scene object laid out like a gun prefab (+Z muzzle, grip down, 1 m long, GunTip
+    /// child), not saved; null and the reason in <paramref name="info"/> if it can't be. Used by GunIcons too.</summary>
+    public static GameObject Align(string modelPath, string id, out string info)
+    {
+        info = "";
         var asset = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-        if (asset == null) return $"! {modelPath} did not load";
+        if (asset == null) { info = $"! {modelPath} did not load"; return null; }
 
         var model = (GameObject)PrefabUtility.InstantiatePrefab(asset);
         model.transform.SetPositionAndRotation(Vector3.zero, asset.transform.rotation);
@@ -45,7 +59,7 @@ public static class GunPrefabBuilder
             if (filter.sharedMesh == null) continue;
             foreach (var v in filter.sharedMesh.vertices) points.Add(filter.transform.TransformPoint(v));
         }
-        if (points.Count < 3) { Object.DestroyImmediate(model); return $"! {id}: no mesh"; }
+        if (points.Count < 3) { Object.DestroyImmediate(model); info = $"! {id}: no mesh"; return null; }
 
         Vector3 mean = Vector3.zero;
         foreach (var p in points) mean += p;
@@ -56,7 +70,7 @@ public static class GunPrefabBuilder
         // are left as they were (the AR's ~27° has been played with since the start)
         Vector3 axis = PrincipalAxis(points, mean);
         Vector3 snapped = SnapToAxis(axis);
-        if (Vector3.Angle(axis, snapped) > 35f) axis = snapped;
+        if (Vector3.Angle(axis, snapped) > 35f || AlwaysSnap.Contains(id)) axis = snapped;
         Vector3 up   = Vector3.ProjectOnPlane(Vector3.up, axis).normalized;
         if (up.sqrMagnitude < 0.5f) up = Vector3.ProjectOnPlane(Vector3.forward, axis).normalized;
 
@@ -99,12 +113,13 @@ public static class GunPrefabBuilder
 
         foreach (var c in root.GetComponentsInChildren<Collider>(true)) Object.DestroyImmediate(c);
 
-        string outPath = $"{OutputFolder}/{id}.prefab";
-        PrefabUtility.SaveAsPrefabAsset(root, outPath);
-        string result = $"{id}: {outPath}, model length {length:0.###}, axis {axis}, magazine {(magazine != null ? "yes" : "no")}, tip {tip.localPosition}";
-        Object.DestroyImmediate(root);
-        return result;
+        info = $"model length {length:0.###}, axis {axis}, magazine {(magazine != null ? "yes" : "no")}, tip {tip.localPosition}";
+        return root;
     }
+
+    // Pistols whose grip still tilts the principal axis a little (~8°: the Tusk pointed up, the Pebble's icon down);
+    // their barrels are square to the model's axes
+    private static readonly HashSet<string> AlwaysSnap = new() { "DesertEagle", "Pistol" };
 
     private static Vector3 SnapToAxis(Vector3 v)
     {

@@ -29,7 +29,7 @@ public class ShopMenu : MonoBehaviour
 
     private sealed class Item
     {
-        public Image Face; public TMP_Text Name, Stats, Price, State;
+        public Image Face, Icon; public TMP_Text Name, Stats, Price, State;
         public Func<bool> Owned, Sellable, Affordable;
     }
 
@@ -39,6 +39,14 @@ public class ShopMenu : MonoBehaviour
     {
         if (instance != null) return;
         instance = new GameObject("ShopMenu").AddComponent<ShopMenu>();
+    }
+
+    /// <summary>Takes the shop away (Freeplay's Guns switch turned off).</summary>
+    public static void Remove()
+    {
+        IsOpen = false;
+        if (instance != null) Destroy(instance.gameObject);
+        instance = null;
     }
 
     public static void Open()
@@ -93,7 +101,7 @@ public class ShopMenu : MonoBehaviour
         built = true;
 
         var root = (RectTransform)canvas.transform;
-        float width = economy ? 1640f : 840f, height = 760f;
+        float width = economy ? 1640f : 840f, height = 830f;
         window = UIKit.Card(root, Theme.panel, 28f, 0.55f, "Shop");
         UIKit.Place(window, new Vector2(0.5f, 0.5f), new Vector2(0f, 10f), new Vector2(width, height));
 
@@ -149,7 +157,7 @@ public class ShopMenu : MonoBehaviour
         UIKit.Place(label.rectTransform, new Vector2(0f, 1f), new Vector2(x, -96f), new Vector2(w, 30f));
         label.rectTransform.pivot = new Vector2(0f, 1f);
         var col = UIKit.Rect(header, window);
-        UIKit.Place(col, new Vector2(0f, 1f), new Vector2(x, -132f), new Vector2(w, 560f));
+        UIKit.Place(col, new Vector2(0f, 1f), new Vector2(x, -132f), new Vector2(w, 640f));
         col.pivot = new Vector2(0f, 1f);
         var stack = UIKit.VStack(col, 10f);
         stack.childControlHeight = false;
@@ -161,31 +169,52 @@ public class ShopMenu : MonoBehaviour
     private void GunCard(RectTransform column, GunInfo gun, Loadout loadout) =>
         Card(column, gun.Name, gun.Stats, gun.Price, () => loadout.Buy(gun), () => loadout.Sell(gun),
              owned: () => loadout.Owns(gun), sellable: () => loadout.BoughtThisRound(gun),
-             affordable: () => loadout.Credits >= loadout.PriceOf(gun));
+             affordable: () => loadout.Credits >= loadout.PriceOf(gun),
+             icon: Resources.Load<Sprite>($"Guns/Icons/{gun.Id}"));
 
     private void Card(RectTransform column, string name, string stats, int price, Action buy, Action sell,
-                      Func<bool> owned, Func<bool> sellable, Func<bool> affordable, Ability upgrade = null)
+                      Func<bool> owned, Func<bool> sellable, Func<bool> affordable, Ability upgrade = null, Sprite icon = null)
     {
+        // Guns get a side-on silhouette on the left (Resources/Guns/Icons, rendered by GunIcons) and a taller card
         var face = UIKit.Panel(column, Theme.card, 16f, name);
-        ((RectTransform)face.transform).sizeDelta = new Vector2(370f, 74f);
+        ((RectTransform)face.transform).sizeDelta = new Vector2(370f, icon != null ? 92f : 74f);
         var click = face.gameObject.AddComponent<ShopClick>();
         click.Left = buy; click.Right = sell;
 
-        var nameText = UIKit.Text(face.transform, name, 24f, UIKit.Font.Bold, Theme.text);
-        UIKit.Place(nameText.rectTransform, new Vector2(0f, 1f), new Vector2(16f, -8f), new Vector2(240f, 30f));
+        Image iconImage = null;
+        float left = 16f;
+        if (icon != null)
+        {
+            var go = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(face.transform, false);
+            iconImage = go.GetComponent<Image>();
+            iconImage.sprite = icon;
+            iconImage.preserveAspect = true;
+            iconImage.raycastTarget = false;
+            iconImage.color = Theme.text;
+            UIKit.Place(iconImage.rectTransform, new Vector2(0f, 0.5f), new Vector2(10f, 0f), new Vector2(124f, 62f));
+            iconImage.rectTransform.pivot = new Vector2(0f, 0.5f);
+            left = 144f;
+        }
+
+        var nameText = UIKit.Text(face.transform, name, icon != null ? 22f : 24f, UIKit.Font.Bold, Theme.text);
+        UIKit.Place(nameText.rectTransform, new Vector2(0f, 1f), new Vector2(left, -8f), new Vector2(icon != null ? 136f : 240f, 30f));
         nameText.rectTransform.pivot = new Vector2(0f, 1f);
-        var statText = UIKit.Text(face.transform, stats, 15f, UIKit.Font.Body, Theme.textMuted);
-        UIKit.Place(statText.rectTransform, new Vector2(0f, 0f), new Vector2(16f, 8f), new Vector2(340f, 26f));
+        var statText = UIKit.Text(face.transform, stats, icon != null ? 13f : 15f, UIKit.Font.Body, Theme.textMuted);
+        UIKit.Place(statText.rectTransform, new Vector2(0f, 0f), new Vector2(left, 8f), new Vector2(354f - left, icon != null ? 36f : 26f));
         statText.rectTransform.pivot = new Vector2(0f, 0f);
-        statText.textWrappingMode = TextWrappingModes.NoWrap;
+        statText.textWrappingMode = icon != null ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+        statText.verticalAlignment = VerticalAlignmentOptions.Bottom;
         var priceText = UIKit.Text(face.transform, "", 22f, UIKit.Font.Bold, Theme.primary, TextAlignmentOptions.Right);
         UIKit.Place(priceText.rectTransform, new Vector2(1f, 1f), new Vector2(-14f, -8f), new Vector2(120f, 30f));
         priceText.rectTransform.pivot = new Vector2(1f, 1f);
         var stateText = UIKit.Text(face.transform, "", 15f, UIKit.Font.Bold, Theme.lime, TextAlignmentOptions.Right);
-        UIKit.Place(stateText.rectTransform, new Vector2(1f, 0f), new Vector2(-14f, 8f), new Vector2(150f, 24f));
-        stateText.rectTransform.pivot = new Vector2(1f, 0f);
+        // On gun cards it sits under the price (the stats take the bottom row there)
+        UIKit.Place(stateText.rectTransform, icon != null ? new Vector2(1f, 1f) : new Vector2(1f, 0f),
+                    icon != null ? new Vector2(-14f, -38f) : new Vector2(-14f, 8f), new Vector2(150f, 24f));
+        stateText.rectTransform.pivot = icon != null ? new Vector2(1f, 1f) : new Vector2(1f, 0f);
 
-        var item = new Item { Face = face, Name = nameText, Stats = statText, Price = priceText, State = stateText,
+        var item = new Item { Face = face, Icon = iconImage, Name = nameText, Stats = statText, Price = priceText, State = stateText,
                               Owned = owned, Sellable = sellable, Affordable = affordable };
         items.Add(item);
         if (upgrade != null) upgradeItems[item] = upgrade;
@@ -223,10 +252,11 @@ public class ShopMenu : MonoBehaviour
         else toastText.text = "";
 
         if (!show) return;
-        creditsText.text = economy ? Economy.Format(loadout.Credits) : $"{Mathf.CeilToInt(Mathf.Max(0f, loadout.FreePickLeft))}s";
+        creditsText.text = economy ? Economy.Format(loadout.Credits)
+                         : loadout.ShopAnytime ? "" : $"{Mathf.CeilToInt(Mathf.Max(0f, loadout.FreePickLeft))}s";
         footer.text = economy
             ? "Left click: buy   ·   Right click: sell back (this pre-round only)   ·   " + Keybinds.Label(Keybinds.Get(InputAction.Shop)) + ": close"
-            : "Click a gun to take it   ·   Space / Enter: done";
+            : "Click a gun to take it   ·   Space / Enter / " + Keybinds.Label(Keybinds.Get(InputAction.Shop)) + ": done";
 
         foreach (var item in items)
         {
@@ -248,6 +278,7 @@ public class ShopMenu : MonoBehaviour
             item.State.color = sellable ? Theme.orange : Theme.lime;
             item.Face.color = owned ? UIKit.WithAlpha(Theme.secondary, 0.85f) : afford ? Theme.card : UIKit.WithAlpha(Theme.card, 0.45f);
             item.Name.alpha = owned || afford ? 1f : 0.45f;
+            if (item.Icon != null) item.Icon.color = UIKit.WithAlpha(Theme.text, owned || afford ? 0.95f : 0.35f);
         }
     }
 }

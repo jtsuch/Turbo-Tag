@@ -200,6 +200,10 @@ public abstract class GameMode
     /// are free picks on each spawn. See <see cref="Economy"/>.</summary>
     public virtual bool UsesEconomy => false;
 
+    /// <summary>Without an economy: the shop opens with the Shop key at any time and not by itself on spawning
+    /// (Freeplay); otherwise it opens on each spawn for the Gun Pick Time.</summary>
+    public virtual bool ShopAnytime => false;
+
     /// <summary>Guns' spray bloom: × per shot and × its cap (above 1 rewards tapping over spraying).</summary>
     public virtual float BloomScale => 1f;
     public virtual float MaxBloomScale => 1f;

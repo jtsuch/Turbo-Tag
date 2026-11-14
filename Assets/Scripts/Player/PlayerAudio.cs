@@ -5,8 +5,10 @@ using Photon.Pun;
 /// Plays positional audio for a player's footsteps, jumps, lands, and sliding.
 /// Footsteps play on every screen from each copy's own (synced) movement, so you hear other players walking: they
 /// used to be played only for the local player, which made everyone else silent. Others' steps are louder and
-/// carry further (hunters listen for them); crouch walking makes no sound at all and crawling is quieter (sneaking). The step is a sound made
-/// in code (<see cref="SfxKind.Step"/>); tick <c>useClassicFootsteps</c> to go back to the old clips.
+/// carry further (hunters listen for them); crouch walking makes no sound at all and crawling is quieter (sneaking). The step is
+/// Justin's recorded penguin steps (<c>Resources/Sfx/PenguinSteps</c>: seven steps chopped from Penguin-Footsteps.mp3 and
+/// raised two semitones; a random one each step, never the same twice running), or the code-made <see cref="SfxKind.Step"/>
+/// if they're missing; tick <c>useClassicFootsteps</c> to go back to the old clips.
 /// Jumps, lands and the slide loop are sent to remote clients by RPC.
 /// Attach to: ThePlayer prefab — requires AudioSource and PhotonView on the same object.
 /// </summary>
@@ -131,7 +133,21 @@ public class PlayerAudio : MonoBehaviour
         float volume = (mine ? footstepVolume * 1.5f : remoteStepVolume) * stance;
         if (!mine && isSprinting && state != Player.MovementState.Crouch && state != Player.MovementState.Prone)
             SoundVisualizer.Notify(transform.position, 0.8f, player.ActorNumber); // Full running shows on the edge
-        Sfx.At(SfxKind.Step, transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
+        Step(transform.position + Vector3.up * 0.1f, volume, mine ? 20f : remoteStepRange, pitch);
+    }
+
+    private static AudioClip[] penguinSteps;
+    private int lastPenguinStep = -1;
+
+    // One footstep: a random recorded penguin step (not the last one again), or the code-made step without them
+    private void Step(Vector3 at, float volume, float range, float pitch)
+    {
+        penguinSteps ??= Resources.LoadAll<AudioClip>("Sfx/PenguinSteps");
+        if (penguinSteps.Length == 0) { Sfx.At(SfxKind.Step, at, volume, range, pitch); return; }
+        int index = Random.Range(0, penguinSteps.Length);
+        if (penguinSteps.Length > 1 && index == lastPenguinStep) index = (index + 1) % penguinSteps.Length;
+        lastPenguinStep = index;
+        Sfx.ClipAt(penguinSteps[index], at, volume, range, pitch);
     }
 
     // Climbing: quieter scuffs, a little apart, that still show on others' sound visualizers
@@ -144,8 +160,8 @@ public class PlayerAudio : MonoBehaviour
         footstepTimer = 0.32f;
         leftFoot = !leftFoot;
         if (!mine) SoundVisualizer.Notify(transform.position, 0.6f, player.ActorNumber);
-        Sfx.At(SfxKind.Step, transform.position + Vector3.up, (mine ? footstepVolume : remoteStepVolume) * 0.7f,
-               mine ? 20f : remoteStepRange * 0.8f, leftFoot ? 1.2f : 1.3f);
+        Step(transform.position + Vector3.up, (mine ? footstepVolume : remoteStepVolume) * 0.7f,
+             mine ? 20f : remoteStepRange * 0.8f, leftFoot ? 1.2f : 1.3f);
     }
 
     // Others moving fast through the air (grapples, zips, dashes, launches): a rush of air you can hear coming,

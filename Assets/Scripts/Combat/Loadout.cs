@@ -57,7 +57,10 @@ public class Loadout : MonoBehaviour
     /// <summary>Whether the shop may be open now.</summary>
     public bool CanShop =>
         Local != null && !Local.IsCaught && !Fixed && manager != null &&
-        (HasEconomy ? manager.Phase == MatchPhase.Countdown : Time.time < freePickUntil);
+        (HasEconomy ? manager.Phase == MatchPhase.Countdown : ShopAnytime || Time.time < freePickUntil);
+
+    /// <summary>The shop opens with the Shop key at any time (Freeplay), not by itself on spawning.</summary>
+    public bool ShopAnytime => Mode != null && Mode.ShopAnytime && !HasEconomy;
 
     private void Awake()
     {
@@ -92,8 +95,11 @@ public class Loadout : MonoBehaviour
         {
             Primary   = Remembered(PrimaryPref, "AR", GunSlot.Primary);
             Secondary = Remembered(SecondaryPref, GunCatalog.DefaultId, GunSlot.Secondary);
-            freePickUntil = Time.time + MatchRules.GunPickTime;
-            ShopMenu.Open();
+            if (!ShopAnytime)
+            {
+                freePickUntil = Time.time + MatchRules.GunPickTime;
+                ShopMenu.Open();
+            }
         }
         Select(Primary != null ? GunSlot.Primary : GunSlot.Secondary, 0f);
         ApplyAbilityLevels();
