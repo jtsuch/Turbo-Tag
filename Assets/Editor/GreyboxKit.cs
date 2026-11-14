@@ -51,7 +51,8 @@ public static class GreyboxKit
     public static void Finish(UnityEngine.SceneManagement.Scene scene, string reportPath, string label, Action render)
     {
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
-            if (t.gameObject.layer == 0 && t.GetComponent<Light>() == null && !t.name.StartsWith("Invisible") && !t.name.StartsWith("Kill"))
+            if (t.gameObject.layer == 0 && t.GetComponent<Light>() == null && !t.name.StartsWith("Invisible") && !t.name.StartsWith("Kill")
+                && t.GetComponentInParent<SpawnBarrier>(true) == null)   // Pre-round walls stay Default (not in the door checks)
                 t.gameObject.layer = Structure;
         Physics.SyncTransforms();
         Review();

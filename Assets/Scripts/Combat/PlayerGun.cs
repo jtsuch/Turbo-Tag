@@ -78,15 +78,17 @@ public class PlayerGun : MonoBehaviourPun
 
     // ─── Owner API ────────────────────────────────────────────────────────────
 
-    /// <summary>Owner: takes <paramref name="gunId"/> in hand, fully loaded (null or "" puts the gun away).</summary>
-    public void Equip(string gunId)
+    /// <summary>Owner: takes <paramref name="gunId"/> in hand (null or "" puts the gun away), with
+    /// <paramref name="ammo"/> rounds (-1: a full magazine); <paramref name="drawTime"/> seconds before it can fire
+    /// (switching weapons).</summary>
+    public void Equip(string gunId, int ammo = -1, float drawTime = 0f)
     {
         if (!photonView.IsMine) return;
         Current       = GunCatalog.Find(gunId);
-        Ammo          = Current != null ? Current.Magazine : 0;
+        Ammo          = Current == null ? 0 : ammo < 0 ? Current.Magazine : Mathf.Min(ammo, Current.Magazine);
         reloadEndsAt  = 0f;
         reloadPending = false;
-        nextShotAt    = 0f;
+        nextShotAt    = Time.time + drawTime;
         bloom         = 0f;
         Scoped        = false;
         if (PhotonNetwork.InRoom) NetProps.SetLocal(PlayerKeys.Gun, Current != null ? Current.Id : "");
@@ -130,6 +132,12 @@ public class PlayerGun : MonoBehaviourPun
         if (fireBlockedUntilRelease) return;
 
         if (!CanShoot) return;
+
+        if (Current.Melee)
+        {
+            if (Input.GetKeyDown(Keybinds.Get(InputAction.Action)) && Time.time >= nextShotAt && GunPicker.ClosedFrame != Time.frameCount) Swing();
+            return;
+        }
 
         if (Input.GetKeyDown(Keybinds.Get(InputAction.Reload)) && Ammo < Current.Magazine && !IsReloading)
             StartReload();
@@ -286,6 +294,59 @@ public class PlayerGun : MonoBehaviourPun
         if (player != null) player.EndSpawnProtectionNow(); // Attacking ends spawn protection
 
         if (Ammo <= 0) StartReload();
+    }
+
+    // ─── The knife (owner) ────────────────────────────────────────────────────
+
+    // A swing hits the nearest hurtable player in front within reach (a 40° cone, line of sight): the knife's damage,
+    // or its backstab damage when they face away from the swing
+    private void Swing()
+    {
+        var gun = Current;
+        nextShotAt = Time.time + gun.FireInterval;
+        lastShotAt = Time.time;
+        Transform view = PlayerCam.Local.Camera.transform;
+        Player best = null;
+        float bestDistance = float.MaxValue;
+        Vector3 bestPoint = view.position;
+        foreach (var other in Player.All)
+        {
+            if (other == null || other == player || other.IsDownAfterTag || other.IsCaught || !CanHurt(other)) continue;
+            Vector3 centre = other.transform.position + Vector3.up * Mathf.Max(0.8f, other.EyeHeight * 0.6f);
+            Vector3 to = centre - view.position;
+            float distance = to.magnitude;
+            if (distance > gun.Range + 0.8f || distance >= bestDistance) continue;
+            if (Vector3.Angle(view.forward, to) > 40f) continue;
+            if (Physics.Raycast(view.position, to / distance, out RaycastHit block, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                && block.collider.GetComponentInParent<Player>() != other) continue;
+            best = other; bestDistance = distance; bestPoint = centre;
+        }
+
+        var model = ViewModel(gun.Id);
+        if (model != null) model.Slash();
+        Sfx.Here(SfxKind.Whoosh, 0.5f, 1.4f);
+        photonView.RPC(nameof(RPC_SwingFx), RpcTarget.Others);
+        if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt();
+        Fired?.Invoke();
+        if (player != null) player.EndSpawnProtectionNow();
+        if (best == null) return;
+
+        Vector3 flat = Vector3.ProjectOnPlane(best.transform.position - player.transform.position, Vector3.up).normalized;
+        bool behind = Vector3.Dot(Vector3.ProjectOnPlane(best.transform.forward, Vector3.up).normalized, flat) > 0.5f;
+        float damage = (behind ? gun.BackstabDamage : gun.Damage) * MatchRules.DamageScale * DamageMultiplier;
+        best.Health.RequestDamage(damage, gun.Id, false, flat);
+        DamageNumber.Show(bestPoint, damage, behind);
+        Fx.Impact(bestPoint, view.position, true);
+        LocalHit?.Invoke(behind);
+    }
+
+    [PunRPC]
+    private void RPC_SwingFx()
+    {
+        if (Killcam.IsPlaying) return;
+        var model = WorldModel(Current != null ? Current.Id : null);
+        if (model != null) model.Slash();
+        Sfx.At(SfxKind.Whoosh, transform.position + Vector3.up, 0.7f, 25f, 1.4f);
     }
 
     private static Vector3 Spread(Transform view, float degrees)

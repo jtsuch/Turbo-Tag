@@ -4,62 +4,18 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>The gun picker shown on every spawn in gun modes (drawn by <see cref="CombatHud"/>).</summary>
+/// <summary>
+/// What's left of the old gun picker: the shop (<see cref="ShopMenu"/>) replaced it. Kept as the one place other code
+/// asks "is a gun menu open" (no shooting, the mouse is free) and "did it just close" (that click doesn't fire).
+/// </summary>
 public static class GunPicker
 {
-    private const string LastGunPref = "LastGun";
+    public static bool IsOpen => ShopMenu.IsOpen;
 
-    public static bool IsOpen { get; private set; }
-
-    /// <summary>Frame the picker closed on, so the click that picked a gun doesn't also fire it.</summary>
+    /// <summary>Frame the shop closed on, so the click that closed it doesn't also fire.</summary>
     public static int ClosedFrame { get; private set; } = -1;
 
-    public static float EndsAt   { get; private set; }
-    public static int   Selected { get; set; }
-
-    /// <summary>The gun used last (remembered between lives and matches).</summary>
-    public static string LastGun
-    {
-        get
-        {
-            string id = PlayerPrefs.GetString(LastGunPref, GunCatalog.DefaultId);
-            return GunCatalog.Find(id) != null ? id : GunCatalog.DefaultId;
-        }
-    }
-
-    /// <summary>Local player: puts the gun away and offers the choice for <see cref="MatchRules.GunPickTime"/> seconds.</summary>
-    public static void Open()
-    {
-        var local = Player.Local;
-        if (local == null || local.IsCaught) return;
-
-        // Modes can hand a role a set gun (or none) instead of the choice
-        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
-        string fixedGun = mode != null ? mode.FixedGun(local.Role) : null;
-        if (fixedGun != null)
-        {
-            local.Gun.Equip(fixedGun == "" ? null : fixedGun);
-            IsOpen = false;
-            return;
-        }
-        local.Gun.Equip(null);
-        Selected = Mathf.Max(0, GunCatalog.IndexOf(LastGun));
-        EndsAt   = Time.time + MatchRules.GunPickTime;
-        IsOpen   = true;
-    }
-
-    /// <summary>Closes the picker; <paramref name="pick"/> equips the selected gun.</summary>
-    public static void Close(bool pick)
-    {
-        if (!IsOpen) return;
-        IsOpen      = false;
-        ClosedFrame = Time.frameCount;
-        if (!pick || Player.Local == null) return;
-
-        var gun = GunCatalog.All[Mathf.Clamp(Selected, 0, GunCatalog.All.Count - 1)];
-        PlayerPrefs.SetString(LastGunPref, gun.Id);
-        Player.Local.Gun.Equip(gun.Id);
-    }
+    public static void NoteClosed() => ClosedFrame = Time.frameCount;
 }
 
 /// <summary>
@@ -81,6 +37,7 @@ public class CombatHud : MonoBehaviour
     private Image         healthFillImage;
     private TMP_Text      ammoText;
     private TMP_Text      gunText;
+    private TMP_Text      slotsText;   // "1 ICEPICK  2 PEBBLE  3 BLIZZARD" over the ammo card, the one in hand lit
     private GameObject    ammoCard, healthCard;
 
     // Feedback
@@ -94,11 +51,6 @@ public class CombatHud : MonoBehaviour
     // Kill feed
     private RectTransform feed;
     private readonly List<(GameObject line, float until)> feedLines = new();
-
-    // Picker
-    private GameObject     picker;
-    private TMP_Text       pickerFooter;
-    private readonly List<Button> pickerRows = new();
 
     // Killcam / death notice
     private GameObject    killcamOverlay;
@@ -195,6 +147,9 @@ public class CombatHud : MonoBehaviour
         UIKit.Place(gunText.rectTransform, new Vector2(1f, 1f), new Vector2(-22f, -12f), new Vector2(320f, 26f));
         ammoText = UIKit.Text(ammo, "", 56f, UIKit.Font.Display, Theme.text, TextAlignmentOptions.Right);
         UIKit.Place(ammoText.rectTransform, new Vector2(1f, 0f), new Vector2(-22f, 8f), new Vector2(320f, 66f));
+        slotsText = UIKit.OneLine(UIKit.Text(vitals.transform, "", 17f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Right, "Slots"));
+        UIKit.Place(slotsText.rectTransform, new Vector2(1f, 0f), new Vector2(-40f, 144f), new Vector2(600f, 26f));
+        slotsText.rectTransform.pivot = new Vector2(1f, 0f);
 
         // Hit marker: four short diagonal bars around the crosshair
         hitMarker = UIKit.Rect("HitMarker", root).gameObject;
@@ -219,8 +174,6 @@ public class CombatHud : MonoBehaviour
         feed.sizeDelta = new Vector2(560f, 320f);
         var layout = UIKit.VStack(feed, 6f, null, TextAnchor.UpperRight);
         layout.childForceExpandWidth = true;
-
-        BuildPicker(root);
 
         // Killcam: a pink frame around the whole screen (so it's clear this is a replay) with a slim strip along
         // the very bottom edge holding the label, the skip hint and the progress (under the HUD cards, out of the view)
@@ -265,37 +218,6 @@ public class CombatHud : MonoBehaviour
         PlayerGun.LocalHit += HandleHit;
     }
 
-    private void BuildPicker(RectTransform root)
-    {
-        var card = UIKit.Card(root, Theme.panel, 28f, 0.55f, "GunPicker");
-        float height = 120f + GunCatalog.All.Count * 86f + 60f;
-        UIKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(760f, height));
-        card.pivot = new Vector2(0.5f, 0.5f);
-        picker = card.gameObject;
-        UIKit.VStack(card, 12f, UIKit.Pad(32, 28), TextAnchor.UpperCenter);
-
-        UIKit.Title(card, "Choose Your Gun", 48f, TextAlignmentOptions.Center);
-        UIKit.Spacer(card, 4f);
-
-        for (int i = 0; i < GunCatalog.All.Count; i++)
-        {
-            var gun = GunCatalog.All[i];
-            int index = i;
-            var button = UIKit.Button(card, "", UIKit.Style.Ghost, () => { GunPicker.Selected = index; GunPicker.Close(pick: true); }, 74f, 28f);
-            var label = UIKit.Label(button);
-            label.enableAutoSizing = false;
-            label.fontSize = 28f;
-            label.alignment = TextAlignmentOptions.MidlineLeft;
-            label.richText = true;
-            label.text = $"<color=#FFC93C>{i + 1}</color>   {gun.Name}   <size=65%><color=#B9B2E0>{gun.Stats}</color></size>";
-            pickerRows.Add(button);
-        }
-
-        pickerFooter = UIKit.Text(card, "", 20f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
-        UIKit.Size(pickerFooter, height: 30f);
-        picker.SetActive(false);
-    }
-
     // ─── Update ───────────────────────────────────────────────────────────────
 
     private void Update()
@@ -303,7 +225,6 @@ public class CombatHud : MonoBehaviour
         var local = Player.Local;
         Subscribe(local);
 
-        UpdatePicker(local);
         UpdateVitals(local);
         UpdateFeedback();
         UpdateFeed();
@@ -325,39 +246,6 @@ public class CombatHud : MonoBehaviour
 
     private bool killedHooked;
 
-    private void UpdatePicker(Player local)
-    {
-        bool open = GunPicker.IsOpen && local != null && !local.IsCaught;
-        if (GunPicker.IsOpen && !open) GunPicker.Close(pick: false);
-        picker.SetActive(open && !PauseMenuManager.IsPaused);
-        if (!open || AdminConsole.IsOpen || AdminConsole.ClosedFrame == Time.frameCount) return; // Typing isn't picking
-
-        // Click a gun or press its number; Space or Enter (or waiting) takes the gun used last
-        for (int i = 0; i < GunCatalog.All.Count && i < 9; i++)
-        {
-            if (!Input.GetKeyDown(KeyCode.Alpha1 + i) && !Input.GetKeyDown(KeyCode.Keypad1 + i)) continue;
-            GunPicker.Selected = i;
-            GunPicker.Close(pick: true);
-            return;
-        }
-
-        int last = Mathf.Max(0, GunCatalog.IndexOf(GunPicker.LastGun));
-        bool quick = !PauseMenuManager.IsPaused
-            && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter));
-        if (quick || Time.time >= GunPicker.EndsAt)
-        {
-            GunPicker.Selected = last;
-            GunPicker.Close(pick: true);
-            return;
-        }
-
-        for (int i = 0; i < pickerRows.Count; i++)
-            pickerRows[i].GetComponent<UIButtonFx>().FaceColor = i == last ? Theme.secondary : Theme.card;
-
-        float left = Mathf.Max(0f, GunPicker.EndsAt - Time.time);
-        pickerFooter.text = $"Click a gun or press 1–{GunCatalog.All.Count}   ·   Space / Enter: {GunCatalog.All[last].Name}  ({Mathf.CeilToInt(left)})";
-    }
-
     private void UpdateVitals(Player local)
     {
         bool show = local != null; // Always on (killcam and death included): the HUD never hides
@@ -367,11 +255,14 @@ public class CombatHud : MonoBehaviour
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         bool unarmed = mode != null && mode.FixedGun(local.Role) == "";
         if (ammoCard.activeSelf == unarmed) ammoCard.SetActive(!unarmed);
+        UpdateSlots(local, mode);
         bool ghost = local.Role == PlayerRole.Ghost;
         if (healthCard.activeSelf == ghost) healthCard.SetActive(!ghost);
 
         var health = local.Health;
-        healthText.text = Mathf.CeilToInt(health.Current).ToString();
+        healthText.text = health.Armor > 0f
+            ? $"{Mathf.CeilToInt(health.Current)}<size=60%><color=#22D3EE>  +{Mathf.CeilToInt(health.Armor)}</color></size>"
+            : Mathf.CeilToInt(health.Current).ToString();
         healthFill.anchorMax = new Vector2(health.Fraction, 1f);
         healthFillImage.color = Color.Lerp(Theme.danger, Theme.lime, Mathf.InverseLerp(0.25f, 0.6f, health.Fraction));
         healthText.color = health.Fraction <= 0.25f ? Color.Lerp(Theme.danger, Color.white, Mathf.PingPong(Time.time * 3f, 1f)) : Theme.text;
@@ -381,6 +272,11 @@ public class CombatHud : MonoBehaviour
         {
             ammoText.text = "–";
             gunText.text  = GunPicker.IsOpen ? "Choosing..." : "";
+        }
+        else if (gun.Melee)
+        {
+            ammoText.text = "–";
+            gunText.text  = gun.Name.ToUpperInvariant();
         }
         else if (local.Gun.IsReloading)
         {
@@ -392,6 +288,30 @@ public class CombatHud : MonoBehaviour
             ammoText.text = $"{local.Gun.Ammo}<size=60%> / {gun.Magazine}</size>";
             gunText.text  = $"{gun.Name.ToUpperInvariant()}   ·   {Keybinds.Label(Keybinds.Get(InputAction.Reload))} to reload";
         }
+    }
+
+    // The weapon slots (1 knife, 2 secondary, 3 primary): the one in hand in the accent colour, keys from the bindings
+    private void UpdateSlots(Player local, GameMode mode)
+    {
+        var loadout = Loadout.Instance;
+        bool on = loadout != null && !local.IsCaught && mode != null && mode.FixedGun(local.Role) == null;
+        if (!on) { slotsText.text = ""; return; }
+        var held = local.Gun.Current;
+        var sb = new System.Text.StringBuilder();
+        void Slot(GunSlot slot, InputAction key)
+        {
+            var gun = GunCatalog.Find(loadout.GunIn(slot));
+            if (gun == null) return;
+            bool inHand = held != null && held.Id == gun.Id;
+            if (sb.Length > 0) sb.Append("     ");
+            sb.Append(inHand ? $"<color=#{ColorUtility.ToHtmlStringRGB(Theme.primary)}>" : "");
+            sb.Append($"{Keybinds.Label(Keybinds.Get(key))}  {gun.Name.ToUpperInvariant()}");
+            if (inHand) sb.Append("</color>");
+        }
+        Slot(GunSlot.Knife, InputAction.WeaponKnife);
+        Slot(GunSlot.Secondary, InputAction.WeaponSecondary);
+        Slot(GunSlot.Primary, InputAction.WeaponPrimary);
+        slotsText.text = sb.ToString();
     }
 
     private void UpdateFeedback()

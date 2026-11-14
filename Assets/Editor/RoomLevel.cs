@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using static GreyboxKit;
 using static KitLevel;
@@ -317,6 +318,23 @@ public static class RoomLevel
         site.letter = letter;
         site.size = new Vector3(size, 8f, size);
         report.Add($"Site {letter}: plant zone {size:0} × {size:0} m at ({centre.x:0}, {centre.y:0}, {centre.z:0})");
+    }
+
+    /// <summary>
+    /// A Search &amp; Destroy pre-round wall (<see cref="SpawnBarrier"/>: solid and translucent blue only during the
+    /// pre-round) over the box x0..x1 × y0..y1 × z0..z1. Builders put them a few metres into the contested rooms past
+    /// each exit of a team's area (never in a doorway, so the passage checks still run), so each side holds its spawn
+    /// and site/lobby and can just look into mid and the mains. Hidden in the editor (no grey slabs in the renders).
+    /// </summary>
+    public static void SpawnWall(Transform g, SpawnPoint.Side side, float x0, float x1, float y0, float y1, float z0, float z1)
+    {
+        var go = Box(g, $"Spawn Barrier ({side})", x0, x1, y0, y1, z0, z1, Kind.Wall);
+        GameObjectUtility.SetStaticEditorFlags(go, 0);   // It switches on and off at runtime
+        // Default layer (SpawnBarrier forces it at runtime too): the build's door checks only look at structure, so a
+        // barrier can stand right by a doorway
+        foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = 0;
+        go.AddComponent<SpawnBarrier>().side = side;
+        foreach (var r in go.GetComponentsInChildren<Renderer>()) r.enabled = false;
     }
 
     /// <summary>The least clear height over a flight of stairs, from a line of raycasts up off its steps.</summary>

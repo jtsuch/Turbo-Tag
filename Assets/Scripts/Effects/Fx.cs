@@ -128,9 +128,9 @@ public static class Fx
     {
         SfxKind kind = gunId switch
         {
-            "AR"      => SfxKind.Rifle,
+            "AR" or "SMG" or "LMG" or "LongRifle" => SfxKind.Rifle,
             "Shotgun" => SfxKind.Shotgun,
-            "Sniper"  => SfxKind.Sniper,
+            "Sniper" or "DesertEagle" => SfxKind.Sniper,
             _         => SfxKind.Pistol,
         };
         float range = kind == SfxKind.Sniper ? 160f : kind == SfxKind.Shotgun ? 90f : 80f;

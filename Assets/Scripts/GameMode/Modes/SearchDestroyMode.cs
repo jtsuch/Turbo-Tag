@@ -443,6 +443,7 @@ public class SearchDestroyMode : TeamMode
 
     // Spraying is punished: bloom builds 2.5× faster up to twice the cap, so taps stay accurate
     public override float BloomScale    => 2.5f;
+    public override bool  UsesEconomy   => true;
     public override float MaxBloomScale => 2f;
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>

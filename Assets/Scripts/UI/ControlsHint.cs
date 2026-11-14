@@ -55,6 +55,7 @@ public class ControlsHint : MonoBehaviour
         if (SearchDestroyController.LocalBombOut) rows.Add((Key(InputAction.DropBomb), "Drop bomb", true));
         if (SearchDestroyController.LocalCarrying) rows.Add((Key(InputAction.Bomb), SearchDestroyController.LocalBombOut ? "Put bomb away · hold: plant" : "Bomb · hold: plant", true));
         if (KeepAwayDisc.LocalHolding) rows.Add((Key(InputAction.Action), "Throw disc · hold: further", true));
+        if (Loadout.Instance != null && Loadout.Instance.CanShop && !ShopMenu.IsOpen) rows.Add((Key(InputAction.Shop), "Shop", true));
         rows.Add((Key(InputAction.FreeSpin), "Free Spin (hold)", false));
         rows.Add((Key(InputAction.Emote), "Emote (hold)", false));
         rows.Add((Key(InputAction.Taunt), "Taunt · hold: throw it", false));

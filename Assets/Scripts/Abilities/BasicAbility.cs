@@ -27,8 +27,11 @@ public abstract class BasicAbility : Ability
     /// <summary>The full meter in seconds as set on the prefab, for descriptions.</summary>
     public float BaseDuration => maxDuration;
 
-    /// <summary>The full meter in seconds (tunable per ability in Cheats).</summary>
-    protected float MaxDuration => maxDuration;
+    /// <summary>The full meter in seconds (tunable per ability in Cheats; × <see cref="DurationScale"/>).</summary>
+    protected float MaxDuration => maxDuration * DurationScale;
+
+    /// <summary>Owner: the meter's size × this (Search &amp; Destroy's duration upgrades; 1 = the prefab's). Set by Loadout.</summary>
+    public float DurationScale { get; set; } = 1f;
 
     protected override void Awake()
     {

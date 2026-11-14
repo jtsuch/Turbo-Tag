@@ -112,6 +112,9 @@ public static class CisternBuilder
         Headroom("B pit stairs south", new Vector3(52, D, 10), new Vector3(52, G, 0));
         report.Add($"cubbies: {cubbies.Count}");
         foreach (var c in cubbies) report.Add("  " + c);
+        // Barriers after the access checks: they're pre-round walls, so the checks shouldn't see them (they can stand
+        // right by a doorway); the overlap check still does
+        BuildSpawnBarriers();
         CheckOverlaps();
         Bounds(Vector3.zero, 400f, -25f, 30f);
         PlaceSpawner(new Vector3(-12f, 0.1f, 0f), -20f);
@@ -173,7 +176,7 @@ public static class CisternBuilder
         // Mid (floor −5): a container and a generator on the floor, crates by the stairs
         Container(g, 8, D, 4, 90f);
         K(g, "Generator-4x2p5m", new Vector3(-2, D, 12), 90f);
-        K(g, "CrateStack-2x2-3m", new Vector3(10, D, -10), 0f);
+        K(g, "CrateStack-2x2-3m", new Vector3(10, D, -6), 0f);
 
         // Lobbies: a stacked container pair hides which way the attackers go
         Container(g, -32, G, -48, 90f);
@@ -184,7 +187,7 @@ public static class CisternBuilder
         // B hall: a container in the middle (no straight look from the yard door to the pit)
         Container(g, 64, G, -24, 0f);
         // A main stair room: crates in the south half
-        K(g, "CrateStack-2x2-3m", new Vector3(-52, G, -26), 0f);
+        K(g, "CrateStack-2x2-3m", new Vector3(-46, G, -20), 0f);
         // The high walk: two staggered crate stacks
         K(g, "CrateStack-2x2-3m", new Vector3(12, L5, 29), 0f);
         K(g, "CrateStack-2x2-3m", new Vector3(26, L5, 26), 0f);
@@ -206,6 +209,28 @@ public static class CisternBuilder
         // A: the middle of the high site (its hatch just east of the zone); B: the pit floor between the stairs
         Site(sites, "A", new Vector3(-48, L5, 16), 16f);
         Site(sites, "B", new Vector3(40, D, 8), 16f);
+    }
+
+    // Pre-round walls (Justin, Nov 13: keep both teams well short of mid): defenders hold the spawn, A Back, B Back, both sites, A Heaven and
+    // the high walk (its door onto mid's balcony shut; a lid over the A hatch), peeking into the mains and tunnels; attackers hold
+    // their spawn and both lobbies, 2 m into the mains, Mid Court and Mid Stairs' landing
+    private static void BuildSpawnBarriers()
+    {
+        var g = Group("Spawn Barriers");
+        var d = SpawnPoint.Side.Defend; var a = SpawnPoint.Side.Attack;
+        SpawnWall(g, d, -72, -64, L5, 10, 2.75f, 3.25f);          // A main walk
+        SpawnWall(g, d, -38.1f, -33.9f, 4.8f, 4.95f, 9.9f, 14.1f); // A hatch (a lid)
+        SpawnWall(g, d, -21.75f, -21.25f, L5, 10, 16, 24);        // A Heaven, short of mid's balcony
+        SpawnWall(g, d, 0, 8, L5, 10, 25f, 25.5f);                 // The high walk's door onto mid's balcony (shut)
+        SpawnWall(g, d, 27.25f, 27.75f, D, G, 0, 8);              // B tunnels
+        SpawnWall(g, d, 56, 72, G, 10, -12.75f, -12.25f);         // B hall
+        SpawnWall(g, a, -64, -40, G, 10, -29.75f, -29.25f);       // A main stairs room, 2 m in
+        SpawnWall(g, a, -32, -8, G, 10, -29.75f, -29.25f);        // Mid Court, 2 m in
+        SpawnWall(g, a, 50.75f, 51.25f, G, 10, -64, -40);         // B yard, 2 m in
+        // Mid Stairs: only the 2 m inside the door on its landing (an L: across the landing, and along the top of the
+        // flight down so nobody steps off onto it)
+        SpawnWall(g, a, 24.25f, 32, G, 10, -29.75f, -29.25f);
+        SpawnWall(g, a, 24.25f, 24.75f, G, 10, -32, -29.75f);
     }
 
     private static void RenderOverviews()

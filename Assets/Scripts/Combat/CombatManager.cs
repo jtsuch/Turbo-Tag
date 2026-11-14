@@ -120,7 +120,7 @@ public class CombatManager : MonoBehaviourPun
         local.Respawned += HandleLocalRespawned;
         local.Caught    += HandleLocalCaught;
         local.Health.Refill();
-        GunPicker.Open();
+        if (Loadout.Instance != null) Loadout.Instance.OnSpawn();
     }
 
     // A role change can change the gun (Hunter: a hider turned ghost, a new hunter)
@@ -128,13 +128,13 @@ public class CombatManager : MonoBehaviourPun
     {
         if (who == null || !who.IsLocal || Player.Local == null || Player.Local.IsCaught) return;
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
-        if (mode != null && mode.FixedGun(role) != null) GunPicker.Open();
+        if (mode != null && mode.FixedGun(role) != null && Loadout.Instance != null) Loadout.Instance.OnSpawn();
     }
 
     private void HandleLocalCaught()
     {
-        if (Player.Local != null) Player.Local.Gun.Equip(null);
-        GunPicker.Close(pick: false);
+        if (Loadout.Instance != null) Loadout.Instance.OnCaught();
+        else if (Player.Local != null) Player.Local.Gun.Equip(null);
     }
 
     private void HandleLocalRespawned()
@@ -142,7 +142,7 @@ public class CombatManager : MonoBehaviourPun
         deathReported = false;
         if (Player.Local == null) return;
         Player.Local.Health.Refill();
-        GunPicker.Open();
+        if (Loadout.Instance != null) Loadout.Instance.OnSpawn();
     }
 
     private void HandlePhaseChanged(MatchPhase phase)
@@ -151,7 +151,7 @@ public class CombatManager : MonoBehaviourPun
         if (phase != MatchPhase.Countdown || Player.Local == null) return;
         deathReported = false;
         Player.Local.Health.Refill();
-        GunPicker.Open();
+        if (Loadout.Instance != null) Loadout.Instance.OnSpawn();
     }
 
     // ─── Deaths ───────────────────────────────────────────────────────────────

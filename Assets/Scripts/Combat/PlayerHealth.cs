@@ -28,6 +28,12 @@ public class PlayerHealth : MonoBehaviourPun
     /// <summary>Owner: damage soaked up before health (Shield Bubble). 0 = none.</summary>
     public float Shield { get; set; }
 
+    /// <summary>
+    /// Owner: a bought shield (the shop's Light/Full Shield: 25/50), soaked after <see cref="Shield"/> and before
+    /// health. Never regenerates; kept between rounds while alive (Loadout clears it on death). Refill leaves it.
+    /// </summary>
+    public float Armor { get; set; }
+
     private void Awake() => player = GetComponent<Player>();
 
     // Owner: when each other player last hurt us this life, for assists (anyone within AssistWindow of the death)
@@ -95,6 +101,14 @@ public class PlayerHealth : MonoBehaviourPun
             amount -= soaked;
             Sfx.Here(SfxKind.Snap, 0.4f, 1.5f);
             if (amount <= 0f) return; // All of it into the shield
+        }
+        if (Armor > 0f)
+        {
+            float soaked = Mathf.Min(Armor, amount);
+            Armor -= soaked;
+            amount -= soaked;
+            if (attacker >= 0 && attacker != photonView.OwnerActorNr) { hurtBy[attacker] = Time.time; combat.NoteDamage(attacker, soaked); }
+            if (amount <= 0f) { Sfx.Here(SfxKind.Snap, 0.3f, 1.2f); return; }
         }
         float before     = Current;
         Current          = Mathf.Max(0f, Current - amount);

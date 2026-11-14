@@ -19,6 +19,10 @@ public enum InputAction
     Spectate,
     DropBomb,
     Bomb,
+    Shop,
+    WeaponKnife,
+    WeaponSecondary,
+    WeaponPrimary,
 }
 
 /// <summary>
@@ -49,16 +53,20 @@ public static class Keybinds
         [InputAction.Crouch]       = KeyCode.LeftControl,
         [InputAction.Prone]        = KeyCode.C,
         [InputAction.Grab]         = KeyCode.F,
-        [InputAction.FreeSpin]     = KeyCode.Alpha3,
+        [InputAction.FreeSpin]     = KeyCode.Alpha5,
         [InputAction.Bomb]         = KeyCode.Alpha4,
         [InputAction.Reload]       = KeyCode.R,
         [InputAction.Scores]       = KeyCode.Tab,
         [InputAction.Map]          = KeyCode.M,
         [InputAction.Emote]        = KeyCode.T,
-        [InputAction.Taunt]        = KeyCode.Alpha5,
+        [InputAction.Taunt]        = KeyCode.Y,
         [InputAction.DropBomb]     = KeyCode.G,
         [InputAction.Ping]         = KeyCode.Mouse2,
-        [InputAction.HunterClass]  = KeyCode.B,
+        [InputAction.HunterClass]  = KeyCode.B,             // Tag / President only: shares B with the shop (gun modes)
+        [InputAction.Shop]         = KeyCode.B,
+        [InputAction.WeaponKnife]     = KeyCode.Alpha1,
+        [InputAction.WeaponSecondary] = KeyCode.Alpha2,
+        [InputAction.WeaponPrimary]   = KeyCode.Alpha3,
         [InputAction.HunterTool]   = KeyCode.Mouse0,
         [InputAction.Spectate]     = KeyCode.V,
         [InputAction.Pause]        = KeyCode.Escape,
@@ -204,6 +212,8 @@ public static class Keybinds
         any |= ForgetOldDefault(InputAction.Reload, KeyCode.G);
         any |= ForgetOldDefault(InputAction.Taunt, KeyCode.G);   // G drops the bomb now (Search & Destroy)
         any |= ForgetOldDefault(InputAction.FreeSpin, KeyCode.Alpha4); // 4 is the bomb now; Free Spin moved to 3
+        any |= ForgetOldDefault(InputAction.FreeSpin, KeyCode.Alpha3); // 1/2/3 are the weapon slots now; Free Spin is 5
+        any |= ForgetOldDefault(InputAction.Taunt, KeyCode.Alpha5);    // ...and Taunt moved to Y
 
         // Core controls must always have a key: older settings screens could clear one (an unbound Shoot meant a
         // player simply couldn't fire). Anything saved as "None" gets its default back.

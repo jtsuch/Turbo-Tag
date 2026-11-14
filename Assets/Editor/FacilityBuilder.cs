@@ -116,6 +116,9 @@ public static class FacilityBuilder
         Headroom("B main stairs", new Vector3(12, G, -46), new Vector3(12, L5, -36));
         report.Add($"cubbies: {cubbies.Count}");
         foreach (var c in cubbies) report.Add("  " + c);
+        // Barriers after the access checks: they're pre-round walls, so the checks shouldn't see them (they can stand
+        // right by a doorway); the overlap check still does
+        BuildSpawnBarriers();
         CheckOverlaps();
         Bounds(Vector3.zero, 400f, -25f, 30f);
         PlaceSpawner(new Vector3(8f, 0.1f, 0f), -20f);
@@ -205,6 +208,25 @@ public static class FacilityBuilder
         // Plant zones: the 16 × 16 in each site's middle (balconies, ledges and stairs are outside)
         Site(sites, "A", new Vector3(-48, G, 44), 16f);
         Site(sites, "B", new Vector3(-48, G, -44), 16f);
+    }
+
+    // Pre-round walls: defenders hold the spawn, the links and both sites (a step into the shorts, peeking into the
+    // mains' corner rooms, part way along the defender walk); attackers hold their spawn and both lobbies (a couple of
+    // metres into the mains and the mid connectors). Justin, Nov 13: keep both teams well short of mid.
+    private static void BuildSpawnBarriers()
+    {
+        var g = Group("Spawn Barriers");
+        var d = SpawnPoint.Side.Defend; var a = SpawnPoint.Side.Attack;
+        SpawnWall(g, d, -31.25f, -30.75f, G, 10, 20, 28);      // A short, just past the site's door
+        SpawnWall(g, d, -27.75f, -27.25f, G, 10, 36, 52);      // A main corner
+        SpawnWall(g, d, -31.25f, -30.75f, G, 10, -28, -20);    // B short, just past the site's door
+        SpawnWall(g, d, -27.75f, -27.25f, G, 10, -68, -36);    // B main corner
+        SpawnWall(g, d, -27.75f, -27.25f, L5, 10, -36, -28);   // Upper B main
+        SpawnWall(g, d, -36.25f, -35.75f, L5, 10, -4, 4);      // Defender walk, half way: well short of mid's balcony
+        SpawnWall(g, a, 30.75f, 31.25f, G, 10, 52, 60);        // A main long, just past the lobby's doors
+        SpawnWall(g, a, 29.75f, 30.25f, G, 10, 12, 28);        // Mid top, 2 m in
+        SpawnWall(g, a, 29.25f, 29.75f, G, 10, -60, -36);      // B main stairs room, 2 m in
+        SpawnWall(g, a, 29.75f, 30.25f, G, 10, -28, -12);      // Mid bottom, 2 m in
     }
 
     private static void RenderOverviews()

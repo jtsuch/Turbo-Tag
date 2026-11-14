@@ -317,6 +317,7 @@ public class PlayerAppearance : MonoBehaviourPun, IPunObservable
         {
             blueOutline = new Material(redOutline) { name = "AllyOutline" };
             blueOutline.SetColor("_OutlineColor", new Color(0.15f, 0.55f, 1f, 1f));
+            blueOutline.SetFloat("_OutlineWidth", 0.025f);   // Allies keep the thin rim; the red one is twice as wide
         }
         return blueOutline;
     }

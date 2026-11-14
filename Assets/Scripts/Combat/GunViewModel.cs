@@ -41,6 +41,11 @@ public class GunViewModel : MonoBehaviour
 
     public void Kick(float amount = 1f) => kick = Mathf.Min(1.5f, kick + amount);
 
+    /// <summary>A knife swing: a quick slash across and forward, then back to rest.</summary>
+    public void Slash() => slashAt = Time.time;
+    private float slashAt = -10f;
+    private const float SlashTime = 0.32f;
+
     /// <summary>Poses the gun: <paramref name="reload"/> is reload progress 0–1, or a negative number when not reloading.</summary>
     public void Apply(float reload)
     {
@@ -57,6 +62,15 @@ public class GunViewModel : MonoBehaviour
         Quaternion turn   = hasMag
             ? Quaternion.Euler(18f * r - 6f * kick, 0f, -28f * r)     // Tip down and roll to show the magazine well
             : Quaternion.Euler(-35f * r - 6f * kick, 0f, -15f * r);   // Tilt up to check the chamber
+        // Slash: wind back a touch (first 25%), sweep forward and across to the left, ease back
+        float s = (Time.time - slashAt) / SlashTime;
+        if (s >= 0f && s < 1f)
+        {
+            float wind  = s < 0.25f ? Smooth(s / 0.25f) : 1f - Smooth((s - 0.25f) / 0.75f);
+            float sweep = s < 0.25f ? -0.3f * Smooth(s / 0.25f) : Mathf.Sin(Mathf.PI * Mathf.Clamp01((s - 0.25f) / 0.6f));
+            offset += new Vector3(-0.22f * sweep, 0.04f * wind, 0.18f * Mathf.Max(0f, sweep));
+            turn   *= Quaternion.Euler(10f * sweep, -55f * sweep, -35f * sweep);
+        }
         transform.localPosition = basePosition + offset * scale;
         transform.localRotation = baseRotation * turn;
 

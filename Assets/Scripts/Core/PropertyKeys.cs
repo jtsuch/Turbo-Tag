@@ -168,6 +168,9 @@ public static class PlayerKeys
 
     /// <summary>Gun the player is holding (<see cref="GunCatalog"/> id, "" for none). Written by the player themself.</summary>
     public const string Gun = "Gun";
+
+    /// <summary>Credits for the shop (int; Search &amp; Destroy's economy). Written by the player themself.</summary>
+    public const string Credits = "Credits";
 }
 
 /// <summary>Scene names used for loading. Levels are named by the lobby's map selection.</summary>

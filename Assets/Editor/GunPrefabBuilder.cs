@@ -21,7 +21,7 @@ public static class GunPrefabBuilder
     {
         Directory.CreateDirectory(OutputFolder);
         var log = new StringBuilder();
-        foreach (string path in Directory.GetFiles(ModelFolder, "Gun-*.fbx"))
+        foreach (string path in Directory.GetFiles(ModelFolder, "Gun-*.fbx", SearchOption.AllDirectories))
         {
             string id = Path.GetFileNameWithoutExtension(path).Substring(4);
             log.AppendLine(BuildOne(path.Replace('\\', '/'), id));
@@ -51,7 +51,12 @@ public static class GunPrefabBuilder
         foreach (var p in points) mean += p;
         mean /= points.Count;
 
+        // A principal axis far off the model's own axes is the grip, not the barrel (the Flurry's long grip and
+        // magazine tilted it ~42°, pointing the gun at the floor): snap those to the nearest axis. Smaller tilts
+        // are left as they were (the AR's ~27° has been played with since the start)
         Vector3 axis = PrincipalAxis(points, mean);
+        Vector3 snapped = SnapToAxis(axis);
+        if (Vector3.Angle(axis, snapped) > 35f) axis = snapped;
         Vector3 up   = Vector3.ProjectOnPlane(Vector3.up, axis).normalized;
         if (up.sqrMagnitude < 0.5f) up = Vector3.ProjectOnPlane(Vector3.forward, axis).normalized;
 
@@ -99,6 +104,14 @@ public static class GunPrefabBuilder
         string result = $"{id}: {outPath}, model length {length:0.###}, axis {axis}, magazine {(magazine != null ? "yes" : "no")}, tip {tip.localPosition}";
         Object.DestroyImmediate(root);
         return result;
+    }
+
+    private static Vector3 SnapToAxis(Vector3 v)
+    {
+        Vector3 a = new(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
+        if (a.x >= a.y && a.x >= a.z) return new Vector3(Mathf.Sign(v.x), 0f, 0f);
+        if (a.y >= a.z) return new Vector3(0f, Mathf.Sign(v.y), 0f);
+        return new Vector3(0f, 0f, Mathf.Sign(v.z));
     }
 
     private static Transform Find(Transform root, string name)

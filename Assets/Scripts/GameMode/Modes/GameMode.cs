@@ -196,6 +196,10 @@ public abstract class GameMode
     /// (Search &amp; Destroy: not in a live round; everything is refilled when it starts).</summary>
     public virtual bool AbilitiesRegenerate(MatchPhase phase) => true;
 
+    /// <summary>Credits, prices, shields and ability upgrades in the shop (Search &amp; Destroy); otherwise the shop's guns
+    /// are free picks on each spawn. See <see cref="Economy"/>.</summary>
+    public virtual bool UsesEconomy => false;
+
     /// <summary>Guns' spray bloom: × per shot and × its cap (above 1 rewards tapping over spraying).</summary>
     public virtual float BloomScale => 1f;
     public virtual float MaxBloomScale => 1f;

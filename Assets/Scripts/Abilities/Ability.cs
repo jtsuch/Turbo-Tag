@@ -45,7 +45,11 @@ public abstract class Ability : MonoBehaviour
     [Tooltip("Uses stored at once (quick, throw and trap abilities). They recharge one per cooldown.")]
     [SerializeField, Min(1)] private int maxCharges = 1;
 
-    public int MaxCharges => Mathf.Max(1, maxCharges);
+    public int MaxCharges => Mathf.Max(1, ChargesOverride ?? maxCharges);
+
+    /// <summary>Owner: uses stored, replacing the prefab's (Search &amp; Destroy: 1 a round plus bought upgrades;
+    /// null = the prefab's own). Set by Loadout.</summary>
+    public int? ChargesOverride { get; set; }
 
     private int   charges = -1;   // -1 until first read (then full)
     private float rechargeStart;  // When the charge currently refilling started

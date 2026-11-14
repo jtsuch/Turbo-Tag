@@ -116,6 +116,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
         // Gun modes: health, guns, kill feed, health drops and killcam (RPCs share this scene PhotonView)
         if (Mode.UsesGuns && !TryGetComponent(out CombatManager _)) gameObject.AddComponent<CombatManager>();
+        if (Mode.UsesGuns && !TryGetComponent(out Loadout _)) gameObject.AddComponent<Loadout>();
+        if (Mode.UsesGuns && !TryGetComponent(out GunDrops _)) gameObject.AddComponent<GunDrops>();
         // Search & Destroy: the bomb, planting/defusing, its HUD and spectating (shares this PhotonView too)
         if (Mode is SearchDestroyMode && !TryGetComponent(out SearchDestroyController _)) gameObject.AddComponent<SearchDestroyController>();
         // Modes that keep dead players out (Last Man Standing): watch a survivor

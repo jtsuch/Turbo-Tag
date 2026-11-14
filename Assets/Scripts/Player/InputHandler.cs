@@ -53,7 +53,8 @@ public class InputHandler : MonoBehaviourPun
         if (!paused && player.CanMove)
             ReadMovement();
 
-        UpdateAbilities(!paused && player.CanUseAbilities);
+        // The shop takes the mouse (left click buys, right click sells): no abilities while it is open
+        UpdateAbilities(!paused && !GunPicker.IsOpen && player.CanUseAbilities);
     }
 
     private void ClearFrameInput()

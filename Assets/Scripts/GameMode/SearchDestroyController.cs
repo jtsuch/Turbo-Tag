@@ -56,6 +56,12 @@ public class SearchDestroyController : MonoBehaviourPun
     public static bool LocalCarrying => Instance != null && Instance.carryingNow;
     /// <summary>The local player has the bomb out in hand (the controls hint shows Drop).</summary>
     public static bool LocalBombOut => Instance != null && Instance.bombOut;
+
+    /// <summary>Local: the bomb back in the pack (a weapon key was pressed), so the gun comes out.</summary>
+    public static void PutBombAway()
+    {
+        if (Instance != null && Instance.bombOut && Instance.busy == Task.None) Instance.bombOut = false;
+    }
     private bool carryingNow;
     private int lastCarrier = -1;
     private bool droppedHere; // Dropped it: no picking it back up until you've stepped away from it
@@ -138,6 +144,7 @@ public class SearchDestroyController : MonoBehaviourPun
         Announce((MatchPhase)NetProps.Room(RoomKeys.Phase, (int)MatchPhase.Waiting)); // The room's phase: its round and winner arrive with it
         UpdateBomb(phase);
         UpdateBombInHand(local, phase);
+        UpdateZoneHighlights(local, phase);
         UpdateTask(local, phase);
         UpdatePickup(local, phase);
         UpdateDrop(local, phase);
@@ -275,6 +282,68 @@ public class SearchDestroyController : MonoBehaviourPun
         Part(PrimitiveType.Cube, "Body", new Vector3(0f, 0.15f, 0f), new Vector3(0.6f, 0.3f, 0.4f), bodyMat);
         Part(PrimitiveType.Cube, "Panel", new Vector3(-0.08f, 0.31f, 0f), new Vector3(0.3f, 0.03f, 0.28f), panelMat);
         bulbRenderer = Part(PrimitiveType.Sphere, "Light", new Vector3(0.18f, 0.34f, 0f), Vector3.one * 0.12f, panelMat).GetComponent<Renderer>();
+        return root;
+    }
+
+    // ─── Plant zones on the floor (the bomb carrier only) ─────────────────────
+
+    private readonly List<GameObject> zoneHighlights = new();
+    private Material zoneFill, zoneEdge;
+
+    // The carrier sees each site's plant zone painted on the floor (a soft green fill with a bright border): inside
+    // it the bomb can be planted, anywhere else it can't. Built from BombSite.Zones; hidden from everyone else.
+    private void UpdateZoneHighlights(Player local, MatchPhase phase)
+    {
+        var zones = BombSite.Zones;
+        if (zoneHighlights.Count != zones.Count)
+        {
+            foreach (var old in zoneHighlights) if (old != null) Destroy(old);
+            zoneHighlights.Clear();
+            if (zoneFill == null)
+            {
+                var shader = Shader.Find("Sprites/Default");
+                zoneFill = new Material(shader) { color = new Color(0.25f, 1f, 0.45f, 0.16f), renderQueue = 3001 };
+                zoneEdge = new Material(shader) { color = new Color(0.35f, 1f, 0.5f, 0.85f), renderQueue = 3002 };
+            }
+            foreach (var zone in zones) zoneHighlights.Add(BuildZoneHighlight(zone));
+        }
+
+        bool show = local != null && !local.IsCaught && (phase == MatchPhase.Countdown || phase == MatchPhase.Active)
+                    && SearchDestroyMode.Bomb == BombState.Carried && SearchDestroyMode.Carrier == PhotonNetwork.LocalPlayer.ActorNumber;
+        foreach (var h in zoneHighlights) if (h != null && h.activeSelf != show) h.SetActive(show);
+        if (show)
+        {
+            float pulse = 0.7f + 0.3f * Mathf.Sin(Time.time * 3f);
+            zoneEdge.color = new Color(0.35f, 1f, 0.5f, 0.85f * pulse);
+        }
+    }
+
+    private GameObject BuildZoneHighlight(BombSite.Zone zone)
+    {
+        var root = new GameObject($"Plant Zone {zone.Letter}");
+        root.transform.SetParent(transform, false);
+        root.transform.SetPositionAndRotation(zone.Centre + Vector3.up * 0.06f, zone.Rotation);
+        void Quad(string name, Vector3 local, Vector2 size, Material mat)
+        {
+            var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Destroy(q.GetComponent<Collider>());
+            q.name = name;
+            q.transform.SetParent(root.transform, false);
+            q.transform.localPosition = local;
+            q.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);   // Facing up
+            q.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var r = q.GetComponent<Renderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+        }
+        float w = zone.Size.x, d = zone.Size.z, t = 0.3f;
+        Quad("Fill", Vector3.zero, new Vector2(w, d), zoneFill);
+        Quad("Edge N", new Vector3(0f, 0.01f, d / 2f - t / 2f), new Vector2(w, t), zoneEdge);
+        Quad("Edge S", new Vector3(0f, 0.01f, -d / 2f + t / 2f), new Vector2(w, t), zoneEdge);
+        Quad("Edge E", new Vector3(w / 2f - t / 2f, 0.01f, 0f), new Vector2(t, d), zoneEdge);
+        Quad("Edge W", new Vector3(-w / 2f + t / 2f, 0.01f, 0f), new Vector2(t, d), zoneEdge);
+        root.SetActive(false);
         return root;
     }
 
@@ -502,6 +571,9 @@ public class SearchDestroyController : MonoBehaviourPun
         }
         else photonView.RPC(nameof(RPC_SnDDefuse), RpcTarget.MasterClient);
         EndTask(local);
+        // Let go before anything starts again: until the host's plant/defuse comes back, the bomb still reads as
+        // carried/planted here, and a key still held restarted the meter for a moment
+        bombKeyDownAt = -1f;
     }
 
     private void EndTask(Player local)
