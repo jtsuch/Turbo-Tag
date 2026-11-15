@@ -31,7 +31,7 @@ public static class LevelInfo
             if (col.gameObject.layer != StructureLayer || col.isTrigger || !col.enabled) continue;
             if (col.GetComponentInParent<DeathZone>() != null) continue;
             var size = col.bounds.size;
-            if (size.x * size.z > 150000f) continue; // Terrain-sized ground (Quads' 1 km terrain) isn't the play area
+            if (size.x * size.z > 150000f) continue; // Terrain-sized ground (a 1 km terrain) isn't the play area
             if (total.HasValue) { var t = total.Value; t.Encapsulate(col.bounds); total = t; }
             else total = col.bounds;
         }

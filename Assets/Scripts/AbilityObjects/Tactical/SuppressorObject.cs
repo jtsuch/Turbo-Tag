@@ -59,8 +59,10 @@ public class SuppressorObject : TacticalTrapObject
         }
     }
 
-    private void OnDestroy()
+    // Overrides (it used to hide) the base's: that one lets go of the Suppressed cards it holds on players inside
+    protected override void OnDestroy()
     {
+        base.OnDestroy();
         if (ring != null) Destroy(ring.gameObject);
     }
 
