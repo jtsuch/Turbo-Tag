@@ -187,7 +187,7 @@ public static class SceneNames
     public const string Pregame  = "Pregame";
     public const string Scoreboard = "Scoreboard";
 
-    public const string DefaultMap = "Quads";
+    public const string DefaultMap = "ShootingRange";   // Justin, Nov 14 (was Quads)
 
     /// <summary>
     /// Playable maps: scenes in Build Settings under <see cref="LevelFolder"/>, excluding names

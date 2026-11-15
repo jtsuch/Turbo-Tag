@@ -29,6 +29,10 @@ public sealed class GunInfo
     public float BloomRecovery = 8f;         // Degrees per second the bloom shrinks once you stop
     public float BloomDelay;                 // Seconds without firing before the bloom starts shrinking (0: always)
     public float ScopeZoom = 1f;             // Mouse wheel up: look through a scope this many times closer (1: no scope)
+    public bool  ScopeLens = true;           // Scoped: the black lens overlay, gun hidden (false: a light zoom over the sights)
+    public int   SprayRampShots;             // > 0: a custom spray (Nov 14): the first this many shots each add SprayRampBloom
+    public float SprayRampBloom;             // ...degrees (the spray opens gently from the second bullet)
+    public float SprayLateBloom;             // ...then each shot adds this many degrees, up to MaxBloom × the spray cap
     public float Recoil;                     // Degrees the view kicks up per shot
     public int   Pellets = 1;                // Bullets per shot (shotguns)
 
@@ -80,7 +84,7 @@ public static class GunCatalog
             Id = "AR", Name = "Blizzard", Model = "Guns/AR", Price = 2900,
             // Long sprays drift: the bloom only shrinks once you let go (BloomDelay), up to 3° after ~2 s
             Description = "Full-auto rifle. Ten body shots, five to the head; long sprays drift.",
-            Damage = 11f, HeadshotMultiplier = 2f, FireInterval = 0.11f, Automatic = true,
+            Damage = 10f, HeadshotMultiplier = 2f, FireInterval = 0.115f, Automatic = true,   // Nov 14: was 11, 0.11
             Magazine = 30, ReloadTime = 2f, Range = 200f, Spread = 0f, AirSpread = 2.5f, Recoil = 0.45f,
             Bloom = 0.16f, MaxBloom = 3f, BloomRecovery = 10f, BloomDelay = 0.15f,
             ViewOffset = new Vector3(0.38f, -0.36f, 0.75f), ViewLength = 1.25f, WorldLength = 1.75f,
@@ -88,7 +92,7 @@ public static class GunCatalog
         new GunInfo
         {
             // Nine pellets: two blasts up close (81 if they all land), useless past ~45 m
-            Id = "Shotgun", Name = "Slush", Model = "Guns/Shotgun", Price = 1800,
+            Id = "Shotgun", Name = "Burt", Model = "Guns/Shotgun", Price = 1800,
             Description = "Nine pellets per blast. Two blasts up close, nothing at range.",
             Damage = 9f, HeadshotMultiplier = 1.5f, FireInterval = 0.85f, Automatic = false, Pellets = 9,
             Magazine = 6, ReloadTime = 2.4f, Range = 45f, Spread = 5f, AirSpread = 2f, Recoil = 3.5f,
@@ -110,14 +114,16 @@ public static class GunCatalog
             Id = "AutoPistol", Name = "Flurry", Model = "Guns/AutoPistol", Slot = GunSlot.Secondary, Price = 450,
             Description = "A full-auto pistol. Shreds up close; the spray opens up fast.",
             Damage = 7f, HeadshotMultiplier = 1.75f, FireInterval = 0.09f, Automatic = true,
-            Magazine = 18, ReloadTime = 1.5f, Range = 120f, Spread = 1.2f, AirSpread = 2.5f, Recoil = 0.6f,
+            Magazine = 18, ReloadTime = 1.5f, Range = 120f, Spread = 0.8f, AirSpread = 2.5f, Recoil = 0.6f,
             Bloom = 0.6f, MaxBloom = 5f, BloomRecovery = 12f, BloomDelay = 0.1f,
+            // Nov 14, Justin: shots 1–6 pretty accurate (opening gently from the 2nd: ~2° by the 6th), then very wide
+            SprayRampShots = 5, SprayRampBloom = 0.4f, SprayLateBloom = 2.5f,
             ViewOffset = new Vector3(0.34f, -0.32f, 0.58f), ViewLength = 0.6f, WorldLength = 0.75f,
         },
         new GunInfo
         {
             // The hand cannon: 30 to the body, 75 to the head (a head and any body shot)
-            Id = "DesertEagle", Name = "Tusk", Model = "Guns/DesertEagle", Slot = GunSlot.Secondary, Price = 800,
+            Id = "DesertEagle", Name = "Desert Penguin", Model = "Guns/DesertEagle", Slot = GunSlot.Secondary, Price = 800,
             Description = "Six heavy rounds. Slow and kicks hard: a headshot and one more hit kills.",
             Damage = 30f, HeadshotMultiplier = 2.5f, FireInterval = 0.5f, Automatic = false,
             Magazine = 6, ReloadTime = 2.2f, Range = 180f, Spread = 0f, AirSpread = 2f, Recoil = 3.2f,
@@ -126,28 +132,31 @@ public static class GunCatalog
         },
         new GunInfo
         {
-            Id = "SMG", Name = "Squall", Model = "Guns/SMG", Price = 1600,
+            Id = "SMG", Name = "Squeak", Model = "Guns/SMG", Price = 1600,
             Description = "Fast and light. Less damage and more spread than a rifle; great on the move.",
             Damage = 7f, HeadshotMultiplier = 1.75f, FireInterval = 0.075f, Automatic = true,
-            Magazine = 30, ReloadTime = 1.6f, Range = 140f, Spread = 0.5f, AirSpread = 2f, Recoil = 0.35f,
+            Magazine = 25, ReloadTime = 1.6f, Range = 140f, Spread = 0.5f, AirSpread = 2f, Recoil = 0.35f,
             Bloom = 0.22f, MaxBloom = 4f, BloomRecovery = 10f, BloomDelay = 0.12f,
+            // Nov 14, Justin: spray like the Flurry's (~1.75° by the 6th shot, then wide)
+            SprayRampShots = 5, SprayRampBloom = 0.35f, SprayLateBloom = 1.8f,
             ViewOffset = new Vector3(0.36f, -0.34f, 0.65f), ViewLength = 0.95f, WorldLength = 1.25f,
         },
         new GunInfo
         {
             // The semi-auto rifle: hits harder per shot than the Blizzard, slower, for long sightlines
             Id = "LongRifle", Name = "Glacier", Model = "Guns/LongRifle", Price = 2250,
-            Description = "Semi-auto rifle. Four body shots or two headshots; tight at range.",
+            Description = "Semi-auto rifle. Four body shots or two headshots; tight at range, scroll up to zoom.",
             Damage = 26f, HeadshotMultiplier = 2f, FireInterval = 0.3f, Automatic = false,
             Magazine = 20, ReloadTime = 2.2f, Range = 250f, Spread = 0f, AirSpread = 2.5f, Recoil = 1.2f,
             Bloom = 0.3f, MaxBloom = 1.5f,
+            ScopeZoom = 1.6f, ScopeLens = false,   // Nov 14: a light zoom (the Icicle's is 4×, with its lens)
             ViewOffset = new Vector3(0.37f, -0.36f, 0.8f), ViewLength = 1.4f, WorldLength = 1.9f,
         },
         new GunInfo
         {
             Id = "LMG", Name = "Avalanche", Model = "Guns/LMG", Price = 3200,
             Description = "Sixty rounds of suppression. Heavy, and a long reload.",
-            Damage = 9f, HeadshotMultiplier = 1.75f, FireInterval = 0.085f, Automatic = true,
+            Damage = 8f, HeadshotMultiplier = 1.75f, FireInterval = 0.085f, Automatic = true,   // Nov 14: was 9
             Magazine = 60, ReloadTime = 3.5f, Range = 200f, Spread = 0.3f, AirSpread = 3f, Recoil = 0.5f,
             Bloom = 0.18f, MaxBloom = 3.5f, BloomRecovery = 9f, BloomDelay = 0.15f,
             ViewOffset = new Vector3(0.38f, -0.38f, 0.75f), ViewLength = 1.35f, WorldLength = 1.9f,

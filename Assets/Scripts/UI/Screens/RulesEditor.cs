@@ -7,7 +7,8 @@ using Hashtable    = ExitGames.Client.Photon.Hashtable;
 using PhotonPlayer = Photon.Realtime.Player;
 
 /// <summary>
-/// The lobby's game settings: a game mode picker, the mode's description, then its rules grouped by category,
+/// The lobby's game settings: a game mode picker (a button showing the mode; it opens a list of every mode as cards
+/// with their descriptions: Justin, Nov 14, "clicking through every mode is inconvenient"), the mode's description, then its rules grouped by category,
 /// each as a card with a − value + stepper (numbers, m:ss times) or a switch (on/off). Built from the mode's
 /// <see cref="RuleSetting"/>s, so new rules appear without UI work. The host edits (values are clamped to the
 /// rule's limits); everyone else sees the same live values, read-only. Values live in room properties.
@@ -24,7 +25,10 @@ public class RulesEditor : MonoBehaviourPunCallbacks
 
     private readonly List<Row> rows = new();
     private readonly List<GameModeDefinition> modes = new();
-    private UISelector modeSelector;
+    private Button modeButton;
+    private TMP_Text modeButtonLabel;
+    private UIModal modeModal;
+    private readonly List<(string key, Image face)> modeCards = new();
     private TMP_Text description, hostNote;
     private RectTransform list;
     private string builtFor;
@@ -71,7 +75,9 @@ public class RulesEditor : MonoBehaviourPunCallbacks
         UIKit.Size(pickRow, height: 60f);
         UIKit.Text(pickRow, "GAME MODE", 20f, UIKit.Font.Bold, theme.textMuted).textWrappingMode = TextWrappingModes.NoWrap;
         modes.AddRange(GameModeRegistry.Definitions);
-        modeSelector = UIKit.Selector(pickRow, modes.ConvertAll(m => m.gameModeName).ToArray(), 0, OnModePicked, 460f);
+        modeButton = UIKit.Button(pickRow, "Mode", UIKit.Style.Ghost, OpenModeList, 56f, 26f, "Mode Picker");
+        UIKit.Size((RectTransform)modeButton.transform, 460f, 56f);
+        modeButtonLabel = modeButton.GetComponentInChildren<TMP_Text>();
         hostNote = UIKit.Text(pickRow, "Only the host can change these.", 20f, UIKit.Font.Body, theme.textMuted);
         hostNote.textWrappingMode = TextWrappingModes.NoWrap;
 
@@ -106,6 +112,62 @@ public class RulesEditor : MonoBehaviourPunCallbacks
     {
         if (!IsHost || refreshing || index < 0 || index >= modes.Count) return;
         MatchRules.ApplyGameMode(modes[index], overwrite: true); // Every rule back to this mode's default
+    }
+
+    // ─── The mode list ────────────────────────────────────────────────────────
+
+    // Every mode as a card (name + description) in a scrolling two-column grid, the current one highlighted; a click
+    // picks it (host). Built the first time it opens, on the screen's own canvas, over whatever modal holds this editor
+    private void OpenModeList()
+    {
+        if (!IsHost || modeLocked) return;
+        if (modeModal == null) BuildModeList();
+        if (modeModal == null) return;
+        foreach (var (key, face) in modeCards)
+            face.color = key == MatchRules.GameModeKey ? UIKit.WithAlpha(UITheme.Current.secondary, 0.9f) : UITheme.Current.card;
+        modeModal.transform.SetAsLastSibling();
+        modeModal.Open();
+    }
+
+    private void BuildModeList()
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+        var theme = UITheme.Current;
+        modeModal = UIKit.Modal(canvas.rootCanvas.transform, "Choose a Game Mode", new Vector2(1240f, 860f));
+        modeModal.NoFooter();
+        var content = UIKit.ScrollList(modeModal.Body, 0f);
+        DestroyImmediate(content.GetComponent<VerticalLayoutGroup>()); // A grid instead
+        var grid = content.gameObject.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(570f, 132f);
+        grid.spacing = new Vector2(20f, 18f);
+        grid.padding = UIKit.Pad(8);
+        for (int i = 0; i < modes.Count; i++)
+        {
+            var mode = modes[i];
+            var card = UIKit.Panel(content, theme.card, 20f, mode.gameModeName);
+            var name = UIKit.Text(card.transform, mode.gameModeName, 30f, UIKit.Font.Display, theme.text);
+            UIKit.Place(name.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -14f), new Vector2(526f, 40f));
+            name.rectTransform.pivot = new Vector2(0f, 1f);
+            var desc = UIKit.Text(card.transform, mode.description, 17f, UIKit.Font.Body, theme.textMuted);
+            UIKit.Place(desc.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -58f), new Vector2(526f, 62f));
+            desc.rectTransform.pivot = new Vector2(0f, 1f);
+            desc.overflowMode = TextOverflowModes.Ellipsis;
+            var button = card.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            var fx = card.gameObject.AddComponent<UIButtonFx>();
+            fx.HoverScale = 1.02f;
+            fx.Face = card;
+            fx.FaceColor = theme.card;
+            fx.LipDepth = 0f;
+            int index = i;
+            button.onClick.AddListener(() =>
+            {
+                OnModePicked(index);
+                modeModal.Close();
+            });
+            modeCards.Add((mode.gameModeKey, card));
+        }
     }
 
     // ─── Rows ─────────────────────────────────────────────────────────────────
@@ -191,8 +253,9 @@ public class RulesEditor : MonoBehaviourPunCallbacks
         refreshing = true;
 
         int index = modes.FindIndex(m => m.gameModeKey == MatchRules.GameModeKey);
-        if (index >= 0) modeSelector.Set(index, notify: false);
-        modeSelector.Interactable = IsHost && !modeLocked;
+        if (index >= 0 && modeButtonLabel != null)
+            modeButtonLabel.text = modes[index].gameModeName;   // Plain text: the fonts lack arrow glyphs
+        modeButton.interactable = IsHost && !modeLocked;
         hostNote.gameObject.SetActive(!IsHost || modeLocked);
         if (modeLocked) hostNote.text = "The mode is set for this match.";
 

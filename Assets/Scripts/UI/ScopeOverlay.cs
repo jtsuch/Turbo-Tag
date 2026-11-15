@@ -71,7 +71,8 @@ public class ScopeOverlay : MonoBehaviour
     private void Update()
     {
         var cam = PlayerCam.Local;
-        float blend = cam != null && Player.Local != null && Player.Local.Gun != null && Player.Local.Gun.Scoped ? cam.ZoomBlend : 0f;
+        float blend = cam != null && Player.Local != null && Player.Local.Gun != null && Player.Local.Gun.Scoped
+                      && Player.Local.Gun.Current is { ScopeLens: true } ? cam.ZoomBlend : 0f;   // A light zoom: no lens
         Showing = blend > 0.5f;
         bool on = blend > 0.01f;
         if (canvas.gameObject.activeSelf != on) canvas.gameObject.SetActive(on);

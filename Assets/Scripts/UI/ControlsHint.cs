@@ -51,7 +51,7 @@ public class ControlsHint : MonoBehaviour
         rows.Clear();
         var gun = local.Gun != null ? local.Gun.Current : null;
         if (gun != null && gun.ScopeZoom > 1f && CombatManager.Instance != null)
-            rows.Add(("WHEEL", local.Gun.Scoped ? "Scroll down: leave scope" : "Scroll up: scope in", true));
+            rows.Add(("WHEEL", local.Gun.Scoped ? (gun.ScopeLens ? "Scroll down: leave scope" : "Scroll down: zoom out") : (gun.ScopeLens ? "Scroll up: scope in" : "Scroll up: zoom in"), true));
         if (SearchDestroyController.LocalBombOut) rows.Add((Key(InputAction.DropBomb), "Drop bomb", true));
         if (SearchDestroyController.LocalCarrying) rows.Add((Key(InputAction.Bomb), SearchDestroyController.LocalBombOut ? "Put bomb away · hold: plant" : "Bomb · hold: plant", true));
         if (KeepAwayDisc.LocalHolding) rows.Add((Key(InputAction.Action), "Throw disc · hold: further", true));

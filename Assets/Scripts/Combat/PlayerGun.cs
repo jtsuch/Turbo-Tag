@@ -54,6 +54,7 @@ public class PlayerGun : MonoBehaviourPun
     private bool fireBlockedUntilRelease; // An ability used the Action key: no shot until it is let go
     private bool lastTraceHit; // The last Trace stopped on something (for impact sparks)
     private Shootable lastShootable; // ...and it was a breakable ability object
+    private TrainingDummy lastDummy; // ...or the shooting range's dummy
     private Vector3 lastTraceNormal = Vector3.up;
     private readonly Dictionary<Player, (float damage, bool head, Vector3 point)> pending = new();
 
@@ -246,14 +247,30 @@ public class PlayerGun : MonoBehaviourPun
     {
         var gun = Current;
         if (!InfiniteAmmo) Ammo--;
-        nextShotAt = Time.time + gun.FireInterval / Mathf.Max(0.1f, FireRateMultiplier);
+        float interval = gun.FireInterval / Mathf.Max(0.1f, FireRateMultiplier);
+        // A spray: shots following on within a beat of each other. A pause (or the bloom settling) starts afresh
+        if (Time.time - lastShotAt > Mathf.Max(0.3f, interval * 1.8f) && bloom < 0.05f) { sprayShots = 0; sprayDrift = Vector2.zero; }
+        sprayShots++;
+        nextShotAt = Time.time + interval;
         lastShotAt = Time.time;
 
         Transform view   = PlayerCam.Local.Camera.transform;
-        // Perfect on the first shot; spraying blooms; air/moving error only with the Movement Inaccuracy rule
-        float     spread = gun.Spread + bloom + (MatchRules.MovementSpread && !player.IsGrounded ? gun.AirSpread : 0f);
+        // Spray (Justin, Nov 14: "the first couple of bullets fairly accurate, the spray wide and unpredictable"): the
+        // first SprayGrace shots of a spray add no bloom; after that every shot adds the gun's bloom × SprayGrowth up to
+        // its cap × SprayCap (× the mode's own scales), and the bloomed part lands round a wandering aim point and
+        // favours the edge of the cone. Air/moving error only with the Movement Inaccuracy rule
+        float     baseSpread = gun.Spread + (MatchRules.MovementSpread && !player.IsGrounded ? gun.AirSpread : 0f);
+        float     sprayed    = bloom;
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
-        bloom = Mathf.Min(gun.MaxBloom * (mode != null ? mode.MaxBloomScale : 1f), bloom + gun.Bloom * (mode != null ? mode.BloomScale : 1f));
+        float bloomCap = gun.MaxBloom * SprayCap * (mode != null ? mode.MaxBloomScale : 1f);
+        float bloomScale = mode != null ? mode.BloomScale : 1f;
+        if (gun.SprayRampShots > 0)   // A custom spray: gentle from the first shot for a few, then wide
+            bloom = Mathf.Min(bloomCap, bloom + (sprayShots <= gun.SprayRampShots ? gun.SprayRampBloom : gun.SprayLateBloom) * bloomScale);
+        else if (sprayShots > SprayGrace)
+            bloom = Mathf.Min(bloomCap, bloom + gun.Bloom * SprayGrowth * bloomScale);
+        // The wandering aim point: a random walk inside the bloom (in shares of it), so successive shots don't centre
+        if (sprayed > 0.01f) sprayDrift = Vector2.ClampMagnitude(sprayDrift + Random.insideUnitCircle * 0.45f, 0.75f);
+        float     spread = baseSpread;
         float     damage = gun.Damage * MatchRules.DamageScale * DamageMultiplier;
         bool      firstLanded = false;
 
@@ -264,7 +281,7 @@ public class PlayerGun : MonoBehaviourPun
 
         for (int p = 0; p < Mathf.Max(1, gun.Pellets); p++)
         {
-            Vector3 dir = Spread(view, spread);
+            Vector3 dir = SprayDirection(Spread(view, spread), view, sprayed);
             Vector3 end = Trace(view.position, dir, gun.Range, out Player target, out bool head);
             if (p == 0) { firstEnd = end; firstLanded = lastTraceHit; }
             GunFx.Tracer(muzzle, end);
@@ -285,6 +302,14 @@ public class PlayerGun : MonoBehaviourPun
             {
                 // Ability objects bullets can break (Recon Bolt, Drone, Turret, Ice Wall)
                 if (lastShootable != null) { lastShootable.Hit(damage); anyHit = true; }
+                // The shooting range's dummy: the damage a player would take, headshots by height
+                if (lastDummy != null && lastTraceHit)
+                {
+                    bool dummyHead = lastDummy.IsHead(end);
+                    lastDummy.TakeHit(damage * (dummyHead ? gun.HeadshotMultiplier : 1f), dummyHead, end);
+                    anyHit = true;
+                    anyHead |= dummyHead;
+                }
                 continue;
             }
             anyHit = true;
@@ -354,6 +379,18 @@ public class PlayerGun : MonoBehaviourPun
             best = other; bestDistance = distance; bestPoint = centre;
         }
 
+        // The shooting range's dummies, if one is nearer than any player in reach
+        TrainingDummy dummy = null;
+        foreach (var d in TrainingDummy.All)
+        {
+            if (d == null) continue;
+            Vector3 centre = d.transform.position + Vector3.up * 1.2f;
+            Vector3 to = centre - view.position;
+            float distance = to.magnitude;
+            if (distance > gun.Range + 0.8f || distance >= bestDistance || Vector3.Angle(view.forward, to) > 40f) continue;
+            dummy = d; bestDistance = distance; bestPoint = centre; best = null;
+        }
+
         var model = ViewModel(gun.Id);
         if (model != null) model.Slash();
         if (player.Animation != null) player.Animation.PlayKnifeSwing();
@@ -362,6 +399,15 @@ public class PlayerGun : MonoBehaviourPun
         if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt();
         Fired?.Invoke();
         if (player != null) player.EndSpawnProtectionNow();
+        if (dummy != null)
+        {
+            Vector3 toDummy = Vector3.ProjectOnPlane(dummy.transform.position - player.transform.position, Vector3.up).normalized;
+            bool fromBehind = Vector3.Dot(Vector3.ProjectOnPlane(dummy.transform.forward, Vector3.up).normalized, toDummy) > 0.5f;
+            dummy.TakeHit((fromBehind ? gun.BackstabDamage : gun.Damage) * MatchRules.DamageScale * DamageMultiplier, fromBehind, bestPoint);
+            Fx.Impact(bestPoint, view.position, true);
+            LocalHit?.Invoke(fromBehind);
+            return;
+        }
         if (best == null) return;
 
         Vector3 flat = Vector3.ProjectOnPlane(best.transform.position - player.transform.position, Vector3.up).normalized;
@@ -469,6 +515,24 @@ public class PlayerGun : MonoBehaviourPun
 
     private static readonly float[] ReloadBeats = { 0.12f, 0.6f, 0.8f };
 
+    // ─── Spray ────────────────────────────────────────────────────────────────
+
+    private const int   SprayGrace  = 2;      // Shots of a spray that stay as accurate as the first
+    private const float SprayGrowth = 2.5f;   // × each gun's bloom per shot after that
+    private const float SprayCap    = 2f;     // × each gun's bloom cap
+    private int     sprayShots;
+    private Vector2 sprayDrift;
+
+    // Throws a shot off by the spray's bloom: round the wandering aim point, mostly toward the outside of the cone
+    private Vector3 SprayDirection(Vector3 dir, Transform view, float bloomDegrees)
+    {
+        if (bloomDegrees <= 0.01f) return dir;
+        float size = Mathf.Tan(bloomDegrees * Mathf.Deg2Rad);
+        Vector2 jitter = Random.insideUnitCircle.normalized * Mathf.Pow(Random.value, 0.4f);   // Leans to the rim
+        Vector2 offset = (sprayDrift * 0.55f + jitter * 0.6f) * size;
+        return (dir + view.right * offset.x + view.up * offset.y).normalized;
+    }
+
     private static Vector3 Spread(Transform view, float degrees)
     {
         if (degrees <= 0f) return view.forward;
@@ -481,6 +545,7 @@ public class PlayerGun : MonoBehaviourPun
     {
         target = null;
         head   = false;
+        lastDummy = null;
         int count = Physics.RaycastNonAlloc(origin, dir, hits, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
 
         float best = float.MaxValue;
@@ -548,6 +613,8 @@ public class PlayerGun : MonoBehaviourPun
         if (hitIndex < 0) return origin + dir * range;
         if (hits[hitIndex].collider.GetComponentInParent<Player>() == null)
             lastShootable = hits[hitIndex].collider.GetComponentInParent<Shootable>();
+        if (hits[hitIndex].collider.GetComponentInParent<Player>() == null)
+            lastDummy = hits[hitIndex].collider.GetComponentInParent<TrainingDummy>();
         lastTraceNormal = hits[hitIndex].normal;
 
         var hit = hits[hitIndex];
@@ -643,7 +710,7 @@ public class PlayerGun : MonoBehaviourPun
 
         if (player.Animation != null) player.Animation.ForceFirstPersonGun = killcamGun != null && gun != null && gun.Model == null;
 
-        bool scopedIn = killcamGun == null && Scoped;
+        bool scopedIn = killcamGun == null && Scoped && Current != null && Current.ScopeLens;   // A light zoom keeps the gun
         foreach (var pair in viewModels)
             if (pair.Value != null) pair.Value.SetActive(gun != null && pair.Key == gun.Id && !scopedIn);
 

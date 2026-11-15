@@ -46,6 +46,7 @@ public static class EditorJobQueue
         ["BuildSkyreach"] = SkyreachBuilder.Build,
         ["BuildStairfall"] = StairfallBuilder.Build,
         ["BuildCistern"] = CisternBuilder.Build,
+        ["BuildShootingRange"] = ShootingRangeBuilder.Build,
         ["BuildFacility"] = FacilityBuilder.Build,
         ["BuildFracture"] = FractureBuilder.Build,
         ["BuildFoundry"] = FoundryBuilder.Build,

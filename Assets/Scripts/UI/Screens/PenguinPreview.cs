@@ -132,7 +132,7 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
 
     // Removes everything but visuals and animation: scripts first (in dependency order), then physics, then the
     // first-person camera rig. Done while inactive, so none of it ever runs.
-    private static void Strip(GameObject copy)
+    internal static void Strip(GameObject copy)   // Also the shooting range's TrainingDummy
     {
         var camera = copy.transform.Find("CameraHolder");
         if (camera != null) DestroyImmediate(camera.gameObject);
