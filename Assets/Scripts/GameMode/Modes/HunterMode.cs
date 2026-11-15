@@ -142,15 +142,17 @@ public class HunterMode : GameMode
             Spawner.Instance.RespawnLocalPlayer();
     }
 
+    public override bool UsesHunterRoom => true;
+
+    // Frozen for the countdown, except hunters, who roam their room (HunterRoom) through the countdown and hiding
     public override bool CanMove(PlayerRole role, MatchPhase phase) => phase switch
     {
-        MatchPhase.Countdown => false,
-        MatchPhase.Hiding    => role != PlayerRole.Hunter,
+        MatchPhase.Countdown => InHunterRoom(role, phase),
         _                    => true,
     };
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
-        CanMove(role, phase) && (role != PlayerRole.Hunter || MatchRules.HunterAbilities);
+        !InHunterRoom(role, phase) && CanMove(role, phase) && (role != PlayerRole.Hunter || MatchRules.HunterAbilities);
 
     public override float SpeedMultiplier(PlayerRole role) =>
         role == PlayerRole.Hunter ? MatchRules.HunterSpeedMultiplier : 1f;

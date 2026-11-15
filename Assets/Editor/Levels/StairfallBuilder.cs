@@ -78,7 +78,7 @@ public static class StairfallBuilder
         Bounds(new Vector3(0, 0, 0), 420f, -120f, 80f);
         Spawns(SpawnSpots, new Vector3(0, 0, -4));
         CheckSpawnSpacing(SpawnSpots);
-        PlaceSpawner(new Vector3(4, 0.1f, -20), -110f);
+        PlaceSpawner(new Vector3(-24, 10.1f, -24), -110f, 40f);   // Nov 14 spawn pass: roomy, raised where it could be, near the middle (Pump Hall roof)
         Atmosphere.SunnyDay(root, new Vector3(1f, 0f, 0.35f), new Bounds(new Vector3(0, 10, 0), new Vector3(190, 40, 170)));
 
         Finish(scene, ReportPath, "Stairfall", RenderOverviews);

@@ -411,7 +411,7 @@ public static class PinnacleBuilder
     {
         var spawner = Object.FindFirstObjectByType<Spawner>(FindObjectsInactive.Include);
         if (spawner == null) { report.Add("! no Spawner in the scene"); return; }
-        spawner.transform.position = new Vector3(-6, 0.1f, -6);
+        spawner.transform.SetPositionAndRotation(new Vector3(22, 6.1f, -18), Quaternion.Euler(0f, -71f, 0f));   // Nov 14 spawn pass: roomy, raised where it could be, near the middle (High Plateau)
         var so = new SerializedObject(spawner);
         so.FindProperty("killHeight").floatValue = -30f;
         so.ApplyModifiedPropertiesWithoutUndo();

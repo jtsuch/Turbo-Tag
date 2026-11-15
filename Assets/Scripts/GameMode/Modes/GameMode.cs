@@ -184,6 +184,16 @@ public abstract class GameMode
 
     public virtual bool CanMove(PlayerRole role, MatchPhase phase) => true;
 
+    /// <summary>
+    /// Hunters wait in their own room off the map during Countdown and Hiding, while a decoy covers its eyes where they
+    /// start (<see cref="HunterRoom"/>, Justin, Nov 14). Tag, Protect the President and Hunter.
+    /// </summary>
+    public virtual bool UsesHunterRoom => false;
+
+    /// <summary>This role is in the hunter room in this phase (they roam it, with no abilities, and are off the map).</summary>
+    public bool InHunterRoom(PlayerRole role, MatchPhase phase) =>
+        UsesHunterRoom && role == PlayerRole.Hunter && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding);
+
     public virtual bool CanUseAbilities(PlayerRole role, MatchPhase phase) => CanMove(role, phase);
 
     /// <summary>Mode-specific multiplier on movement speed for a role (1 = normal).</summary>

@@ -138,15 +138,17 @@ public class PresidentMode : GameMode
         Manager.RequestTag(other);
     }
 
+    public override bool UsesHunterRoom => true;
+
+    // Frozen for the countdown, except hunters, who roam their room (HunterRoom) through the countdown and hiding
     public override bool CanMove(PlayerRole role, MatchPhase phase) => phase switch
     {
-        MatchPhase.Countdown => false,
-        MatchPhase.Hiding    => role != PlayerRole.Hunter,
+        MatchPhase.Countdown => InHunterRoom(role, phase),
         _                    => true,
     };
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
-        CanMove(role, phase) && role switch
+        !InHunterRoom(role, phase) && CanMove(role, phase) && role switch
         {
             PlayerRole.Hunter    => MatchRules.HunterAbilities,
             PlayerRole.President => MatchRules.PresidentAbilities,

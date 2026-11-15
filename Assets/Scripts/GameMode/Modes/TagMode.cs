@@ -302,16 +302,18 @@ public class TagMode : GameMode
         Manager.RequestTag(other);
     }
 
+    public override bool UsesHunterRoom => true;
+
+    // Frozen for the countdown, except hunters, who roam their room (HunterRoom) through the countdown and hiding
     public override bool CanMove(PlayerRole role, MatchPhase phase) => phase switch
     {
-        MatchPhase.Countdown => false,
-        MatchPhase.Hiding    => role != PlayerRole.Hunter,
+        MatchPhase.Countdown => InHunterRoom(role, phase),
         _                    => true,
     };
 
     // Rules can switch abilities off for one side
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) =>
-        CanMove(role, phase) && (role == PlayerRole.Hunter ? MatchRules.HunterAbilities : MatchRules.HiderAbilities);
+        !InHunterRoom(role, phase) && CanMove(role, phase) && (role == PlayerRole.Hunter ? MatchRules.HunterAbilities : MatchRules.HiderAbilities);
 
     public override float SpeedMultiplier(PlayerRole role) =>
         role == PlayerRole.Hunter ? MatchRules.HunterSpeedMultiplier : 1f;
@@ -331,8 +333,8 @@ public class TagMode : GameMode
 
     public override string GetObjective(PlayerRole role, MatchPhase phase) => (role, phase) switch
     {
-        (PlayerRole.Hunter, MatchPhase.Countdown) => "You're IT!",
-        (PlayerRole.Hunter, MatchPhase.Hiding)    => "You're IT! Wait for the hiders to hide...",
+        (PlayerRole.Hunter, MatchPhase.Countdown) => "You're IT! Pick your class while you wait.",
+        (PlayerRole.Hunter, MatchPhase.Hiding)    => "You're IT! The hiders see you counting...",
         (PlayerRole.Hunter, MatchPhase.Active)    => "Tag the hiders!",
         (PlayerRole.Hider,  MatchPhase.Countdown) => "Get ready to run!",
         (PlayerRole.Hider,  MatchPhase.Hiding)    => "Hide!",

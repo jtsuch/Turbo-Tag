@@ -423,6 +423,7 @@ public class Minimap : MonoBehaviour
             if (p == null || p == local || p.IsDownAfterTag) continue;
             if (!ShowEveryone && (mode == null || !mode.ShowsOnMap(local.Role, p.Role))) continue;
             if (manager.HidesIdentityFromLocal(p)) continue;
+            if (mode != null && mode.InHunterRoom(p.Role, manager.Phase)) continue;   // Off the map in the hunter room
 
             Color color = PlayerRoles.Color(p.Role);
             Mark(ref used, p.transform.position, local, color, 14f);

@@ -8,7 +8,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb,LadderClimb,LadderHold,Reload,WeaponSwap,KnifeSwing}.fbx)
+/// Sets up Jimmy's new move clips (Assets/Animations/{Crouch,CrouchWalk,Charge,ThrowLeft,PlantBomb,DefuseBomb,LadderClimb,LadderHold,Reload,WeaponSwap,KnifeSwing,CoverEyes}.fbx)
 /// and hooks them into the Animator:
 ///   1. names each FBX's take after the file, sets the loops, and writes fixed copies (same path and unit fixes as the
 ///      ledge and emote clips, <see cref="LedgeAnimationSetup.Remapped"/>) to Assets/Animations/Moves;
@@ -16,7 +16,7 @@ using UnityEngine;
 ///      the idle pose's), so the top animated bone's position curves are shifted down by the measured amount;
 ///   3. (re)builds three layers PlayerAnimatorController drives by name:
 ///        "Crouch Layer" (full body, just above the Base Layer): Crouch ↔ CrouchWalk on MovementSpeed;
-///        "Action Layer" (full body, under the gun arm): Charge (Bulldozer), PlantBomb, DefuseBomb, LadderClimb, LadderHold;
+///        "Action Layer" (full body, under the gun arm): Charge (Bulldozer), PlantBomb, DefuseBomb, LadderClimb, LadderHold, CoverEyes;
 ///        "Throw Layer" (left arm only, on top): ThrowLeft, Reload;
 ///        "Swap Layer" (right arm only, on top): WeaponSwap, KnifeSwing.
 /// Re-runnable. Report: Library/TurboTag/scratch/move_setup.txt.
@@ -42,6 +42,7 @@ public static class NewMoveAnimationSetup
         ("ThrowLeft", false), ("PlantBomb", true), ("DefuseBomb", true),
         ("LadderClimb", true), ("LadderHold", true),
         ("Reload", false), ("WeaponSwap", false), ("KnifeSwing", false),
+        ("CoverEyes", true),
     };
 
     [MenuItem("Turbo Tag/Animation/Set Up New Move Animations")]
@@ -60,6 +61,17 @@ public static class NewMoveAnimationSetup
             take.loopTime = loop;
             importer.animationType = ModelImporterAnimationType.Generic;
             importer.clipAnimations = new[] { take };
+            // Same units as the rest: Justin's clips come out of Blender with an FBX unit scale of 1 (centimetres: Unity's
+            // file scale 0.01), which the player model's Armature scale expects. One saved with a unit scale of 100
+            // (CoverEyes, Nov 14) had bone offsets 100x too big and stretched into a "tornado" in the sky; its scale
+            // factor is set so file scale × scale factor is 0.01 like the rest
+            float scale = importer.fileScale > 0f ? 0.01f / importer.fileScale : 1f;
+            if (!importer.useFileScale) scale = importer.globalScale;
+            if (Mathf.Abs(importer.globalScale - scale) > 1e-5f)
+            {
+                report.AppendLine($"{name}: file scale {importer.fileScale} -> scale factor {scale} (was {importer.globalScale})");
+                importer.globalScale = scale;
+            }
             importer.SaveAndReimport();
 
             var source = AssetDatabase.LoadAllAssetsAtPath(Folder + name + ".fbx").OfType<AnimationClip>()
@@ -148,8 +160,9 @@ public static class NewMoveAnimationSetup
                 }
                 Shift(clip, bone, path, move);
                 // Ladder poses: the hips (LeftHip / RigthHip) are the Stomach's siblings, not its children, so they move
-                // with it too (Justin, Nov 14: the legs stuck out further from the ladder than the arms)
-                if (name.StartsWith("Ladder"))
+                // with it too (Justin, Nov 14: the legs stuck out further from the ladder than the arms). The same for any
+                // clip without Armature curves (CoverEyes, the arm clips): lowering only the Stomach left the feet 10 cm up
+                if (path.Contains("/"))
                 {
                     string parentPath = path.Contains("/") ? path.Substring(0, path.LastIndexOf('/')) : "";
                     foreach (var sibling in bindings.Select(b => b.path).Distinct())
@@ -250,7 +263,7 @@ public static class NewMoveAnimationSetup
 
         var actionMachine = Machine(controller, ActionLayer);
         actionMachine.defaultState = actionMachine.AddState("Empty");
-        foreach (var name in new[] { "Charge", "PlantBomb", "DefuseBomb", "LadderClimb", "LadderHold" })
+        foreach (var name in new[] { "Charge", "PlantBomb", "DefuseBomb", "LadderClimb", "LadderHold", "CoverEyes" })
             if (clips.TryGetValue(name, out var clip)) actionMachine.AddState(name).motion = clip;
 
         var throwMachine = Machine(controller, ThrowLayer);

@@ -64,7 +64,7 @@ public static class SkyreachBuilder
         Bounds(new Vector3(0, 0, -20), 460f, -120f, 80f);
         Spawns(SpawnSpots, new Vector3(0, 0, -10));
         CheckSpawnSpacing(SpawnSpots);
-        PlaceSpawner(new Vector3(0, 0.1f, -24), -110f);
+        PlaceSpawner(new Vector3(-5, 15.1f, 49), -110f, 180f);   // Nov 14 spawn pass: roomy, raised where it could be, near the middle (North Mesa; was over a gap)
         Atmosphere.SunnyDay(root, new Vector3(1f, 0f, 0.35f), new Bounds(new Vector3(0, 20, -10), new Vector3(180, 50, 220)));
 
         Finish(scene, ReportPath, "Skyreach", RenderOverviews);

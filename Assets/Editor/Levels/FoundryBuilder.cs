@@ -66,7 +66,7 @@ public static class FoundryBuilder
         // Low enough that a fall off the edge passes the skirt and the dirt (both climbable) before it counts
         Bounds(Vector3.zero, 360f, -110f, 60f);
         Spawns(SpawnSpots, Vector3.zero);
-        PlaceSpawner(new Vector3(-12, 0.1f, 12), -100f);
+        PlaceSpawner(new Vector3(-5, 0.1f, -15), -100f, -43f);   // Nov 14 spawn pass: roomy, the open yard (every raised spot is at the edge), near the middle
         // A sunny day: sky, bright soft lighting so rooms and undersides read, haze, a light wind from the west-south-west
         Atmosphere.SunnyDay(root, new Vector3(1f, 0f, 0.35f), new Bounds(new Vector3(8, 12, -8), new Vector3(150, 30, 160)));
 

@@ -98,11 +98,15 @@ public static class GreyboxKit
         }
     }
 
-    public static void PlaceSpawner(Vector3 at, float killHeight)
+    /// <summary>
+    /// The Spawner: the hide modes' start (hiders in a 5 m ring round it, the hunters' decoys in the middle). Pick a
+    /// spot with a clear, flat 7 m+ radius, ideally raised with an easy way down, near the middle of the map.
+    /// </summary>
+    public static void PlaceSpawner(Vector3 at, float killHeight, float yaw = 0f)
     {
         var spawner = Object.FindFirstObjectByType<Spawner>(FindObjectsInactive.Include);
         if (spawner == null) { report.Add("! no Spawner in the scene"); return; }
-        spawner.transform.position = at;
+        spawner.transform.SetPositionAndRotation(at, Quaternion.Euler(0f, yaw, 0f));
         var so = new SerializedObject(spawner);
         so.FindProperty("killHeight").floatValue = killHeight;
         so.ApplyModifiedPropertiesWithoutUndo();

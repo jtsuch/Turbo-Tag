@@ -64,7 +64,7 @@ public static class FractureBuilder
         Bounds(Vector3.zero, 420f, -110f, 70f);
         Spawns(SpawnSpots, Vector3.zero);
         CheckSpawnSpacing(SpawnSpots);
-        PlaceSpawner(new Vector3(-11, 0.1f, -11), -100f);
+        PlaceSpawner(new Vector3(-8, 5.1f, 48), -100f, 167f);   // Nov 14 spawn pass: roomy, raised where it could be, near the middle (North Hall roof)
         Atmosphere.SunnyDay(root, new Vector3(1f, 0f, 0.35f), new Bounds(new Vector3(0, 15, 0), new Vector3(180, 40, 180)));
 
         Finish(scene, ReportPath, "Fracture", RenderOverviews);

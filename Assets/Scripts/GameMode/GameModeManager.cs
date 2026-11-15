@@ -87,6 +87,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out PingMarkers _)) gameObject.AddComponent<PingMarkers>();         // ...and where they are
         if (!TryGetComponent(out SoundVisualizer _)) gameObject.AddComponent<SoundVisualizer>(); // Faint edge glows for loud sounds
         if (!TryGetComponent(out HunterClassPicker _)) gameObject.AddComponent<HunterClassPicker>(); // Hunters pick a class while hiders hide
+        if (!TryGetComponent(out HunterRoom _)) gameObject.AddComponent<HunterRoom>();               // ...in their own room, a decoy counting
         if (!TryGetComponent(out HunterToolHud _)) gameObject.AddComponent<HunterToolHud>();     // ...and its tool on the HUD
         if (!TryGetComponent(out LastHiderCam _)) gameObject.AddComponent<LastHiderCam>();       // Tag: hunters can watch the last hider
         if (!TryGetComponent(out ControlsHint _)) gameObject.AddComponent<ControlsHint>();       // The less obvious keys, on the right

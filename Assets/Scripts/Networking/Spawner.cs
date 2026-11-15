@@ -114,6 +114,11 @@ public class Spawner : MonoBehaviour
     private void GetSpawnPoint(PlayerRole role, out Vector3 position, out Quaternion rotation)
     {
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && mode.InHunterRoom(role, GameModeManager.Instance.Phase))
+        {
+            HunterRoom.Spot(PhotonNetwork.LocalPlayer.ActorNumber, out position, out rotation);   // Waiting off the map
+            return;
+        }
         if (mode != null && mode.UsesSpawnPoints && SpawnPoint.All.Count > 0)
         {
             SpawnPoint point = PickSpawnPoint(role);
@@ -134,7 +139,7 @@ public class Spawner : MonoBehaviour
             return;
         }
 
-        // Spread evenly in a circle, facing outward; a spot on a bounce pad turns further round the circle
+        // Spread evenly in a circle, hiders facing in, hunters out; a spot on a bounce pad turns further round the circle
         float   radius = hunter ? hunterSpawnRadius : spawnRadius;
         float   angle  = 360f / Mathf.Max(1, total) * index;
         Vector3 dir    = Vector3.forward;
@@ -143,6 +148,40 @@ public class Spawner : MonoBehaviour
             dir = new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad));
             if (!NearBouncePad(transform.position + dir * radius)) break;
         }
+        position = transform.position + dir * radius;
+        rotation = Quaternion.LookRotation(hunter ? dir : -dir, Vector3.up);   // Hiders face the middle, where the hunters count (Justin, Nov 14)
+    }
+
+    /// <summary>
+    /// Where a hunter starts the hunt in modes with a hunter room (their decoy stands there meanwhile), the same on every
+    /// screen: the level's hunter spawns if set, else one hunter in the middle of the hiders' ring facing the Spawner's
+    /// way, several in a small circle round it facing out (by actor order).
+    /// </summary>
+    public void HunterStart(int actor, out Vector3 position, out Quaternion rotation)
+    {
+        int index = 0, count = 0;
+        foreach (var p in PhotonNetwork.PlayerList)   // Sorted by actor number
+        {
+            if (PlayerRoles.Get(p) != PlayerRole.Hunter) continue;
+            if (p.ActorNumber == actor) index = count;
+            count++;
+        }
+        if (hunterSpawns != null && hunterSpawns.Length > 0 && hunterSpawns[index % hunterSpawns.Length] != null)
+        {
+            Transform point = hunterSpawns[index % hunterSpawns.Length];
+            position = point.position;
+            rotation = Quaternion.Euler(0f, point.eulerAngles.y, 0f);
+            return;
+        }
+        if (count <= 1)
+        {
+            position = transform.position;
+            rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+            return;
+        }
+        float   radius = Mathf.Max(hunterSpawnRadius, 0.8f * count);
+        float   angle  = 360f / count * index * Mathf.Deg2Rad;
+        Vector3 dir    = new(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
         position = transform.position + dir * radius;
         rotation = Quaternion.LookRotation(dir, Vector3.up);
     }
