@@ -16,6 +16,17 @@ using UnityEngine;
 [AbilityInfo("Hold to stick to the next surface you touch and take on its colour. Firing a weapon breaks it.")]
 public class Chameleon : BasicAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(6f, 10.5f, 15f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    public override bool LoudUse => false;   // Sneaky: not on others' sound visualizers
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Shimmer, chest, 0.7f);
+        Vfx.Burst(chest, Fx.Lime, 18, 2.5f, 0.25f, 0.7f);
+    }
+
     [Header("Camouflage")]
     [Tooltip("Lightens or darkens the copied colour (1 = as sampled).")]
     [TunableParam("Colour Brightness", 0.2f, 2f)]

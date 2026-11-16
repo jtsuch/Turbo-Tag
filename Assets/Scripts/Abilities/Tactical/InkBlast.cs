@@ -11,6 +11,10 @@ using UnityEngine;
 [AbilityInfo("Shoot a slow ball of ink: whoever it hits (or anyone close to where it bursts) gets a screen full of ink.", DisplayName = "Ink Blast", HealthModesOnly = true)]
 public class InkBlast : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("ink lasts", 2.5f / 3.5f, 1f, 4.5f / 3.5f, v => $"{v * 3.5f:0.#} s");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [TunableParam("Ball Speed", 4f, 40f)]
     [SerializeField] private float ballSpeed = 21f;
     [TunableParam("Range", 5f, 60f)]

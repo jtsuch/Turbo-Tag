@@ -11,6 +11,13 @@ using UnityEngine;
 [AbilityInfo("In the air: slam into the ground. The landing knocks everyone nearby away and stuns anyone within 5 m.")]
 public class GroundPound : QuickAbility
 {
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Whoosh, chest, 1f, 45f, 0.7f);
+        Vfx.Burst(chest, Color.white, 12, 4f, 0.25f, 0.4f, direction: Vector3.up, spread: 0.4f);
+    }
+
     [Header("Slam")]
     [TunableParam("Slam Speed", 10f, 150f)]
     [SerializeField] private float slamSpeed = 60f;

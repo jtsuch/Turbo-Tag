@@ -10,6 +10,16 @@ using UnityEngine;
 [AbilityInfo("Shrink down for 6 seconds. Smaller, harder to spot, and a little faster. Press again to grow back early.")]
 public class Shrink : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("shrinks to", 0.6f, 0.75f, 1f, v => $"{0.3f / v * 100f:0}%");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.ZapDown, chest, 0.9f);
+        Vfx.Burst(chest, Fx.Pink, 18, 3.5f, 0.2f, 0.5f);
+    }
+
     [Header("Shrink")]
     [TunableParam("Scale", 0.05f, 3f, HardMin = 0.01f)]
     [SerializeField] private float shrinkScale = 0.125f;

@@ -48,7 +48,12 @@ public static class RoomKeys
     public const string LmsRoundWinner = "Match_LmsWinner";   // Last round's winner (actor, -1 none)
 
     /// <summary>Keys exposed in the room listing so the Join List can show them.</summary>
-    public static readonly string[] LobbyVisible = { Map, GameMode };
+    /// <summary>Lobby-visible: 0 while the room is in its lobby, 1 once a match is on (JoinInProgress.StageMatch).</summary>
+    public const string Stage = "Stage";
+    /// <summary>A new number every match (host). A joiner whose own <see cref="PlayerKeys.MatchId"/> matches is rejoining.</summary>
+    public const string MatchId = "Match_Id";
+
+    public static readonly string[] LobbyVisible = { Map, GameMode, Stage };
 }
 
 /// <summary>
@@ -123,6 +128,8 @@ public static class PlayerKeys
 
     /// <summary>Current <see cref="PlayerRole"/> (int). Written by the master client.</summary>
     public const string Role = "Role";
+    /// <summary>The match this player's score, stats and role belong to (<see cref="RoomKeys.MatchId"/>; host-written).</summary>
+    public const string MatchId = "MatchId";
 
     /// <summary>Ready in Pregame (bool). Written by the player themself; cleared when Pregame opens.</summary>
     public const string Ready = "Ready";

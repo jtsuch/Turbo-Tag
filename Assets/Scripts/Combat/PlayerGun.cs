@@ -251,7 +251,11 @@ public class PlayerGun : MonoBehaviourPun
         // A spray: shots following on within a beat of each other. A pause (or the bloom settling) starts afresh
         if (Time.time - lastShotAt > Mathf.Max(0.3f, interval * 1.8f) && bloom < 0.05f) { sprayShots = 0; sprayDrift = Vector2.zero; }
         sprayShots++;
-        nextShotAt = Time.time + interval;
+        // The next shot is due one interval after this one was DUE, not after the frame it happened to land on (at
+        // most a frame's worth carried over). Timing from the frame rounded every interval up to whole frames, so the
+        // fire rate depended on the frame rate: at 60 fps the Squeak and Flurry fired 10% slow and the Avalanche 15%,
+        // while a 144 fps player got nearly the full rate
+        nextShotAt = Mathf.Max(nextShotAt + interval, Time.time + interval - Time.deltaTime);
         lastShotAt = Time.time;
 
         Transform view   = PlayerCam.Local.Camera.transform;

@@ -9,6 +9,10 @@ using UnityEngine;
 [AbilityInfo("A shield that soaks up the next 50 damage you take, for up to 10 s. You glow blue while it's up.", DisplayName = "Armored", HealthModesOnly = true)]
 public class BubbleShield : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("soaks", 0.5f, 1f, 1.5f, v => $"{v * 50f:0}");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [TunableParam("Lasts", 1f, 60f)]
     [SerializeField] private float seconds = 10f;
 

@@ -239,6 +239,27 @@ public class SearchDestroyMode : TeamMode
         matchOver = Mathf.Max(redWins, blueWins) >= MatchRules.RoundsToWin;
     }
 
+    // Joining a game in progress (Justin, Nov 16: "join at the start of a new round", as Valorant and Counter-Strike
+    // do): in a live round a joiner is out until the next one, and so is someone rejoining with their old team
+    public override void OnPlayerJoined(PhotonPlayer player, bool rejoined)
+    {
+        if (Phase == MatchPhase.Active && dead.Add(player.ActorNumber)) WriteDead();
+    }
+
+    private const string SitOut = "sitout";
+    private float nextSitOutCheck;
+
+    // Standing in a live round you're not part of (you joined during it): out quietly, to watch until the next one
+    public override void ClientUpdate()
+    {
+        if (Time.time < nextSitOutCheck) return;
+        nextSitOutCheck = Time.time + 0.5f;
+        var local = Player.Local;
+        if (local == null || local.IsCaught || Phase != MatchPhase.Active || CombatManager.Instance == null) return;
+        if (System.Array.IndexOf(NetProps.Room(RoomKeys.SnDDead, System.Array.Empty<int>()), local.ActorNumber) < 0) return;
+        CombatManager.Instance.ReportLocalDeath(-1, SitOut, false);
+    }
+
     // Anyone without a team (joined mid-match) goes to the smaller one, and sits out the round in progress
     private void PlaceNewcomers()
     {
@@ -440,6 +461,10 @@ public class SearchDestroyMode : TeamMode
     // No regeneration in a live round: each ability's charges and each Basic meter last the round (refilled as it
     // goes live; the pre-round and post-round regenerate freely)
     public override bool AbilitiesRegenerate(MatchPhase phase) => phase != MatchPhase.Active;
+
+    // With the bomb out in hand, no movement abilities (planting commits you; taking it out ends one in use)
+    public override bool AllowsAbilityUse(Player player, Ability ability) =>
+        !(ability.Slot == AbilitySlot.Basic && player.Has(PlayerFlag.HoldingBomb));
 
     // Spraying is punished: bloom builds 2.5× faster up to twice the cap, so taps stay accurate
     public override float BloomScale    => 2.5f;

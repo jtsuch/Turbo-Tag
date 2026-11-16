@@ -10,6 +10,8 @@ using UnityEngine;
 [AbilityInfo("Tap to toss a sticky bomb. Tap again to blow it up.")]
 public class BoomBomb : ThrowAbility
 {
+    public override bool HasUseFx => false;   // Its use is counted at the blast, which has its own effect
+
     [Header("Toss")]
     [TunableParam("Toss Speed", 2f, 60f)]
     [SerializeField] private float tossSpeed = 13f;

@@ -280,6 +280,7 @@ public class PauseMenuManager : MonoBehaviourPunCallbacks
     private void Leave(bool quitApp)
     {
         quittingApp = quitApp;
+        JoinInProgress.LeavingOnPurpose();
         if (PhotonNetwork.InRoom) PhotonNetwork.LeaveRoom();
         else                      OnLeftRoom();
     }

@@ -15,6 +15,12 @@ using UnityEngine.Serialization;
 [RequireComponent(typeof(PhotonView))]
 public abstract class TrapAbility : Ability
 {
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Place, feet, 0.8f);
+    }
+
     [Header("Placement")]
     [FormerlySerializedAs("cooldownTime")]
     [SerializeField] protected float cooldown;

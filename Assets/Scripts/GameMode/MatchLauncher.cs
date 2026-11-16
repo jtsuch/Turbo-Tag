@@ -12,12 +12,16 @@ public static class MatchLauncher
     {
         if (!PhotonNetwork.IsMasterClient) return;
 
-        PhotonNetwork.CurrentRoom.IsOpen    = false;
-        PhotonNetwork.CurrentRoom.IsVisible = false;
+        // The room stays open and listed (as IN PROGRESS) when the mode takes joiners mid-match (JoinInProgress)
+        JoinInProgress.SetOpen(GameModeRegistry.Create(MatchRules.GameModeKey).AllowsJoining);
 
         // The finished match's phase must not survive into the next level (Play Again went straight back to
         // the Scoreboard: the new level read MatchEnd with an expired clock before its own reset arrived)
-        NetProps.SetRoom(RoomKeys.Phase, (int)MatchPhase.Waiting);
+        NetProps.SetRoom(new ExitGames.Client.Photon.Hashtable
+        {
+            [RoomKeys.Phase] = (int)MatchPhase.Waiting,
+            [RoomKeys.Stage] = JoinInProgress.StageMatch,
+        });
 
         // The map must belong to the mode's category (Search & Destroy maps only for Search & Destroy, and the
         // reverse) and exist in this build: the lobby keeps them matched, but nothing else may load a wrong one
@@ -44,8 +48,8 @@ public static class MatchLauncher
     public static void ReturnToLobby()
     {
         if (!PhotonNetwork.IsMasterClient) return;
-        PhotonNetwork.CurrentRoom.IsOpen    = true;
-        PhotonNetwork.CurrentRoom.IsVisible = true;
+        JoinInProgress.SetOpen(true);
+        NetProps.SetRoom(RoomKeys.Stage, JoinInProgress.StageLobby);
         PhotonNetwork.LoadLevel(SceneNames.Lobby);
     }
 

@@ -142,6 +142,30 @@ public abstract class Ability : MonoBehaviour
         if (IsLocal && Handler != null) Handler.CountUse(Id);
     }
 
+    // ─── What the ability brings with it (override in the ability's own class) ─
+    // Adding an ability means writing its class: nothing in Fx, AbilityUpgrades or any other shared file needs a new
+    // case for it (Nov 16; they used to be a switch in Fx.Ability and a table in AbilityUpgrades)
+
+    /// <summary>False when using it plays nothing here (it has its own effect at another moment): no effect message is sent.</summary>
+    public virtual bool HasUseFx => true;
+
+    /// <summary>False for sneaky abilities: using one doesn't show on other players' sound visualizers.</summary>
+    public virtual bool LoudUse => true;
+
+    /// <summary>
+    /// Every screen, the moment <paramref name="player"/> uses this: its sound and particles (<see cref="Sfx"/>,
+    /// <see cref="Vfx"/>, colours and <see cref="Fx.Shake"/> from <see cref="Fx"/>). <paramref name="mine"/>: it's
+    /// this screen's own player. The slot bases give throws and traps a default; everything else is silent until
+    /// it overrides this.
+    /// </summary>
+    public virtual void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine) { }
+
+    /// <summary>
+    /// Its Search &amp; Destroy upgrade path (<see cref="AbilityUpgrades.Bar"/> or <see cref="AbilityUpgrades.Power"/>),
+    /// or null for its slot's default (Basic: the bar at 100/140/180%; others: 1/2/3 uses a round).
+    /// </summary>
+    public virtual AbilityUpgrades.Entry UpgradePath => null;
+
     // ─── Input contract ───────────────────────────────────────────────────────
 
     /// <summary>True for abilities that enter an aim/place mode confirmed with the Action key.

@@ -30,8 +30,8 @@ public class PlayerCam : MonoBehaviour
     [SerializeField] private float   positionSmoothTime = 0.1f;
     [Tooltip("How high the caught spectator view floats above the ragdoll (m).")]
     [SerializeField] private float   caughtCameraHeight = 8f;
-    [Tooltip("Exponential smoothing rate for rotation (higher = snappier).")]
-    [SerializeField] private float   rotationSmoothTime = 80f;
+    [Tooltip("Smoothing rate for the view's rotation (higher = snappier). 0 = none: the view is exactly where the mouse put it this frame.")]
+    [SerializeField] private float   rotationSmoothTime = 0f;
     [Tooltip("How fast the body swings back upright after a Free Spin (higher = snappier).")]
     [SerializeField] private float   spinRecoverSpeed = 12f;
 
@@ -261,7 +261,12 @@ public class PlayerCam : MonoBehaviour
             player.Body.MoveRotation(upright);
         }
 
-        transform.rotation = Quaternion.Lerp(previousView, targetRotation, 1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
+        // No smoothing by default (Nov 16): at the old rate of 80 the view only covered ~74% of each mouse movement in
+        // its frame at 60 fps (43% at 144) and caught up over the next few, a soft lag on every flick and a different
+        // feel at every frame rate. Aim is now 1:1 with the mouse. Tilt, recoil and shake have their own easing
+        transform.rotation = rotationSmoothTime <= 0f
+            ? targetRotation
+            : Quaternion.Lerp(previousView, targetRotation, 1f - Mathf.Exp(-rotationSmoothTime * Time.deltaTime));
     }
 
     private PlayerMovement movementCache;

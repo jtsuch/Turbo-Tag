@@ -8,6 +8,17 @@ using UnityEngine;
 [AbilityInfo("Turn nearly invisible for 5 seconds. Moving or shooting breaks it, so pick your spot first.")]
 public class Cloak : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("lasts", 0.8f, 1f, 1.2f, v => $"{v * 5f:0.#} s");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    public override bool LoudUse => false;   // Sneaky: not on others' sound visualizers
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Shimmer, chest, 0.9f);
+        Vfx.Burst(chest, new Color(1f, 1f, 1f, 0.6f), 24, 2.5f, 0.3f, 0.8f);
+    }
+
     [Header("Cloak")]
     [TunableParam("Duration", 1f, 30f)]
     [SerializeField] private float cloakDuration = 5f;

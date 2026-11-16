@@ -29,6 +29,7 @@ public static class RoomFactory
         {
             [RoomKeys.GameMode] = string.IsNullOrEmpty(modeKey) ? GameModeRegistry.DefaultKey : modeKey,
             [RoomKeys.Map]      = SceneNames.DefaultMap,
+            [RoomKeys.Stage]    = JoinInProgress.StageLobby,
         },
     };
 }

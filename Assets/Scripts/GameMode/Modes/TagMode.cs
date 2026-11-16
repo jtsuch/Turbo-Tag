@@ -67,8 +67,23 @@ public class TagMode : GameMode
         AssignRoles();
     }
 
+    // Joining a game in progress (Justin, Nov 16): always as a hunter, whatever they were before they dropped out
+    // (nobody sneaks back in as a hider). During the countdown and hiding they wait in the hunter room like the rest
+    public override void OnPlayerJoined(PhotonPlayer player, bool rejoined)
+    {
+        if (Phase == MatchPhase.Waiting || Phase == MatchPhase.MatchEnd) return;
+        PlayerRoles.Set(player, PlayerRole.Hunter);
+        caughtThisRound.Add(player.ActorNumber);
+        becameHunterAt[player.ActorNumber] = PhotonNetwork.Time;
+    }
+
     public override void MasterUpdate()
     {
+        // Anyone still without a role mid-match (a join that slipped past OnPlayerJoined, a host change): a hunter
+        if (Phase == MatchPhase.Countdown || Phase == MatchPhase.Hiding || Phase == MatchPhase.Active)
+            foreach (var p in PhotonNetwork.PlayerList)
+                if (PlayerRoles.Get(p) == PlayerRole.None) PlayerRoles.Set(p, PlayerRole.Hunter);
+
         switch (Phase)
         {
             case MatchPhase.Countdown:

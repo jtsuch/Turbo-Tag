@@ -12,6 +12,16 @@ using UnityEngine;
 [AbilityInfo("Hold to blast air: it pushes you the opposite way you look. Look down to hover and fly.")]
 public class LeafBlower : BasicAbility, IPunObservable
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(1.75f, 2.5f, 3.25f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Blow, chest, 0.9f);
+        Vfx.Burst(chest, Fx.Lime, 12, 5f, 0.2f, 0.6f, direction: player.transform.forward, spread: 0.4f);
+    }
+
     [Header("References")]
     [Tooltip("The camera (look direction).")]
     [SerializeField] private Transform  cam;

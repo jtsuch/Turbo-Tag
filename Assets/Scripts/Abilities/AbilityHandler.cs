@@ -53,7 +53,8 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         if (photonView.IsMine && TryGetComponent(out Player self)) self.EndSpawnProtectionNow(); // Attacking ends it
         usesThisMatch++;
         usesDirty = true;
-        if (Fx.HasAbilityFx(abilityId)) photonView.RPC(nameof(RPC_AbilityFx), RpcTarget.All, abilityId);
+        var used = Find(abilityId);
+        if (used == null || used.HasUseFx) photonView.RPC(nameof(RPC_AbilityFx), RpcTarget.All, abilityId);
     }
 
     [PunRPC]
@@ -62,15 +63,32 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
         if (TryGetComponent(out Player player)) Fx.Ability(abilityId, player);
     }
 
-    private bool hadBombOut;
+    private readonly bool[] slotBlocked = new bool[4];
+    private Player self;
 
-    // Taking the bomb out ends any movement ability in use
-    private void WatchBombInHand()
+    // The mode's say on each equipped ability (GameMode.AllowsAbilityUse): one that becomes blocked while in use is
+    // ended (Search & Destroy: taking the bomb out ends a movement ability; Keep Away: grabbing the disc ends a throw's
+    // aim). Mode-specific rules live in the modes; this only asks
+    private static bool ModeAllows(Player player, Ability ability)
     {
-        bool holding = TryGetComponent(out Player p) && p.Has(PlayerFlag.HoldingBomb);
-        if (holding && !hadBombOut)
-            foreach (var a in equipped) if (a is BasicAbility && a.enabled) a.Cancel();
-        hadBombOut = holding;
+        var manager = GameModeManager.Instance;
+        return manager == null || manager.Mode == null || player == null || manager.Mode.AllowsAbilityUse(player, ability);
+    }
+
+    private void WatchModeBlocks()
+    {
+        if (self == null && !TryGetComponent(out self)) return;
+        for (int i = 0; i < equipped.Length; i++)
+        {
+            var a = equipped[i];
+            bool blocked = a != null && !ModeAllows(self, a);
+            if (blocked && !slotBlocked[i] && a.enabled)
+            {
+                a.Cancel();
+                if (active == a) active = null;
+            }
+            slotBlocked[i] = blocked;
+        }
     }
 
     // Modes without regeneration in a live round (Search & Destroy): every charge and meter full as it goes live
@@ -84,7 +102,7 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
 
     private void Update()
     {
-        if (photonView.IsMine) WatchBombInHand();
+        if (photonView.IsMine) WatchModeBlocks();
         if (!usesDirty || Time.time < nextUsesWrite || !photonView.IsMine) return;
         usesDirty     = false;
         nextUsesWrite = Time.time + UsesWriteInterval;
@@ -174,10 +192,8 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
     public void Use(Ability ability, AbilityInputEvent inputEvent)
     {
         if (ability == null || !ability.enabled) return;
-        // Search & Destroy: with the bomb out in hand, no movement abilities (planting commits you)
-        if (inputEvent == AbilityInputEvent.Down && ability.Slot == AbilitySlot.Basic
-            && TryGetComponent(out Player holder) && holder.Has(PlayerFlag.HoldingBomb)) return;
-        if (ability.Slot == AbilitySlot.Throw && KeepAwayDisc.LocalHolding) return; // Hands full: the disc takes the throw
+        // The mode may block starting it (the bomb in hand, the disc in hand: GameMode.AllowsAbilityUse)
+        if (inputEvent == AbilityInputEvent.Down && (self != null || TryGetComponent(out self)) && !ModeAllows(self, ability)) return;
 
         // Starting a new aim/place ability cancels the one already in progress
         if (inputEvent == AbilityInputEvent.Down && ability.UsesActionKey

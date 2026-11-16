@@ -10,6 +10,16 @@ using UnityEngine;
 [AbilityInfo("Hold in the air to glide: you fall slowly, steer much better and jumps carry higher.")]
 public class Flappy : BasicAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("jump boost", 0.5f, 0.75f, 1f, v => $"{v * 100f:0}%");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Flap, chest, 0.8f);
+        Vfx.Burst(chest, Color.white, 10, 3f, 0.25f, 0.5f);
+    }
+
     [Header("Glide")]
     [TunableParam("Glide Fall Speed", 0f, 10f)]
     [SerializeField] private float glideFallSpeed = 2f;

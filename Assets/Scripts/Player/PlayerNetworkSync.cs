@@ -68,7 +68,9 @@ public class PlayerNetworkSync : MonoBehaviourPun, IPunObservable
         if (photonView.IsMine || snapshots.Count == 0) return;
 
         double sendInterval = 1.0 / Mathf.Max(1, PhotonNetwork.SerializationRate);
-        double renderTime   = PhotonNetwork.Time - sendInterval - extraDelay;
+        // NetClock, not PhotonNetwork.Time: that only moves once a frame, so physics steps sampled the path at uneven
+        // moments (the same time twice, then a double hop) and remote players juddered
+        double renderTime   = NetClock.Now - sendInterval - extraDelay;
 
         Sample(renderTime, out Vector3 position, out Quaternion rotation, out remoteVelocity);
         body.MovePosition(position);
@@ -144,12 +146,21 @@ public class PlayerNetworkSync : MonoBehaviourPun, IPunObservable
         // Out-of-order packets are dropped
         if (snapshots.Count > 0 && snapshot.Time <= snapshots[snapshots.Count - 1].Time) return;
 
-        // A big jump is a teleport: forget the old path so the copy does not slide across the map
-        if (snapshots.Count > 0 && Vector3.Distance(snapshot.Position, snapshots[snapshots.Count - 1].Position) > teleportDistance)
+        // A big jump is a teleport: forget the old path so the copy does not slide across the map. "Big" allows for
+        // how far the body could really have moved since the last snapshot at the speeds either end reports: a Ground
+        // Pound (60 m/s) or a boost pad covers 6 m between snapshots in a full room (10 a second), and was snapped
+        // along its path instead of drawn moving
+        if (snapshots.Count > 0)
         {
-            snapshots.Clear();
-            body.position = snapshot.Position;
-            body.rotation = snapshot.Rotation;
+            Snapshot last  = snapshots[snapshots.Count - 1];
+            float    gap   = Mathf.Clamp((float)(snapshot.Time - last.Time), 0f, 0.5f);
+            float    reach = teleportDistance + Mathf.Max(last.Velocity.magnitude, snapshot.Velocity.magnitude) * gap * 1.5f;
+            if (Vector3.Distance(snapshot.Position, last.Position) > reach)
+            {
+                snapshots.Clear();
+                body.position = snapshot.Position;
+                body.rotation = snapshot.Rotation;
+            }
         }
 
         snapshots.Add(snapshot);

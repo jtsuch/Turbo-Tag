@@ -131,6 +131,7 @@ public class LadderClimb : MonoBehaviourPun
         climberColliders = player.GetComponentsInChildren<Collider>();
         SetIgnored(climberColliders, true);
         body.isKinematic = true;
+        player.Teleporting += LetGoForTeleport;   // A respawn or pad mustn't be undone by the next step here
         player.OnLadder = true;
         player.SetFlag(PlayerFlag.OnLadder, true);
         player.ExternalUp = Up;
@@ -172,11 +173,14 @@ public class LadderClimb : MonoBehaviourPun
         if (Time.time >= nextSend && Mathf.Abs(along - lastSentAlong) > 0.05f) Send(true);
     }
 
+    private void LetGoForTeleport() => Detach(Vector3.zero);
+
     private void Detach(Vector3 velocity)
     {
         if (climber == null) return;
         var player = climber;
         climber = null;
+        player.Teleporting -= LetGoForTeleport;
         player.OnLadder = false;
         player.SetFlag(PlayerFlag.OnLadder, false);
         player.SetFlag(PlayerFlag.LadderMoving, false);

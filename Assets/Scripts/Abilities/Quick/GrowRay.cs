@@ -9,6 +9,15 @@ using UnityEngine;
 [AbilityInfo("Zap someone with a growth ray: they grow to double size for 8 seconds. Harder for them to hide!")]
 public class GrowRay : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("grows to", 0.4f, 0.7f, 1f, v => $"×{1f + v:0.0}");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.ZapUp, chest, 0.9f);
+    }
+
     [Header("References")]
     [Tooltip("The camera (aim). Copied from the grapples.")]
     [SerializeField] private Transform cam;

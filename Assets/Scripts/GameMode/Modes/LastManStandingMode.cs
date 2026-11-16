@@ -34,6 +34,7 @@ public class LastManStandingMode : FreeForAllMode
     public override string DisplayName       => "Last Man Standing";
     public override bool   HasRounds         => true;
     public override bool   SpectatesWhenDead => true;
+    public override bool   AllowsJoining     => false;   // One life a round and a fixed field: nobody joins a match in progress
     public override bool   CrownsLeader      => true;
 
     // ─── Who's in this round (every client) ───────────────────────────────────
@@ -147,6 +148,9 @@ public class LastManStandingMode : FreeForAllMode
 
     private void NextRound()
     {
+        // From the room, not only this host's memory: a host who took over mid-match had 0 here and started again
+        // from round 1 (the match never reached its last round)
+        round = Mathf.Max(round, Manager.Round);
         bool lastRound = round >= MatchRules.RoundCount;
         if (!lastRound && !SuddenDeath) { StartRound(round + 1, null); return; }
 

@@ -12,6 +12,10 @@ using UnityEngine;
 [AbilityInfo("Charge forward for 2 s, unstoppable: enemies you hit are stunned and knocked aside, and any traps in your way are smashed.", HealthModesOnly = true)]
 public class Bulldozer : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("charge speed", 0.9f, 1f, 1.1f, v => $"{v * 20.8f:0.#} m/s");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [TunableParam("Speed", 5f, 60f)]
     [SerializeField] private float speed = 20f;
     [TunableParam("Charge Time", 0.2f, 5f)]

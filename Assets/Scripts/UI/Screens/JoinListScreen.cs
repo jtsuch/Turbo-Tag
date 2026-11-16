@@ -129,6 +129,9 @@ public class JoinListScreen : MenuScreen
         UIKit.OneLine(UIKit.Text(texts, info.Name, 30f, UIKit.Font.Display));
         UIKit.Text(texts, $"{mode}  ·  {map}", 22f, UIKit.Font.Body, Theme.textMuted).textWrappingMode = TextWrappingModes.NoWrap;
 
+        // A game that has already started can still be joined (the mode decides where you come in)
+        if (JoinInProgress.InMatch(info.CustomProperties)) UIKit.Chip(row, "IN PROGRESS", Theme.secondary, fontSize: 20f);
+
         bool full = info.MaxPlayers > 0 && info.PlayerCount >= info.MaxPlayers;
         UIKit.Chip(row, $"{info.PlayerCount}/{info.MaxPlayers} players", full ? Theme.danger : Theme.lime, fontSize: 20f);
 
@@ -172,6 +175,6 @@ public class JoinListScreen : MenuScreen
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
         joining = false;
-        Toast(returnCode == ErrorCode.GameFull ? "That game is full." : "Couldn't join that game. It may have started.", error: true);
+        Toast(returnCode == ErrorCode.GameFull ? "That game is full." : "Couldn't join that game. It may have ended or closed.", error: true);
     }
 }

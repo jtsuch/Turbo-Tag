@@ -47,6 +47,14 @@ public class HunterMode : GameMode
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = 1 });
     }
 
+    // A rejoiner still carries their old role: once the hunt is on they're a ghost like any other joiner (dropping
+    // out and back is no way to come back to life)
+    public override void OnPlayerJoined(PhotonPlayer player, bool rejoined)
+    {
+        if (Phase != MatchPhase.Hiding && Phase != MatchPhase.Active) return;
+        if (ghosted.Add(player.ActorNumber)) PlayerRoles.Set(player, PlayerRole.Ghost);
+    }
+
     public override void MasterUpdate()
     {
         // Someone who joins once the hunt is on comes in as a ghost (no free hider, no second hunter)

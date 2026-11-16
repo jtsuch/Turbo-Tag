@@ -54,6 +54,8 @@ public class PlayerMovement : MonoBehaviourPun
     private float lastTouchTime = float.NegativeInfinity;
     private float airborneSince;
 
+    private const QueryTriggerInteraction Solid = QueryTriggerInteraction.Ignore;
+
     // Real contact this physics step, and the walkable surface under the feet
     private bool    touching;
     private Vector3 groundNormal = Vector3.up;
@@ -121,12 +123,35 @@ public class PlayerMovement : MonoBehaviourPun
     {
         if (photonView.IsMine) rb.interpolation = RigidbodyInterpolation.Interpolate;
         player.StateChanged += OnPlayerStateChanged;
+        player.Teleporting  += OnTeleporting;
     }
 
     private void OnDestroy()
     {
-        if (player != null) player.StateChanged -= OnPlayerStateChanged;
+        if (player != null)
+        {
+            player.StateChanged -= OnPlayerStateChanged;
+            player.Teleporting  -= OnTeleporting;
+        }
     }
+
+    // A teleport (respawn, round start, the hunter room, pads) ends whatever the body was in the middle of. The ledge
+    // climb-up is a coroutine that moves the body every step: left running, it carried a player who was tagged or
+    // respawned mid-climb back to the ledge. Buffered jumps and wall memory go too, so nothing fires on arrival
+    private void OnTeleporting()
+    {
+        if (ledgeClimb != null) StopCoroutine(ledgeClimb);
+        ledgeClimb        = null;
+        climbingLedge     = false;
+        LedgeShimmy       = 0f;
+        jumpPressedAt     = float.NegativeInfinity;
+        jumpCutReady      = false;
+        currentClimbSpeed = 0f;
+        timeOnWall        = 0f;
+        lastWallNormal    = Vector3.zero;
+    }
+
+    private Coroutine ledgeClimb;
 
     private void Update()
     {
@@ -139,7 +164,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (!photonView.IsMine) return;
 
         // Wall Magnet: walking on whatever surface is under the feet, walls and ceilings included
-        if (player.IsMagnetized && !player.IsAnchored && !player.IsHeld)
+        if (player.IsMagnetized && !player.Holds(BodyHold.Frozen) && !player.IsHeld)
         {
             UpdateGravity();
             MagnetMove();
@@ -151,11 +176,11 @@ public class PlayerMovement : MonoBehaviourPun
         UpdateGravity();
         jumpedThisStep = false;
 
-        // On a zip line: the line carries the body
-        if (player.OnZipLine || player.OnLadder) return;
+        // Something else is moving the body (a zip line, a ladder: Player.Hold with BodyHold.Carried)
+        if (player.Holds(BodyHold.Carried)) return;
 
-        // Stuck to a surface (Chameleon): no movement, no gravity
-        if (player.IsAnchored)
+        // Held dead still (Chameleon stuck to a surface: BodyHold.Frozen): no movement, no gravity
+        if (player.Holds(BodyHold.Frozen))
         {
             rb.linearVelocity  = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
@@ -192,7 +217,7 @@ public class PlayerMovement : MonoBehaviourPun
     private void UpdateGravity()
     {
         standingStill = StandingStill();
-        bool off = player.IsDashing || player.IsAnchored || player.OnZipLine || player.OnLadder || player.IsMagnetized || player.ZeroGravity
+        bool off = player.IsDashing || player.Holds(BodyHold.NoGravity) || player.IsMagnetized
                 || State == Player.MovementState.WallRun || State == Player.MovementState.Hang
                 || (State == Player.MovementState.Climb && onLadder) // Resting on a ladder doesn't slide down
                 || standingStill;
@@ -357,7 +382,10 @@ public class PlayerMovement : MonoBehaviourPun
         Vector3 chest = transform.position + Vector3.up * (player.Height * 0.5f);
         // Infinite Climb looks further, so drifting off the wall or glancing sideways doesn't end the climb
         float reach = player.SteadyClimbSpeed > 0f ? SteadyClimbReach : 1f;
-        wallForward = Physics.Raycast(chest, transform.forward, out RaycastHit ahead, reach, structureLayer);
+        // Solid surfaces only, here and in every query below: trigger volumes (boost and teleport pad zones, bounce
+        // pad launch triggers) sit on the structure layer with their models, and the project's queries hit triggers
+        // by default, so a pad's zone read as a wall to climb or run along
+        wallForward = Physics.Raycast(chest, transform.forward, out RaycastHit ahead, reach, structureLayer, Solid);
         // A placed Ladder (the only TippingProp) isn't a wall to climb: it's climbed with F (LadderClimb, Nov 14)
         if (wallForward && ahead.collider.GetComponentInParent<TippingProp>() != null) wallForward = false;
         onLadder = false;
@@ -365,8 +393,8 @@ public class PlayerMovement : MonoBehaviourPun
             onLadder = true; // A rung's gap for a moment doesn't drop you
         if (onLadder && wallForward) ladderGrip = Time.time;
 
-        WallLeft  = Physics.Raycast(transform.position, -transform.right, out RaycastHit hitLeft,  1f, structureLayer);
-        WallRight = Physics.Raycast(transform.position,  transform.right, out RaycastHit hitRight, 1f, structureLayer);
+        WallLeft  = Physics.Raycast(transform.position, -transform.right, out RaycastHit hitLeft,  1f, structureLayer, Solid);
+        WallRight = Physics.Raycast(transform.position,  transform.right, out RaycastHit hitRight, 1f, structureLayer, Solid);
 
         currentWallNormal = WallLeft ? hitLeft.normal : WallRight ? hitRight.normal : Vector3.zero;
 
@@ -424,7 +452,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (top.normal.y < 0.7f) return false;
         float rise = top.point.y - transform.position.y; // How far the feet still have to go up
         if (rise < -0.2f || rise > height + 0.5f) return false;
-        if (Physics.Raycast(top.point + Vector3.up * 0.1f, Vector3.up, height * 0.7f, structureLayer)) return false; // No room on top
+        if (Physics.Raycast(top.point + Vector3.up * 0.1f, Vector3.up, height * 0.7f, structureLayer, Solid)) return false; // No room on top
 
         float g = -Physics.gravity.y * Mathf.Max(0.1f, player.Modifiers.Get(Stat.Gravity));
         float needUp = Mathf.Sqrt(2f * g * Mathf.Max(0.05f, rise + mantleClearance));
@@ -727,7 +755,7 @@ public class PlayerMovement : MonoBehaviourPun
         // (Not while gliding with Flappy: prone + glide was a free speed boost)
         if (State == Player.MovementState.Prone && !OnGround && Time.time >= nextDiveTime && !Gliding)
         {
-            rb.AddForce(transform.forward * proneDiveImpulse, ForceMode.Impulse);
+            rb.AddForce(transform.forward * proneDiveImpulse, ForceMode.VelocityChange);
             nextDiveTime = Time.time + proneDiveCooldown; // Invisible cooldown: going prone still works, the boost waits
         }
     }
@@ -755,19 +783,21 @@ public class PlayerMovement : MonoBehaviourPun
 
     [Header("Climbing")]
     [Tooltip("Climb speed (m/s) from any jump at a wall, whatever the run-up.")]
-    [SerializeField] private float climbBaseSpeed = 23f;
+    [SerializeField] private float climbBaseSpeed = 18f;   // The prefab's value (the code said 23 until Nov 16)
     [Tooltip("Extra climb speed (m/s) from running at the wall, full at sprint speed.")]
-    [SerializeField] private float climbMomentumBonus = 3f;
+    [SerializeField] private float climbMomentumBonus = 4f;
     [Tooltip("Falling faster than this (m/s) into a wall only slides down it.")]
     [SerializeField] private float climbFallLimit = 4f;
+    [Tooltip("How fast a climb loses speed (m/s per second). At 25, a climb covers (start² − 3²) ÷ 50 metres: 6.3 m from 18 m/s, 9.5 m from 22.")]
+    [SerializeField] private float climbDecay = 25f;
 
     private void StartClimb()
     {
         if (State == Player.MovementState.Prone || State == Player.MovementState.Crouch) return;
         // Less momentum-based (Nov 11): any jump at a wall climbs about as high as a running one. In the air a climb
-        // starts at climbBaseSpeed, plus up to climbMomentumBonus for run speed toward it (≈10.4 m of climb from a
-        // standing jump, ≈13.3 m from a sprint, at 25 m/s² of climb decay; it was ≈14 and ≈18 m, and a dash got
-        // the full 18); falling hard into a wall only slides. From the
+        // starts at climbBaseSpeed, plus up to climbMomentumBonus for run speed toward it (with the prefab's 18 + 4:
+        // ≈6.3 m of climb from a standing jump, ≈9.5 m from a sprint, at climbDecay 25 m/s², on top of the jump's own
+        // height); falling hard into a wall only slides. From the
         // ground it needs speed toward the wall (a walk-up gives a short climb, never more than the base)
         Vector3 v = rb.linearVelocity;
         float flat = new Vector2(v.x, v.z).magnitude;
@@ -805,11 +835,11 @@ public class PlayerMovement : MonoBehaviourPun
             // runs out, or when W is let go, you stay put instead of sliding down. Only a light hold against it, so
             // the climber doesn't shove a standing ladder over
             Vector3 middle = transform.position + Vector3.up * (player.Height * 0.5f);
-            Vector3 grip = Physics.Raycast(middle, transform.forward, out RaycastHit rung, SteadyClimbReach, structureLayer)
+            Vector3 grip = Physics.Raycast(middle, transform.forward, out RaycastHit rung, SteadyClimbReach, structureLayer, Solid)
                 ? -rung.normal * 0.4f : Vector3.zero;
             bool climbing = input.MoveInput.y > 0.1f && currentClimbSpeed > MinClimbSpeed;
             rb.linearVelocity = new Vector3(grip.x, climbing ? currentClimbSpeed : 0f, grip.z);
-            if (climbing) currentClimbSpeed -= 0.5f;
+            if (climbing) currentClimbSpeed -= climbDecay * Time.fixedDeltaTime;
             else currentClimbSpeed = 0f; // Resting spends the climb: like a wall, it doesn't come back
             return;
         }
@@ -827,15 +857,17 @@ public class PlayerMovement : MonoBehaviourPun
         // Infinite Climb: hold the player against the wall so the climb can't drift off it
         Vector3 chest = transform.position + Vector3.up * (player.Height * 0.5f);
         if (player.SteadyClimbSpeed > 0f
-            && Physics.Raycast(chest, transform.forward, out RaycastHit wall, SteadyClimbReach, structureLayer))
+            && Physics.Raycast(chest, transform.forward, out RaycastHit wall, SteadyClimbReach, structureLayer, Solid))
             sideways = -wall.normal * SteadyClimbGrip;
 
         rb.linearVelocity = new Vector3(sideways.x, currentClimbSpeed, sideways.z);
 
-        // Climbs slow down, unless Infinite Climb holds the speed up
+        // Climbs slow down, unless Infinite Climb holds the speed up. Per second, not per physics step: it was 0.5 a
+        // step, tuned at 50 steps a second (25 m/s²), so the move to 60 Hz on Nov 12 quietly made it 30 m/s² and cut
+        // every climb by a sixth (the prefab's standing-jump climb, 18 m/s, fell from ≈6.3 m to ≈5.3 m)
         currentClimbSpeed = player.SteadyClimbSpeed > 0f
             ? player.SteadyClimbSpeed
-            : currentClimbSpeed - 0.5f;
+            : currentClimbSpeed - climbDecay * Time.fixedDeltaTime;
     }
 
     private void ClampFallSpeed()
@@ -857,7 +889,7 @@ public class PlayerMovement : MonoBehaviourPun
 
         // Cancel downward velocity at the moment of contact
         if (timeOnWall == 0f)
-            rb.AddForce(transform.up * (rb.linearVelocity.y / -2f), ForceMode.Impulse);
+            rb.AddForce(transform.up * (rb.linearVelocity.y / -2f), ForceMode.VelocityChange);
     }
 
     private void WallRun()
@@ -865,11 +897,11 @@ public class PlayerMovement : MonoBehaviourPun
         timeOnWall += Time.fixedDeltaTime;
 
         // Stick to the wall
-        rb.AddForce(WallLeft ? -transform.right * 10f : transform.right * 10f);
+        rb.AddForce(WallLeft ? -transform.right * 10f : transform.right * 10f, ForceMode.Acceleration);
 
         // Upward pull diminishes and inverts over time so the player gradually slides down
         float pull = -Mathf.Pow(4f, timeOnWall - 1f) - 2f;
-        rb.AddForce(transform.up * pull);
+        rb.AddForce(transform.up * pull, ForceMode.Acceleration);
 
         ClampFallSpeed();
     }
@@ -892,7 +924,7 @@ public class PlayerMovement : MonoBehaviourPun
     private bool TryPickUpObject()
     {
         if (cam == null) return false;
-        if (!Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, grabReach)) return false;
+        if (!Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, grabReach, Physics.DefaultRaycastLayers, Solid)) return false;
         if (!hit.collider.CompareTag("Grabbable")) return false;
         if (!hit.collider.TryGetComponent(out PhotonView objectView)) return false;
 
@@ -998,7 +1030,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (Vector3.Dot(ledgeHit.normal, Vector3.up) < 0.7f) return false;
 
         // Needs headroom above the ledge and enough width either side
-        if (Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.5f, structureLayer)) return false;
+        if (Physics.Raycast(ledgeHit.point + Vector3.up * 0.1f, Vector3.up, 1.5f, structureLayer, Solid)) return false;
         if (!HasLedgeWidth(ledgeHit.point, wallHit.normal)) return false;
 
         ledgePosition = ledgeHit.point;
@@ -1016,8 +1048,8 @@ public class PlayerMovement : MonoBehaviourPun
         Vector3 right = Vector3.Cross(Vector3.up, wallNormal).normalized;
         Vector3 above = ledgePoint + Vector3.up * 0.5f;
 
-        return Physics.Raycast(above - right * LedgeHalfWidth, Vector3.down, 1f, structureLayer)
-            && Physics.Raycast(above + right * LedgeHalfWidth, Vector3.down, 1f, structureLayer);
+        return Physics.Raycast(above - right * LedgeHalfWidth, Vector3.down, 1f, structureLayer, Solid)
+            && Physics.Raycast(above + right * LedgeHalfWidth, Vector3.down, 1f, structureLayer, Solid);
     }
 
     private Vector3 HangPosition => ledgePosition - ledgeNormal * LedgeOffset - Vector3.up * 1.8f;
@@ -1029,7 +1061,7 @@ public class PlayerMovement : MonoBehaviourPun
         float vertical = input.MoveInput.y;
         if (vertical > 0.5f && Time.time - hangStartedAt >= ledgeClimbDelay)
         {
-            StartCoroutine(ClimbOntoLedge());
+            ledgeClimb = StartCoroutine(ClimbOntoLedge());
             return;
         }
         if (vertical < -0.5f || input.JumpPressed)
@@ -1047,7 +1079,7 @@ public class PlayerMovement : MonoBehaviourPun
         Vector3 proposed = ledgePosition + left * (-horizontal * player.TargetSpeed * Time.deltaTime);
         Vector3 probe    = proposed + Vector3.up * 0.5f - left * 1f;
 
-        if (Physics.Raycast(probe, Vector3.down, out RaycastHit support, 1f, structureLayer)
+        if (Physics.Raycast(probe, Vector3.down, out RaycastHit support, 1f, structureLayer, Solid)
             && Vector3.Dot(support.normal, Vector3.up) >= 0.7f)
         {
             ledgePosition = proposed;
@@ -1082,6 +1114,7 @@ public class PlayerMovement : MonoBehaviourPun
         rb.MovePosition(target);
 
         climbingLedge = false;
+        ledgeClimb    = null;
         player.SetState(Player.MovementState.Idle);
     }
 

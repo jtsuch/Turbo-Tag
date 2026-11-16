@@ -8,6 +8,13 @@ using UnityEngine;
 [AbilityInfo("Blink to wherever your crosshair points, up to 15 m away.")]
 public class Teleport : QuickAbility
 {
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Warp, chest, 1f);
+        Vfx.Burst(chest, Fx.Violet, 30, 5f, 0.3f, 0.6f);
+    }
+
     [Header("References")]
     [Tooltip("The camera (look direction). Found under CameraHolder if empty.")]
     [SerializeField] private Transform cam;

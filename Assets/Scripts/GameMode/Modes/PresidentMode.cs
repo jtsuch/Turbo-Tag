@@ -41,8 +41,19 @@ public class PresidentMode : GameMode
         Manager.SetPhase(MatchPhase.Countdown, MatchRules.CountdownTime, new Hashtable { [RoomKeys.Round] = 1 });
     }
 
+    // Joining a game in progress (Justin, Nov 16): always as a defender, never the President or a hunter
+    public override void OnPlayerJoined(PhotonPlayer player, bool rejoined)
+    {
+        if (Phase == MatchPhase.Waiting || Phase == MatchPhase.MatchEnd) return;
+        PlayerRoles.Set(player, PlayerRole.Hider);
+    }
+
     public override void MasterUpdate()
     {
+        if (Phase == MatchPhase.Countdown || Phase == MatchPhase.Hiding || Phase == MatchPhase.Active)
+            foreach (var p in PhotonNetwork.PlayerList)
+                if (PlayerRoles.Get(p) == PlayerRole.None) PlayerRoles.Set(p, PlayerRole.Hider);
+
         switch (Phase)
         {
             case MatchPhase.Countdown:

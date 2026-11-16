@@ -110,7 +110,7 @@ public class MovingPlatform : MonoBehaviour
     private void Update()
     {
         if (markFill == null) return;
-        var cols = GetComponentsInChildren<Collider>();
+        var cols = markColliders ??= GetComponentsInChildren<Collider>();   // Once, not a fresh array every frame
         if (cols.Length == 0) return;
         float bottomNow = cols[0].bounds.min.y;
         foreach (var c in cols) bottomNow = Mathf.Min(bottomNow, c.bounds.min.y);
@@ -119,6 +119,8 @@ public class MovingPlatform : MonoBehaviour
         float pulse = near >= 1f ? 0.5f + 0.5f * Mathf.Sin(Time.time * 10f) : 0f;
         markFill.color = new Color(1f, 0.82f, 0.1f, 0.08f + 0.22f * near + 0.1f * pulse);
     }
+
+    private Collider[] markColliders;
 
     private void OnDestroy()
     {
@@ -129,7 +131,9 @@ public class MovingPlatform : MonoBehaviour
 
     private void FixedUpdate()
     {
-        Vector3 target = PositionAt(PhotonNetwork.Time);
+        // NetClock: the network time of this physics step, advancing evenly (PhotonNetwork.Time only moves once a
+        // frame, so the platform stood still for a step and then hopped two, shaking whoever rode it)
+        Vector3 target = PositionAt(NetClock.Now);
         if (body != null && body.isKinematic) body.MovePosition(target);
         else                                  transform.position = target;
     }

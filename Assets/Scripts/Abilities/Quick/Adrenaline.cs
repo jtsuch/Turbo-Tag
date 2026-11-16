@@ -4,6 +4,17 @@ using UnityEngine;
 [AbilityInfo("A rush of adrenaline: 75% faster for 3 seconds.")]
 public class Adrenaline : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("speed", 2f / 3f, 1f, 4f / 3f, v => $"+{v * 75f:0}%");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Heartbeat, chest, 1f);
+        Vfx.Burst(chest, Fx.Pink, 16, 3.5f, 0.25f, 0.5f);
+        if (mine) Fx.Shake(0.1f);
+    }
+
     [Header("Adrenaline")]
     [TunableParam("Speed Multiplier", 1f, 3f)]
     [SerializeField] private float speedMultiplier = 1.75f;

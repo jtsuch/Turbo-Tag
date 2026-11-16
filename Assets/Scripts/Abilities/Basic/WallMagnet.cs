@@ -10,6 +10,17 @@ using UnityEngine;
 [AbilityInfo("Hold to walk on walls and ceilings like they're the floor. Standing still drains the meter slower.")]
 public class WallMagnet : BasicAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(4f, 6f, 8f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Snap, feet, 0.8f);
+        Sfx.At(SfxKind.ZapDown, chest, 0.5f);
+        Vfx.Ring(feet, Fx.Violet, 16, 3f, 0.25f, 0.4f);
+    }
+
     [Tooltip("Meter drain while standing still on a surface (1 = as fast as moving).")]
     [TunableParam("Still Drain", 0f, 1f)]
     [SerializeField] private float stillDrain = 0.4f;

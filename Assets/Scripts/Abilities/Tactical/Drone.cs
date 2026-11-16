@@ -8,6 +8,10 @@ using UnityEngine;
 [AbilityInfo("Send out a little drone that flies where you look, revealing enemies near it to your team. Can be shot down.", HealthModesOnly = true)]
 public class Drone : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("scan radius", 0.75f, 1f, 1.25f, v => $"{v * 15f:0.#} m");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [TunableParam("Flight Speed", 2f, 40f)]
     [SerializeField] private float flightSpeed = 13f;
 

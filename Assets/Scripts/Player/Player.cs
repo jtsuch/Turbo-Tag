@@ -97,6 +97,9 @@ public class Player : MonoBehaviourPun, IPunObservable
     public event Action Landed;
     public event Action Caught;
     public event Action Respawned;
+    /// <summary>Owner: about to be moved by <see cref="Teleport"/> (respawns, pads, the hunter room). Anything carrying
+    /// the body (a ledge climb-up, a ladder) lets go here.</summary>
+    public event Action Teleporting;
 
     public bool IsGrounded => Movement != null && Movement.OnGround;
     public bool IsSwinging { get; set; }
@@ -115,14 +118,69 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Free Spin (PlayerCam): the body is tumbling, so movement ignores its tilt.</summary>
     public bool IsFreeSpinning { get; set; }
 
+    // ─── Body holds: anything that takes the body over from normal movement ────
+    // One mechanism instead of a flag per feature (Nov 16). An ability or interactable that needs gravity off, wants
+    // to move the body itself, or wants it frozen calls Hold(this, …) and Release(this); PlayerMovement only asks
+    // Holds(…). A new zip line, lift, grab or stun needs no new flag here and no edit in PlayerMovement. The older
+    // flags below (IsAnchored, OnZipLine, OnLadder, ZeroGravity) are kept as names other code reads, and are holds
+    // underneath.
+
+    private readonly Dictionary<object, BodyHold> holds = new();
+    private BodyHold holding;
+
+    /// <summary>Owner: <paramref name="source"/> takes hold of the body in these ways until it calls <see cref="Release"/>
+    /// (calling again replaces what it holds).</summary>
+    public void Hold(object source, BodyHold what)
+    {
+        if (source == null) return;
+        if (what == BodyHold.None) { Release(source); return; }
+        holds[source] = what;
+        RecountHolds();
+    }
+
+    /// <summary>Owner: <paramref name="source"/> lets go of the body.</summary>
+    public void Release(object source)
+    {
+        if (source != null && holds.Remove(source)) RecountHolds();
+    }
+
+    /// <summary>True while anything holds the body in this way (any of the given ways).</summary>
+    public bool Holds(BodyHold what) => (holding & what) != 0;
+
+    private void RecountHolds()
+    {
+        holding = BodyHold.None;
+        foreach (var what in holds.Values) holding |= what;
+    }
+
+    private void SetNamedHold(string name, bool on, BodyHold what)
+    {
+        if (on) Hold(name, what);
+        else    Release(name);
+    }
+
     /// <summary>Stuck in place on a surface (Chameleon): no movement and no gravity until cleared.</summary>
-    public bool IsAnchored { get; set; }
+    public bool IsAnchored
+    {
+        get => anchored;
+        set { anchored = value; SetNamedHold(nameof(IsAnchored), value, BodyHold.NoGravity | BodyHold.Frozen); }
+    }
 
     /// <summary>Riding a zip line (World/ZipLine moves the body): no movement and no gravity until it lets go.</summary>
-    public bool OnZipLine { get; set; }
+    public bool OnZipLine
+    {
+        get => onZipLine;
+        set { onZipLine = value; SetNamedHold(nameof(OnZipLine), value, BodyHold.NoGravity | BodyHold.Carried); }
+    }
 
     /// <summary>Owner: climbing a placed ladder (LadderClimb moves the body; PlayerMovement stands aside like a zip line).</summary>
-    public bool OnLadder { get; set; }
+    public bool OnLadder
+    {
+        get => onLadder;
+        set { onLadder = value; SetNamedHold(nameof(OnLadder), value, BodyHold.NoGravity | BodyHold.Carried); }
+    }
+
+    private bool anchored, onZipLine, onLadder, zeroGravity;
 
     /// <summary>Owner: an "up" to turn the body and view to (a tilted ladder), like Wall Magnet's surface; null = the sky.</summary>
     public Vector3? ExternalUp { get; set; }
@@ -141,7 +199,11 @@ public class Player : MonoBehaviourPun, IPunObservable
     public Quaternion SurfaceFrame { get; set; } = Quaternion.identity;
 
     /// <summary>Zero Gravity (owner): no gravity while set. PlayerMovement switches it (it owns gravity).</summary>
-    public bool ZeroGravity { get; set; }
+    public bool ZeroGravity
+    {
+        get => zeroGravity;
+        set { zeroGravity = value; SetNamedHold(nameof(ZeroGravity), value, BodyHold.NoGravity); }
+    }
 
     /// <summary>Owner: an admin turned this player's abilities off ("name ability 0" in the admin console).</summary>
     public bool AdminAbilitiesOff { get; set; }
@@ -668,6 +730,15 @@ public class Player : MonoBehaviourPun, IPunObservable
     private void OnCollisionEnter(Collision collision) => HandleContact(collision.collider);
     private void OnTriggerEnter(Collider other)        => HandleContact(other);
 
+    // Contact that lasts counts too: a hunter already touching a hider when the hunt starts (or when a tag's 0.x s
+    // grace runs out) never got another "enter", so the tag only came after stepping away and back. The modes
+    // throttle their own requests, so this only looks every few physics steps
+    private void OnCollisionStay(Collision collision)
+    {
+        if (!IsLocal || (Time.frameCount & 3) != 0) return;
+        HandleContact(collision.collider);
+    }
+
     private void HandleContact(Collider other)
     {
         if (!IsLocal || GameModeManager.Instance == null || GameModeManager.Instance.Mode == null) return;
@@ -802,6 +873,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// <summary>Moves the player instantly, clearing momentum and stance.</summary>
     public void Teleport(Vector3 position, Quaternion rotation)
     {
+        Teleporting?.Invoke();
         Abilities.CancelAll();
         MagnetUp     = null;                 // Arrive upright, not still turned to a wall (Wall Magnet)
         ExternalUp   = null;                 // ...or tilted with a ladder
@@ -844,6 +916,18 @@ public class Player : MonoBehaviourPun, IPunObservable
             else if (sizeChanged) ApplyBodyScale();
         }
     }
+}
+
+/// <summary>
+/// Ways something can take the body over from normal movement (<see cref="Player.Hold"/>). Combine them.
+/// </summary>
+[System.Flags]
+public enum BodyHold
+{
+    None      = 0,
+    NoGravity = 1 << 0,   // Gravity is off (PlayerMovement is still the only thing that switches it)
+    Carried   = 1 << 1,   // Something else moves the body each step (a zip line, a ladder): movement stands aside
+    Frozen    = 1 << 2,   // Held dead still: velocity kept at zero (stuck to a surface)
 }
 
 /// <summary>Synced donut flags (bits above the shield and beacon bits in Player's sync).</summary>

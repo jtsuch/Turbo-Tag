@@ -13,6 +13,12 @@ using UnityEngine;
 [RequireComponent(typeof(PhotonView))]
 public abstract class GrappleAbility : BasicAbility, IPunObservable
 {
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Thwip, chest, 0.9f);
+    }
+
     [Header("References")]
     [SerializeField] protected Transform    cam;
     [SerializeField] protected Transform    gunTip;
@@ -68,7 +74,7 @@ public abstract class GrappleAbility : BasicAbility, IPunObservable
     protected override void OnPress()
     {
         if (isSwinging || Owner.State == Player.MovementState.Hang) return;
-        if (!Physics.Raycast(cam.position, cam.forward, out RaycastHit hit, grappleReach, canGrapple)) return;
+        if (!Physics.Raycast(cam.position, cam.forward, out RaycastHit hit, grappleReach, canGrapple, QueryTriggerInteraction.Ignore)) return; // Never a pad's trigger zone
 
         // Grappling stands the player up, except prone which allows steering a slide
         if (Owner.State != Player.MovementState.Prone)

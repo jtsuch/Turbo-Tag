@@ -158,6 +158,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
         // A freshly loaded level always starts from a clean match state
         if (PhotonNetwork.IsMasterClient) ResetMatchState();
+        // Not the host, and the match is already past its start: this client joined a game in progress
+        else joinedInProgress = (MatchPhase)NetProps.Room(RoomKeys.Phase, (int)MatchPhase.Waiting) != MatchPhase.Waiting;
         return true;
     }
 
@@ -172,7 +174,12 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (Mode.UsesGuns != gunSystemsOn) SyncGunSystems();   // Freeplay's Guns switch, mid-session
         NetworkConfig.FitToRoom();
         Mode.ClientUpdate();
+        JoinerUpdate();
         if (!PhotonNetwork.IsMasterClient) return;
+
+        // The room's door follows the mode: open (and listed as IN PROGRESS) while it takes joiners, shut once the
+        // match is over (the Scoreboard; the lobby or the next match opens it again)
+        JoinInProgress.SetOpen(Mode.AllowsJoining && Phase != MatchPhase.MatchEnd);
 
         // Wait for our own phase write to round-trip before making further decisions
         if (pendingPhase.HasValue)
@@ -197,6 +204,25 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         }
 
         Mode.MasterUpdate();
+    }
+
+    // ─── Arriving in a match that's already running (this client) ─────────────
+
+    private bool       joinedInProgress;   // This client loaded the level with the match already on
+    private bool       joinAnnounced;
+    private PlayerRole lastLocalRole = PlayerRole.None;
+
+    // A joiner never saw the phase start, so nothing told this screen's listeners (the HUD, abilities, the mode) what
+    // phase it is: once their player exists, the current phase is announced here once, as if it had just begun
+    private void JoinerUpdate()
+    {
+        if (!joinedInProgress || joinAnnounced || Player.Local == null) return;
+        joinAnnounced = true;
+        var phase = Phase;
+        if (phase == lastAnnouncedPhase) return;
+        lastAnnouncedPhase = phase;
+        if (phase != MatchPhase.Countdown) Mode.OnPhaseChanged(phase);   // (A countdown's own start respawns and clears: not theirs to redo)
+        PhaseChanged?.Invoke(phase);
     }
 
     private static bool AllPlayersSpawned() =>
@@ -287,6 +313,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     {
         if (!PhotonNetwork.IsMasterClient) return;
 
+        // A new match: its own id, stamped on everyone here, so a later joiner carrying it is known to be rejoining
+        int matchId = UnityEngine.Random.Range(1, int.MaxValue);
+
         // Treat it as Waiting at once: until Photon echoes this back, the room still says the last match's phase
         // (MatchEnd, with its clock run out), and the mode would send everyone straight back to the Scoreboard
         pendingPhase = MatchPhase.Waiting;
@@ -303,6 +332,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.DiscHolder]     = -1,
             [RoomKeys.Modifier]       = "",
             [RoomKeys.IntroStart]     = 0d,
+            [RoomKeys.MatchId]        = matchId,
+            [RoomKeys.Stage]          = JoinInProgress.StageMatch,   // Also when a level is opened directly (editor tests)
         });
         introStartedAt = -1f;
 
@@ -310,7 +341,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         bool keepRoles = NetProps.Room(RoomKeys.RolesDealt, false); // Dealt in Pregame: StartMatch keeps them
         foreach (var player in PhotonNetwork.PlayerList)
         {
-            var props = new Hashtable { [PlayerKeys.Score] = 0f, [PlayerKeys.DangerPoints] = 0f };
+            var props = new Hashtable { [PlayerKeys.Score] = 0f, [PlayerKeys.DangerPoints] = 0f, [PlayerKeys.MatchId] = matchId };
             if (!keepRoles) props[PlayerKeys.Role] = (int)PlayerRole.None;
             foreach (string stat in MatchStats.All) props[stat] = 0f;
             player.SetCustomProperties(props);
@@ -407,8 +438,17 @@ public class GameModeManager : MonoBehaviourPunCallbacks
 
     public override void OnPlayerPropertiesUpdate(PhotonPlayer target, Hashtable changed)
     {
-        if (changed.ContainsKey(PlayerKeys.Role))
-            RoleChanged?.Invoke(target, PlayerRoles.Get(target));
+        if (!changed.ContainsKey(PlayerKeys.Role)) return;
+        var role = PlayerRoles.Get(target);
+        RoleChanged?.Invoke(target, role);
+
+        // A joiner spawns before the host has placed them (no role yet: any spot). When their first role arrives they
+        // start again from that role's own spawn (their team's end, the hunters' spot)
+        if (!target.IsLocal) return;
+        bool first = lastLocalRole == PlayerRole.None && role != PlayerRole.None;
+        lastLocalRole = role;
+        if (first && joinedInProgress && Player.Local != null && !Player.Local.IsCaught && Spawner.Instance != null && role != PlayerRole.Ghost)
+            Spawner.Instance.RespawnLocalPlayer();
     }
 
     public override void OnPlayerLeftRoom(PhotonPlayer otherPlayer)

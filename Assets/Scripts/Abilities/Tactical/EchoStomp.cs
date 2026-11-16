@@ -8,6 +8,10 @@ using UnityEngine;
 [AbilityInfo("Stomp: every enemy close by shows through walls for you and your team for a moment.", DisplayName = "Echo Stomp", HealthModesOnly = true)]
 public class EchoStomp : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("radius", 0.75f, 1f, 1.25f, v => $"{v * 17.25f:0.#} m");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [TunableParam("Radius", 3f, 40f)]
     [SerializeField] private float radius = 17.25f;
     [TunableParam("Reveal Time", 0.5f, 10f)]

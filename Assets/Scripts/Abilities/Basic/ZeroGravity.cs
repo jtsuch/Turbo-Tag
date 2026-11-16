@@ -9,6 +9,16 @@ using UnityEngine;
 [AbilityInfo("Hold to turn off your gravity and drift. Movement keys gently curve your float.")]
 public class ZeroGravity : BasicAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(3.5f, 4f, 4.5f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Shimmer, chest, 0.7f, 45f, 0.7f);
+        Vfx.Burst(chest, Fx.Violet, 20, 2f, 0.3f, 1f);
+    }
+
     [Header("Float")]
     [Tooltip("How fast the drift turns toward where you steer (degrees per second).")]
     [TunableParam("Steering", 0f, 360f)]

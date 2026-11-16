@@ -14,6 +14,12 @@ using UnityEngine;
 [RequireComponent(typeof(PhotonView))]
 public abstract class ThrowAbility : Ability
 {
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Toss, chest, 0.8f);
+    }
+
     [Header("Throw")]
     [SerializeField] protected float cooldown = 3f;
     [TunableParam("Min Force", 1f, 100f)]

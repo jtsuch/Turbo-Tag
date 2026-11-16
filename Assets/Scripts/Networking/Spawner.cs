@@ -57,6 +57,12 @@ public class Spawner : MonoBehaviour
 
     private void Update()
     {
+        // Joining a match in progress: Photon starts loading the map the moment the join is accepted, a moment before
+        // it counts this client as in the room, so Start found no room and skipped the spawn (Nov 16: joiners sat in
+        // the map with no player and no camera). Spawn as soon as the room is ours. The offline editor bootstrapper
+        // also spawns on joining; SpawnLocalPlayer only ever makes one player
+        if (!spawned && Player.Local == null && PhotonNetwork.InRoom) SpawnLocalPlayer();
+
         var local = Player.Local;
         if (local == null || local.IsCaught || local.transform.position.y >= killHeight) return;
         LocalPlayerFell();

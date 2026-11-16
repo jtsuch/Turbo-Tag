@@ -69,6 +69,12 @@ public class MainMenuScreen : MenuScreen
         var column = UIKit.Place(UIKit.Rect("Buttons", Root), new Vector2(0f, 0f), new Vector2(110f, 90f), new Vector2(560f, 560f));
         UIKit.VStack(column, 18f, null, TextAnchor.LowerLeft);
 
+        // Dropped out of a game a moment ago: a way straight back in (JoinInProgress)
+        if (JoinInProgress.TryGetOffer(out string dropped))
+        {
+            rejoinButton = UIKit.Button(column, "Rejoin Game", UIKit.Style.Accent, () => Rejoin(dropped), 84f, 36f);
+            playButtons.Add(rejoinButton);
+        }
         var quick  = UIKit.Button(column, "Quick Play", UIKit.Style.Primary, QuickPlay, 104f, 44f);
         var create = UIKit.Button(column, "Create Game", UIKit.Style.Secondary, CreateGame, 84f, 36f);
         var join   = UIKit.Button(column, "Join Game", UIKit.Style.Accent, () => UIFade.LoadScene(SceneNames.JoinList), 84f, 36f);
@@ -177,12 +183,33 @@ public class MainMenuScreen : MenuScreen
 
     // ─── Play ─────────────────────────────────────────────────────────────────
 
+    private Button rejoinButton;
+    private bool   quickLobbyOnly;
+
+    // A game still in its lobby first; failing that, any open game (one in progress: its mode places you)
     private void QuickPlay()
     {
         if (!PhotonNetwork.IsConnectedAndReady || busy) return;
         busy = true;
+        quickLobbyOnly = true;
         Toast("Finding a game…");
-        PhotonNetwork.JoinRandomRoom(); // The first open game, any mode
+        PhotonNetwork.JoinRandomRoom(new ExitGames.Client.Photon.Hashtable { [RoomKeys.Stage] = JoinInProgress.StageLobby }, 0);
+    }
+
+    private void Rejoin(string room)
+    {
+        if (!PhotonNetwork.IsConnectedAndReady || busy) return;
+        busy = true;
+        Toast("Rejoining…");
+        PhotonNetwork.JoinRoom(room);
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        busy = false;
+        JoinInProgress.ClearOffer();
+        if (rejoinButton != null) rejoinButton.gameObject.SetActive(false);
+        Toast("That game has ended or isn't taking players.", error: true);
     }
 
     private void CreateGame()
@@ -194,7 +221,13 @@ public class MainMenuScreen : MenuScreen
 
     public override void OnJoinRandomFailed(short returnCode, string message)
     {
-        // Nobody to join: start a game for others to find
+        // No game waiting in its lobby: any open game, then start one for others to find
+        if (quickLobbyOnly)
+        {
+            quickLobbyOnly = false;
+            PhotonNetwork.JoinRandomRoom();
+            return;
+        }
         creating = true;
         RoomFactory.CreateRoom();
     }

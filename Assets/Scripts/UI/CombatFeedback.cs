@@ -40,7 +40,6 @@ public class CombatFeedback : MonoBehaviour
     private readonly List<Arc> arcs = new();
 
     private Player subscribed;
-    private bool   hitStopping;
 
     /// <summary>Takes it away (Freeplay's Guns switch turned off).</summary>
     public static void Remove()
@@ -62,7 +61,6 @@ public class CombatFeedback : MonoBehaviour
         if (CombatManager.Instance != null) CombatManager.Instance.Killed -= HandleKilled;
         if (subscribed != null) subscribed.Health.Damaged -= HandleDamaged;
         if (muffle != null) muffle.cutoffFrequency = 22000f;
-        if (hitStopping) Time.timeScale = 1f;
         KillStreaks.Clear();
     }
 
@@ -183,7 +181,7 @@ public class CombatFeedback : MonoBehaviour
             killMarker.gameObject.SetActive(true);
             killText.text = $"<color=#FF4D6D>ELIMINATED</color>  {Name(kill.Victim)}{(kill.Headshot ? "  <size=70%><color=#FFC93C>HEADSHOT</color></size>" : "")}";
             Sfx.Here(SfxKind.Snap, 0.8f, 0.7f);
-            StartCoroutine(HitStop());
+            KillPunch();
 
             // Multi-kill beats a streak call-out of the same moment
             string multiName  = KillStreaks.MultiName(KillStreaks.Multi(me));
@@ -211,15 +209,13 @@ public class CombatFeedback : MonoBehaviour
         return p != null && !string.IsNullOrEmpty(p.NickName) ? p.NickName : $"Player {actor}";
     }
 
-    // A brief freeze on the killer's screen: the shot lands with weight
-    private IEnumerator HitStop()
+    // The kill lands with weight: a short kick of the view on the killer's screen. It used to slow the killer's whole
+    // game to a tenth for 0.06 s (Time.timeScale), which also slowed their own movement, physics and timers: every
+    // kill cost them about 54 ms against everyone else, and broke the rule that nothing local changes how fast a
+    // player's simulation runs (Nov 16). Only the camera moves now
+    private static void KillPunch()
     {
-        if (hitStopping || PauseMenuManager.IsPaused) yield break;
-        hitStopping = true;
-        Time.timeScale = 0.1f;
-        yield return new WaitForSecondsRealtime(0.06f);
-        Time.timeScale = 1f;
-        hitStopping = false;
+        if (PlayerCam.Local != null) PlayerCam.Local.AddShake(0.22f);
     }
 
     private void UpdateKill()

@@ -7,6 +7,10 @@ using UnityEngine;
 [AbilityInfo("Hold to fire a rope that reels you straight to where it hit.")]
 public class ZipGrapple : GrappleAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(1f, 2f, 3f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+
     [Header("Zip")]
     [Tooltip("Top speed toward the anchor (m/s).")]
     [TunableParam("Zip Speed", 5f, 80f)]

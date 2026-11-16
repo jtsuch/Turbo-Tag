@@ -9,6 +9,16 @@ using UnityEngine;
 [AbilityInfo("Hold to raise a bubble: other players' abilities can't touch you while it's up.", DisplayName = "Ability Shield")]
 public class Shield : BasicAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Bar(2f, 3f, 4f);
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    // What every screen plays when this is used (each ability owns its own: Ability.PlayUseFx)
+    public override void PlayUseFx(Player player, Vector3 feet, Vector3 chest, bool mine)
+    {
+        Sfx.At(SfxKind.Shimmer, chest, 0.9f);
+        Vfx.Burst(chest, Fx.Cyan, 24, 4f, 0.3f, 0.6f);
+    }
+
     private bool held;
 
     protected override void OnPress()

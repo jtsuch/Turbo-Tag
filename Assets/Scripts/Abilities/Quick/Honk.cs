@@ -11,6 +11,11 @@ using UnityEngine;
 [AbilityInfo("HONK! Blasts players and objects in front of you away.")]
 public class Honk : QuickAbility
 {
+    // Search & Destroy upgrade path: the value at levels 0, 1 and 2 (AbilityUpgrades reads it; Justin's table, Nov 14)
+    private static readonly AbilityUpgrades.Entry Upgrades = AbilityUpgrades.Power("push", 0.75f, 1f, 1.25f, v => $"{v * 100f:0}%");
+    public override AbilityUpgrades.Entry UpgradePath => Upgrades;
+    public override bool HasUseFx => false;   // Plays its own (RPC_Honk: horn, sound and push)
+
     [Header("Honk")]
     [TunableParam("Range", 1f, 20f)]
     [SerializeField] private float range = 7f;

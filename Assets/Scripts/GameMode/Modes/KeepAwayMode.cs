@@ -73,6 +73,10 @@ public class KeepAwayMode : TeamMode
 
     public override bool CanUseAbilities(PlayerRole role, MatchPhase phase) => phase == MatchPhase.Active;
 
+    // Hands full: while you hold the disc, the Action key throws it, not a Throw ability
+    public override bool AllowsAbilityUse(Player player, Ability ability) =>
+        !(ability.Slot == AbilitySlot.Throw && player.IsLocal && KeepAwayDisc.LocalHolding);
+
     protected override string FormatTeamScore(float score) => Mathf.FloorToInt(score).ToString();
 
     private static PlayerRole HolderTeam

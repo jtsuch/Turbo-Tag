@@ -202,6 +202,28 @@ public abstract class GameMode
     /// <summary>Mode-specific multiplier on ability cooldowns (0 = no cooldowns).</summary>
     public virtual float CooldownMultiplier(PlayerRole role) => 1f;
 
+    /// <summary>
+    /// Whether people can join (or rejoin) while a match of this mode is on. The room stays open and listed as IN
+    /// PROGRESS when true (JoinInProgress); Last Man Standing says no. Where a joiner goes is <see cref="OnPlayerJoined"/>.
+    /// </summary>
+    public virtual bool AllowsJoining => true;
+
+    /// <summary>
+    /// Host: <paramref name="player"/> came into the match in progress. Newcomers arrive with no role, score or stats
+    /// (JoinInProgress wipes what they carried); someone <paramref name="rejoined"/> (they dropped out of this same
+    /// match) still has their score, stats and old role. Give them the role the mode's rules say (Tag: a hunter;
+    /// Protect the President: a defender); modes that place role-less players in their update (teams) need nothing.
+    /// </summary>
+    public virtual void OnPlayerJoined(PhotonPlayer player, bool rejoined) { }
+
+    /// <summary>
+    /// The local player's own screen: whether <paramref name="ability"/> may be started right now, for anything a mode
+    /// puts in the player's hands or way (Search &amp; Destroy: no movement abilities with the bomb out; Keep Away: no
+    /// throws while holding the disc). An ability in use when this turns false is cancelled (AbilityHandler). Role and
+    /// phase rules stay in <see cref="CanUseAbilities"/>. New modes override this instead of editing AbilityHandler.
+    /// </summary>
+    public virtual bool AllowsAbilityUse(Player player, Ability ability) => true;
+
     /// <summary>All clients: whether spent ability charges and Basic meters come back over time in this phase
     /// (Search &amp; Destroy: not in a live round; everything is refilled when it starts).</summary>
     public virtual bool AbilitiesRegenerate(MatchPhase phase) => true;
