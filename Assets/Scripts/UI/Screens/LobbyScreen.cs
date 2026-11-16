@@ -204,10 +204,12 @@ public class LobbyScreen : MenuScreen
             string chosen = map;
             button.onClick.AddListener(() =>
             {
-                if (!IsHost) return;
+                // Only the host chooses; anyone else marks it as what they'd like (and stays to see everyone's marks)
+                if (!IsHost) { LobbyVotes.Toggle(LobbyVotes.Kind.Map, chosen); return; }
                 NetProps.SetRoom(RoomKeys.Map, chosen);
                 mapModal.Close();
             });
+            VoteBadge.Add(card, LobbyVotes.Kind.Map, map);
             mapCards.Add((map, card));
         }
     }
@@ -341,7 +343,8 @@ public class LobbyScreen : MenuScreen
         modeName.text = mode != null ? mode.gameModeName : MatchRules.GameModeKey;
         modeDesc.text = mode != null ? mode.description : "";
 
-        mapButton.gameObject.SetActive(IsHost);
+        UIKit.Label(mapButton).text = IsHost ? "Change" : "Browse";   // Everyone can look; others mark what they'd like
+        mapModal.TitleText.text = IsHost ? "Choose a Map" : "Maps: click one to show you'd like it";
         UIKit.Label(rulesButton).text = IsHost ? "Settings" : "Rules";
         playButton.gameObject.SetActive(IsHost);
         playButton.interactable = !starting;

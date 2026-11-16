@@ -110,7 +110,9 @@ public class RulesEditor : MonoBehaviourPunCallbacks
 
     private void OnModePicked(int index)
     {
-        if (!IsHost || refreshing || index < 0 || index >= modes.Count) return;
+        if (refreshing || index < 0 || index >= modes.Count) return;
+        // Only the host chooses; anyone else marks it as what they'd like (LobbyVotes)
+        if (!IsHost) { LobbyVotes.Toggle(LobbyVotes.Kind.Mode, modes[index].gameModeKey); return; }
         MatchRules.ApplyGameMode(modes[index], overwrite: true); // Every rule back to this mode's default
     }
 
@@ -120,8 +122,9 @@ public class RulesEditor : MonoBehaviourPunCallbacks
     // picks it (host). Built the first time it opens, on the screen's own canvas, over whatever modal holds this editor
     private void OpenModeList()
     {
-        if (!IsHost || modeLocked) return;
+        if (modeLocked) return;   // Mid-match (the pause menu): shown, not browsable
         if (modeModal == null) BuildModeList();
+        if (modeModal != null) modeModal.TitleText.text = IsHost ? "Choose a Game Mode" : "Game Modes: click one to show you'd like it";
         if (modeModal == null) return;
         foreach (var (key, face) in modeCards)
             face.color = key == MatchRules.GameModeKey ? UIKit.WithAlpha(UITheme.Current.secondary, 0.9f) : UITheme.Current.card;
@@ -228,8 +231,9 @@ public class RulesEditor : MonoBehaviourPunCallbacks
         button.onClick.AddListener(() =>
         {
             OnModePicked(index);
-            modeModal.Close();
+            if (IsHost) modeModal.Close();   // Others stay to see everyone's marks
         });
+        VoteBadge.Add(card, LobbyVotes.Kind.Mode, mode.gameModeKey);
         modeCards.Add((mode.gameModeKey, card));
     }
 
@@ -329,7 +333,7 @@ public class RulesEditor : MonoBehaviourPunCallbacks
         int index = modes.FindIndex(m => m.gameModeKey == MatchRules.GameModeKey);
         if (index >= 0 && modeButtonLabel != null)
             modeButtonLabel.text = modes[index].gameModeName;   // Plain text: the fonts lack arrow glyphs
-        modeButton.interactable = IsHost && !modeLocked;
+        modeButton.interactable = !modeLocked;   // Everyone can browse; only the host's click changes it
         hostNote.gameObject.SetActive(!IsHost || modeLocked);
         if (modeLocked) hostNote.text = "The mode is set for this match.";
 

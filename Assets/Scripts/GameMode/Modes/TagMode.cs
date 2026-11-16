@@ -73,8 +73,7 @@ public class TagMode : GameMode
     {
         if (Phase == MatchPhase.Waiting || Phase == MatchPhase.MatchEnd) return;
         PlayerRoles.Set(player, PlayerRole.Hunter);
-        caughtThisRound.Add(player.ActorNumber);
-        becameHunterAt[player.ActorNumber] = PhotonNetwork.Time;
+        becameHunterAt[player.ActorNumber] = PhotonNetwork.Time;   // The same short wait as a freshly tagged hunter
     }
 
     public override void MasterUpdate()
@@ -232,7 +231,8 @@ public class TagMode : GameMode
         if (PlayerRoles.Get(tagger) != PlayerRole.Hunter)                    return;
         if (PlayerRoles.Get(target) != PlayerRole.Hider)                     return;
         if (caughtThisRound.Contains(target.ActorNumber))                     return;
-        if (caughtThisRound.Contains(tagger.ActorNumber))                     return;
+        // (A tagger caught earlier this round is fine: tagged hiders hunt too, after the cooldown below. A check here
+        // that refused them for the rest of the round also refused every late joiner, Nov 16)
 
         // Freshly tagged hunters must wait before they can tag
         if (becameHunterAt.TryGetValue(tagger.ActorNumber, out double since)

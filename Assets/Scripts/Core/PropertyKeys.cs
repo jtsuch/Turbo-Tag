@@ -138,6 +138,9 @@ public static class PlayerKeys
     /// <summary>Penguin colour (<see cref="PenguinSkins"/> name). Written by the player themself.</summary>
     public const string Skin = "Skin";
 
+    /// <summary>Lobby: the map and game mode this player would like (LobbyVotes; "" none), and when they picked them.</summary>
+    public const string VoteMap = "VoteMap", VoteMapAt = "VoteMapAt", VoteMode = "VoteMode", VoteModeAt = "VoteModeAt";
+
     /// <summary>Banked score (float: Tag points, kills…). Written by the master client.</summary>
     public const string Score = "Score";
 

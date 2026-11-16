@@ -12,6 +12,8 @@ public static class MatchLauncher
     {
         if (!PhotonNetwork.IsMasterClient) return;
 
+        LobbyVotes.ClearAll();   // The next lobby starts with no marks
+
         // The room stays open and listed (as IN PROGRESS) when the mode takes joiners mid-match (JoinInProgress)
         JoinInProgress.SetOpen(GameModeRegistry.Create(MatchRules.GameModeKey).AllowsJoining);
 
