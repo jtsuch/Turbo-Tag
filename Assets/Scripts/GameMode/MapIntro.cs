@@ -19,54 +19,93 @@ public class MapIntro : MonoBehaviour
     public static float LastEnded { get; private set; } = -100f;
 
     private GameModeManager manager;
-    private bool played, locked, viewing;
+    private bool played, locked, viewing, holding;
     private Transform cam;
     private Canvas canvas;
+    private Vector3 centre;
+    private float radius, height, startAngle;
+    private float holdSince;
+
+    private const float HoldLimit = 10f;   // The longest the opening shot waits for the host to start the pan
 
     private void Start() => manager = GetComponent<GameModeManager>();
 
     private void Update()
     {
-        if (played || manager == null || manager.Mode == null || manager.Phase != MatchPhase.Waiting) return;
+        if (played || manager == null || manager.Mode == null) return;
+        if (manager.Phase != MatchPhase.Waiting) { if (holding) { played = true; End(); } return; }
+
+        // Arriving in the level: the player spawns a moment before the host starts the intro (it waits for everyone),
+        // which showed a flash of first person before the pan (Justin, Nov 16). The opening shot is up from the very
+        // first frame the player exists instead, and the pan carries on from it
+        if (!holding && manager.Mode.PlaysMapIntro) BeginHold();
+        if (holding && Time.time - holdSince > HoldLimit) { played = true; End(); return; }
+
         double start = NetProps.Room(RoomKeys.IntroStart, 0d);
         if (start <= 0d) return;
         played = true;
         float left = Seconds - (float)(PhotonNetwork.Time - start);
         if (left > 0.75f) StartCoroutine(Play(left));
+        else End();
+    }
+
+    // The opening shot: the map from above, held until the pan starts (the camera, the locked movement, the title)
+    private void BeginHold()
+    {
+        var local = Player.Local;
+        var view = PlayerCam.Local;
+        var b = LevelInfo.Bounds;
+        if (local == null || view == null || !b.HasValue || Killcam.IsPlaying) return;
+        if (view.HasViewOverride && !viewing) return;   // Something else has the view
+
+        if (cam == null) cam = new GameObject("Map Intro Camera").transform;
+        centre = b.Value.center;
+        radius = Mathf.Clamp(Mathf.Max(b.Value.extents.x, b.Value.extents.z) * 1.05f, 30f, 160f);
+        height = Mathf.Max(b.Value.max.y, centre.y) + radius * 0.45f;
+        startAngle = Random.Range(0f, 360f);
+        PlaceOrbit(0f);
+
+        view.SetViewOverride(cam);
+        viewing = true;
+        holding = true;
+        holdSince = Time.time;
+        if (local.TryGetComponent(out PlayerInitializer init)) init.SetOwnBodyVisible(true);
+        if (!local.MovementLocked) { local.MovementLocked = true; locked = true; }
+        ShowTitle();
+        SetTitleAlpha(1f);
+    }
+
+    private Vector3 OrbitAt(float k)
+    {
+        float angle = (startAngle + k * 75f) * Mathf.Deg2Rad;
+        return centre + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius + Vector3.up * (height - centre.y);
+    }
+
+    private void PlaceOrbit(float k)
+    {
+        Vector3 pos = OrbitAt(k);
+        cam.SetPositionAndRotation(pos, Quaternion.LookRotation(centre - pos));
     }
 
     private IEnumerator Play(float seconds)
     {
         var local = Player.Local;
         var view = PlayerCam.Local;
-        var b = LevelInfo.Bounds;
-        if (local == null || view == null || !b.HasValue || Killcam.IsPlaying || view.HasViewOverride) yield break;
-
-        if (cam == null) cam = new GameObject("Map Intro Camera").transform;
-        Vector3 centre = b.Value.center;
-        float radius = Mathf.Clamp(Mathf.Max(b.Value.extents.x, b.Value.extents.z) * 1.05f, 30f, 160f);
-        float height = Mathf.Max(b.Value.max.y, centre.y) + radius * 0.45f;
-        float startAngle = Random.Range(0f, 360f);
-
-        view.SetViewOverride(cam);
-        viewing = true;
-        if (local.TryGetComponent(out PlayerInitializer init)) init.SetOwnBodyVisible(true);
-        if (!local.MovementLocked) { local.MovementLocked = true; locked = true; }
-        ShowTitle();
+        if (!holding) BeginHold();   // Normally already up from the first frame
+        if (!holding || local == null || view == null) { End(); yield break; }
 
         for (float t = 0f; t < seconds; t += Time.deltaTime)
         {
             if (Player.Local == null || PlayerCam.Local == null) break;
             float k = t / seconds;
             // A slow, steady pan round the whole map; the last quarter eases down into your penguin's view
-            float angle = (startAngle + k * 75f) * Mathf.Deg2Rad;
-            Vector3 orbit = centre + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius + Vector3.up * (height - centre.y);
+            Vector3 orbit = OrbitAt(k);
             Vector3 eye = local.transform.position + Vector3.up * local.EyeHeight;
             float home = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.75f, 1f, k));
             Vector3 pos = Vector3.Lerp(orbit, eye, home);
             Vector3 look = Vector3.Lerp(centre, eye + local.transform.forward * 10f, home);
             cam.SetPositionAndRotation(pos, Quaternion.LookRotation(look - pos));
-            SetTitleAlpha(Mathf.Min(1f, t / 0.4f, (seconds - t) / 0.6f));
+            SetTitleAlpha(Mathf.Min(1f, (seconds - t) / 0.6f));   // Already showing from the opening shot
             yield return null;
         }
         End();
@@ -74,6 +113,7 @@ public class MapIntro : MonoBehaviour
 
     private void End()
     {
+        holding = false;
         if (viewing)
         {
             viewing = false;

@@ -103,13 +103,18 @@ public class Loadout : MonoBehaviour
         local.Gun.Equip(null);   // ...including the gun in hand (Select would otherwise save its rounds back)
         if (!HasEconomy)
         {
-            Primary   = Remembered(PrimaryPref, "AR", GunSlot.Primary);
             Secondary = Remembered(SecondaryPref, GunCatalog.DefaultId, GunSlot.Secondary);
             if (!ShopAnytime)
             {
-                freePickUntil = Time.time + MatchRules.GunPickTime;
-                ShopMenu.Open();
+                // Every life starts with just the pistol (Justin, Nov 16); the primary is picked in the shop, which
+                // opens once the view is back in first person (not over the map intro, a fly-over or a killcam)
+                Primary = null;
+                freePickUntil = 0f;
+                pickPending = true;
+                viewFreeSince = -1f;
+                ShopMenu.Close();
             }
+            else Primary = Remembered(PrimaryPref, "AR", GunSlot.Primary);
         }
         Select(Primary != null ? GunSlot.Primary : GunSlot.Secondary, 0f);
         ApplyAbilityLevels();
@@ -119,6 +124,7 @@ public class Loadout : MonoBehaviour
     public void OnCaught()
     {
         var local = Local;
+        pickPending = false;
         ShopMenu.Close();
         if (local == null) return;
         if (HasEconomy)
@@ -143,7 +149,41 @@ public class Loadout : MonoBehaviour
         if (local == null || manager == null) return;
 
         if (HasEconomy) UpdateEconomy(local);
+        else UpdateFreePick(local);
         UpdateKeys(local);
+    }
+
+    // ─── The free pick (gun modes without an economy) ─────────────────────────
+
+    private bool  pickPending;            // Spawned: the shop opens once the view is the player's own
+    private float viewFreeSince = -1f;
+    private const float SettleSeconds = 0.3f;   // In first person this long first (a fly-over starts a frame after the spawn)
+
+    /// <summary>True while the free pick is open (the gun pick time after a spawn).</summary>
+    public bool FreePicking => !HasEconomy && !ShopAnytime && Time.time < freePickUntil;
+
+    private void UpdateFreePick(Player local)
+    {
+        if (!pickPending) return;
+        if (local.IsCaught) { pickPending = false; return; }
+        var view = PlayerCam.Local;
+        bool firstPerson = view != null && !view.HasViewOverride && !Killcam.IsPlaying
+                        && manager.Phase != MatchPhase.Waiting && manager.Phase != MatchPhase.MatchEnd;   // Waiting: the map intro
+        if (!firstPerson) { viewFreeSince = -1f; return; }
+        if (viewFreeSince < 0f) viewFreeSince = Time.time;
+        if (Time.time - viewFreeSince < SettleSeconds) return;
+
+        pickPending = false;
+        freePickUntil = Time.time + MatchRules.GunPickTime;
+        ShopMenu.Open();
+    }
+
+    /// <summary>Free pick, Space/Enter: the primary used last (none if they've never picked one), and the shop closes.</summary>
+    public void QuickPick()
+    {
+        var last = GunCatalog.Find(PlayerPrefs.GetString(PrimaryPref, ""));
+        if (Primary == null && last != null && last.Slot == GunSlot.Primary) Buy(last);
+        ShopMenu.Close();
     }
 
     private void UpdateEconomy(Player local)
@@ -286,6 +326,8 @@ public class Loadout : MonoBehaviour
             PlayerPrefs.SetString(gun.Slot == GunSlot.Primary ? PrimaryPref : SecondaryPref, gun.Id);
             Select(gun.Slot, 0f);
             UISound.Play(UISound.Kind.Confirm);
+            // Picking a primary in the free pick is the choice made: the shop closes (a pistol keeps it open)
+            if (gun.Slot == GunSlot.Primary && FreePicking) { freePickUntil = 0f; ShopMenu.Close(); }
             return;
         }
         string previous = GunIn(gun.Slot);

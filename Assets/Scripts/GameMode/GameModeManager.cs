@@ -269,6 +269,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     public void SetPhase(MatchPhase phase, float duration, Hashtable extra = null)
     {
         if (!PhotonNetwork.IsMasterClient) return;
+        float countdownLead = 0f;
 
         // Every round's countdown: a new random modifier when the rule is on (a mode may pick its own: Sudden Death),
         // announced at the countdown's start, which is that much longer so the numbers still get their full time
@@ -277,11 +278,21 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         {
             modifier = MatchRules.Modifiers ? RoundModifiers.PickNext(NetProps.Room(RoomKeys.Modifier, "")) : "";
             if (extra != null && extra.ContainsKey(RoomKeys.Modifier)) modifier = extra[RoomKeys.Modifier] as string ?? "";
-            if (modifier.Length > 0 && duration > 0f) duration += RoundModifiers.AnnounceSeconds;
+            // The countdown's silent lead: the modifier's announcement, then the buy pause (Mode.BuyPauseSeconds). The
+            // clock holds and no numbers pop through it (MatchTimerController.DisplayTime, HUDManager), so the
+            // countdown players see still runs its full length after it
+            float lead = 0f;
+            if (modifier.Length > 0) lead += RoundModifiers.AnnounceSeconds;
+            if (Mode != null) lead += Mode.BuyPauseSeconds;
+            if (duration <= 0f) lead = 0f;
+            duration += lead;
+            if (extra == null || !extra.ContainsKey(RoomKeys.CountdownLead)) countdownLead = lead;
         }
+        else countdownLead = 0f;
         Hashtable props = Clock.BuildRestart(duration);
         props[RoomKeys.Phase] = (int)phase;
         if (modifier != null) props[RoomKeys.Modifier] = modifier;
+        props[RoomKeys.CountdownLead] = countdownLead;
         if (extra != null)
             foreach (var entry in extra) props[entry.Key] = entry.Value;
 
@@ -331,6 +342,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.PausedAt]       = -1d,
             [RoomKeys.DiscHolder]     = -1,
             [RoomKeys.Modifier]       = "",
+            [RoomKeys.CountdownLead]  = 0f,
             [RoomKeys.IntroStart]     = 0d,
             [RoomKeys.MatchId]        = matchId,
             [RoomKeys.Stage]          = JoinInProgress.StageMatch,   // Also when a level is opened directly (editor tests)

@@ -7,6 +7,7 @@ using Photon.Pun;
 /// </summary>
 public class FreeplayMode : GameMode
 {
+    public override ModeCategory Category => ModeCategory.Practice;   // No objective: practice and messing about
     public override string DisplayName => "Freeplay";
     public override bool   ShowsTimer  => false;
     public override bool   PlaysMapIntro => false; // No countdown: straight in

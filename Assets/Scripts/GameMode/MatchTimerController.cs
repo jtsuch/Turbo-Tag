@@ -33,7 +33,16 @@ public class MatchTimerController : MonoBehaviour
     public bool  IsExpired  => HasLimit && Elapsed >= Duration;
 
     /// <summary>Counts down when the phase has a limit, otherwise counts up.</summary>
-    public float DisplayTime => HasLimit ? Remaining : Elapsed;
+    public float DisplayTime => HasLimit ? Mathf.Min(Remaining, Duration - Lead) : Elapsed;
+
+    /// <summary>
+    /// Seconds at the start of this phase before its countdown shows (a round modifier's announcement, the buy pause:
+    /// <see cref="RoomKeys.CountdownLead"/>). The clock holds at the countdown's length through it.
+    /// </summary>
+    public float Lead => Mathf.Clamp(NetProps.Room(RoomKeys.CountdownLead, 0f), 0f, Mathf.Max(0f, Duration));
+
+    /// <summary>Still in the silent lead at the start of the phase.</summary>
+    public bool InLead => HasLimit && Elapsed < Lead;
 
     // ─── Master-client API ────────────────────────────────────────────────────
 

@@ -234,7 +234,11 @@ public class ShopMenu : MonoBehaviour
 
         if (IsOpen && (loadout == null || !loadout.CanShop)) Close();
         if (IsOpen && built && builtForEconomy != economy) Rebuild();
-        if (IsOpen && !economy && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) Close();
+        if (IsOpen && !economy && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return)))
+        {
+            if (loadout != null && loadout.FreePicking) loadout.QuickPick();   // The primary used last, then close
+            else Close();
+        }
         bool show = IsOpen && !PauseMenuManager.IsPaused;
         if (window != null && window.gameObject.activeSelf != show) window.gameObject.SetActive(show);
 

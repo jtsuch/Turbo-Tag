@@ -570,8 +570,8 @@ public class HUDManager : MonoBehaviour
         if (manager != null && manager.Clock != null && manager.Clock.HasLimit && !manager.Clock.IsPaused)
         {
             float left = manager.Clock.Remaining;
-            // A round modifier's announcement opens the countdown (ModifierHud): no numbers over it
-            float lead = manager.Phase == MatchPhase.Countdown && RoundModifiers.Current != null ? RoundModifiers.AnnounceSeconds : 0f;
+            // The countdown's silent lead (a round modifier's announcement, the buy pause): no numbers through it
+            float lead = manager.Phase == MatchPhase.Countdown ? manager.Clock.Lead : 0f;
             bool announcing = manager.Clock.Elapsed < lead;
             // Long pre-rounds (Search & Destroy's 40 s) only pop the last 5 s, like the hide phase
             bool counting = (manager.Phase == MatchPhase.Countdown && !announcing && (left <= 5f || manager.Clock.Duration - lead <= 10f))

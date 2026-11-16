@@ -203,6 +203,19 @@ public abstract class GameMode
     public virtual float CooldownMultiplier(PlayerRole role) => 1f;
 
     /// <summary>
+    /// Seconds of pause at the start of every countdown before its numbers begin (Justin, Nov 16: time to pick guns,
+    /// shown nowhere: the clock holds and nothing pops). Gun modes with the free pick get 3; modes with a buy phase
+    /// (Search &amp; Destroy's long pre-round), no shop at spawn (Freeplay) or no guns get none.
+    /// </summary>
+    public virtual float BuyPauseSeconds => UsesGuns && !UsesEconomy && !ShopAnytime ? 3f : 0f;
+
+    /// <summary>
+    /// The group the lobby's mode picker lists this mode under (Nov 16). Default: guns for modes with guns, movement
+    /// otherwise. Override when that's wrong (Hunter is a hide-and-seek mode with one gun; Freeplay is practice).
+    /// </summary>
+    public virtual ModeCategory Category => UsesGuns ? ModeCategory.Guns : ModeCategory.Movement;
+
+    /// <summary>
     /// Whether people can join (or rejoin) while a match of this mode is on. The room stays open and listed as IN
     /// PROGRESS when true (JoinInProgress); Last Man Standing says no. Where a joiner goes is <see cref="OnPlayerJoined"/>.
     /// </summary>

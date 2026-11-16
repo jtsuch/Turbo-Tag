@@ -68,4 +68,22 @@ public static class GameModeRegistry
     }
 
     public static string DisplayName(string key) => Find(key)?.gameModeName ?? key;
+
+    private static readonly Dictionary<string, ModeCategory> categories = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The picker's group for a mode key (<see cref="GameMode.Category"/>).</summary>
+    public static ModeCategory CategoryOf(string key)
+    {
+        key ??= "";
+        if (!categories.TryGetValue(key, out var category)) categories[key] = category = Create(key).Category;
+        return category;
+    }
+}
+
+/// <summary>The lobby's mode picker groups modes into these columns, in this order.</summary>
+public enum ModeCategory
+{
+    Movement,   // Chase, hide and keep-away: abilities and movement, no gun fights
+    Guns,       // Gun fights
+    Practice,   // No objective
 }

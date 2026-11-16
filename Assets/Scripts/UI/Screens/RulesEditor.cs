@@ -129,45 +129,119 @@ public class RulesEditor : MonoBehaviourPunCallbacks
         modeModal.Open();
     }
 
+    // The groups, left to right: a heading, a line under it, and its colour (the cards' badges use it too)
+    private static readonly (ModeCategory category, string title, string blurb)[] Columns =
+    {
+        (ModeCategory.Movement, "MOVEMENT", "Chase, hide and outrun with abilities"),
+        (ModeCategory.Guns,     "GUNS",     "Shoot it out, with abilities on top"),
+        (ModeCategory.Practice, "PRACTICE", "No objective: warm up and mess around"),
+    };
+
+    private static Color ColumnColor(ModeCategory category) => category switch
+    {
+        ModeCategory.Movement => UITheme.Current.cyan,
+        ModeCategory.Guns     => UITheme.Current.pink,
+        _                     => UITheme.Current.lime,
+    };
+
+    // Every mode as a card under its group (GameMode.Category), three columns side by side, each scrolling on its own
+    // (Justin, Nov 16: "organise it: movement games, gun games…"). Each card has a picture slot on its left:
+    // Resources/ModeIcons/{mode key} when that image exists, else a badge in the group's colour with the initials, so
+    // pictures can be dropped in later with no code change
     private void BuildModeList()
     {
         var canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
         var theme = UITheme.Current;
-        modeModal = UIKit.Modal(canvas.rootCanvas.transform, "Choose a Game Mode", new Vector2(1240f, 860f));
+        modeModal = UIKit.Modal(canvas.rootCanvas.transform, "Choose a Game Mode", new Vector2(1560f, 880f));
         modeModal.NoFooter();
-        var content = UIKit.ScrollList(modeModal.Body, 0f);
-        DestroyImmediate(content.GetComponent<VerticalLayoutGroup>()); // A grid instead
-        var grid = content.gameObject.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(570f, 132f);
-        grid.spacing = new Vector2(20f, 18f);
-        grid.padding = UIKit.Pad(8);
-        for (int i = 0; i < modes.Count; i++)
+
+        var row = UIKit.Rect("Columns", modeModal.Body);
+        UIKit.Stretch(row);
+        UIKit.HStack(row, 24f, UIKit.Pad(8), TextAnchor.UpperLeft, expandHeight: true).childForceExpandWidth = true;
+
+        foreach (var (category, title, blurb) in Columns)
         {
-            var mode = modes[i];
-            var card = UIKit.Panel(content, theme.card, 20f, mode.gameModeName);
-            var name = UIKit.Text(card.transform, mode.gameModeName, 30f, UIKit.Font.Display, theme.text);
-            UIKit.Place(name.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -14f), new Vector2(526f, 40f));
-            name.rectTransform.pivot = new Vector2(0f, 1f);
-            var desc = UIKit.Text(card.transform, mode.description, 17f, UIKit.Font.Body, theme.textMuted);
-            UIKit.Place(desc.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -58f), new Vector2(526f, 62f));
-            desc.rectTransform.pivot = new Vector2(0f, 1f);
-            desc.overflowMode = TextOverflowModes.Ellipsis;
-            var button = card.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            var fx = card.gameObject.AddComponent<UIButtonFx>();
-            fx.HoverScale = 1.02f;
-            fx.Face = card;
-            fx.FaceColor = theme.card;
-            fx.LipDepth = 0f;
-            int index = i;
-            button.onClick.AddListener(() =>
-            {
-                OnModePicked(index);
-                modeModal.Close();
-            });
-            modeCards.Add((mode.gameModeKey, card));
+            var members = new List<int>();
+            for (int i = 0; i < modes.Count; i++)
+                if (GameModeRegistry.CategoryOf(modes[i].gameModeKey) == category) members.Add(i);
+            if (members.Count == 0) continue;
+            Color color = ColumnColor(category);
+
+            var column = UIKit.Rect(title, row);
+            UIKit.Size(column, flexWidth: 1f, flexHeight: 1f);
+            UIKit.VStack(column, 6f, null, TextAnchor.UpperLeft).childForceExpandHeight = false;
+
+            UIKit.OneLine(UIKit.Text(column, title, 34f, UIKit.Font.Display, color));
+            var sub = UIKit.Text(column, blurb, 18f, UIKit.Font.Body, theme.textMuted);
+            UIKit.OneLine(sub);
+            var bar = UIKit.Panel(column, color, 3f, "Bar");
+            UIKit.Size(bar, height: 5f);
+
+            var listHost = UIKit.Rect("ListHost", column);
+            UIKit.Size(listHost, flexHeight: 1f);
+            var list = UIKit.ScrollList(listHost, 14f, UIKit.Pad(0, 10));
+
+            foreach (int index in members) AddModeCard(list, modes[index], index, color);
         }
+    }
+
+    private void AddModeCard(Transform list, GameModeDefinition mode, int index, Color color)
+    {
+        var theme = UITheme.Current;
+        var card = UIKit.Panel(list, theme.card, 18f, mode.gameModeName);
+        UIKit.Size(card, height: 136f);
+        UIKit.HStack(card.transform, 16f, UIKit.Pad(16, 14), TextAnchor.MiddleLeft, expandHeight: false);
+
+        // The picture slot
+        var picture = Resources.Load<Sprite>("ModeIcons/" + mode.gameModeKey);
+        var slot = UIKit.Panel(card.transform, picture != null ? Color.white : UIKit.WithAlpha(color, 0.9f), 16f, "Picture");
+        UIKit.Size(slot, 96f, 96f);
+        if (picture != null)
+        {
+            slot.sprite = picture;
+            slot.type = Image.Type.Simple;
+            slot.preserveAspect = true;
+        }
+        else
+        {
+            var initials = UIKit.Text(slot.transform, Initials(mode.gameModeName), 36f, UIKit.Font.Display, theme.textDark);
+            initials.alignment = TextAlignmentOptions.Center;
+            UIKit.Stretch(initials.rectTransform);
+        }
+
+        var texts = UIKit.Rect("Texts", card.transform);
+        UIKit.Size(texts, flexWidth: 1f);
+        UIKit.VStack(texts, 2f, null, TextAnchor.MiddleLeft);
+        UIKit.OneLine(UIKit.Text(texts, mode.gameModeName, 28f, UIKit.Font.Display, theme.text));
+        var desc = UIKit.Text(texts, mode.description, 16f, UIKit.Font.Body, theme.textMuted);
+        desc.overflowMode = TextOverflowModes.Ellipsis;
+        desc.maxVisibleLines = 3;
+
+        var button = card.gameObject.AddComponent<Button>();
+        button.transition = Selectable.Transition.None;
+        var fx = card.gameObject.AddComponent<UIButtonFx>();
+        fx.HoverScale = 1.02f;
+        fx.Face = card;
+        fx.FaceColor = theme.card;
+        fx.LipDepth = 0f;
+        button.onClick.AddListener(() =>
+        {
+            OnModePicked(index);
+            modeModal.Close();
+        });
+        modeCards.Add((mode.gameModeKey, card));
+    }
+
+    // "Protect the President" -> "PP", "Free for All" -> "FA", "Tag" -> "TA"
+    private static string Initials(string name)
+    {
+        var words = (name ?? "").Split(new[] { ' ', '&' }, System.StringSplitOptions.RemoveEmptyEntries);
+        var big = new List<string>();
+        foreach (var w in words) if (char.IsUpper(w[0]) || char.IsDigit(w[0])) big.Add(w);
+        if (big.Count >= 2) return $"{big[0][0]}{big[big.Count - 1][0]}";
+        string one = big.Count == 1 ? big[0] : name ?? "?";
+        return one.Length >= 2 ? one.Substring(0, 2).ToUpperInvariant() : one.ToUpperInvariant();
     }
 
     // ─── Rows ─────────────────────────────────────────────────────────────────

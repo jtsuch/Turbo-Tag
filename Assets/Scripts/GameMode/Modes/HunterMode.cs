@@ -16,6 +16,8 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class HunterMode : GameMode
 {
+    public override ModeCategory Category => ModeCategory.Movement;
+    public override float BuyPauseSeconds => 0f;   // Nobody picks a gun: the hunter's pistol is set   // One armed hunter against hiders' abilities: a hide-and-seek mode
     public const string HunterTeam = "Hunter";
     public const string HiderTeam  = "Hiders";
 

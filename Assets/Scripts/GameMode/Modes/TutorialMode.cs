@@ -9,6 +9,7 @@ using Photon.Pun;
 /// </summary>
 public class TutorialMode : GameMode
 {
+    public override ModeCategory Category => ModeCategory.Practice;   // Teaching a group
     public override string DisplayName => "Tutorial";
     public override bool   ShowsTimer  => false;
 

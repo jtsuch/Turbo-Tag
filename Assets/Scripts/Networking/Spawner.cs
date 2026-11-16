@@ -228,8 +228,14 @@ public class Spawner : MonoBehaviour
                 var chosen = mode?.TeamSpawns(points, role);
                 points = chosen != null && chosen.Count > 0 ? chosen : TeamHalf(points, role);
             }
+            // Seeded by the match and the round, not the phase's start time: arriving in the level (Waiting) and the
+            // first countdown then deal the same points, so the map intro ends on the penguin where it will stay
+            // (it used to be moved to a fresh spot the moment the countdown began). Each later round deals anew
+            int match = NetProps.Room(RoomKeys.MatchId, 0);
+            int round = Mathf.Max(1, NetProps.Room(RoomKeys.Round, 0));
             double start = NetProps.Room(RoomKeys.PhaseStart, 0.0);
-            var seeded = new System.Random((int)(start * 1000.0 % int.MaxValue));
+            int seed = match != 0 ? unchecked(match * 31 + round) : (int)(start * 1000.0 % int.MaxValue);
+            var seeded = new System.Random(seed);
             var spread = Spread(points, seeded.Next(points.Count));
             int index = team ? TeammateIndex(role) : LocalPlayerIndex(out _);
             return lastSpawnPoint = spread[index % spread.Count];
