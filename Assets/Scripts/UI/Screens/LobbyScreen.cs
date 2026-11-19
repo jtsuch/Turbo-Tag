@@ -57,7 +57,12 @@ public class LobbyScreen : MenuScreen
 
         // Cosmetics: a Wardrobe button under the colours (the window is made last, so it draws on top)
         var wardrobe = CosmeticWardrobe.Create(Root);
-        wardrobe.MakeButton(youCard, 56f, 240f);
+        var profile  = ProfilePanel.Create(Root);
+        var youButtons = UIKit.Rect("Buttons", youCard);
+        UIKit.Size(youButtons, height: 56f);
+        UIKit.HStack(youButtons, 12f, null, TextAnchor.MiddleCenter, expandHeight: false);
+        wardrobe.MakeButton(youButtons, 56f, 200f);
+        profile.MakeButton(youButtons, 56f, 200f);
         var abilities = UIKit.Button(Root, "Abilities", UIKit.Style.Secondary, browser.OpenList, 64f, 26f);
         UIKit.Place((RectTransform)abilities.transform, new Vector2(1f, 1f), new Vector2(-300f, -60f), new Vector2(220f, 64f));
     }

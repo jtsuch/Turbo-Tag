@@ -336,6 +336,8 @@ public class AbilityHandler : MonoBehaviourPunCallbacks
 
     public override void OnRoomPropertiesUpdate(Hashtable changed)
     {
+        // The Race's vote decides everyone's abilities: re-equip if the draw arrives after this player spawned
+        if (changed.ContainsKey(RoomKeys.ForcedLoadout)) ApplyLoadout();
         if (!photonView.IsMine || !changed.ContainsKey(RuleKeys.CheatsEnabled)) return;
 
         if (MatchRules.CheatsEnabled) RestoreCustomBindings();

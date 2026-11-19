@@ -212,6 +212,20 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
 
     private readonly System.Collections.Generic.Dictionary<CosmeticSlot, string> currentIds = new();
 
+    /// <summary>
+    /// Keeps wearing <paramref name="player"/>'s colour: re-applied twice a second, so a skin that arrives (or
+    /// changes) after the preview was built still shows, and the colour never drops back to the plain black map
+    /// (Nov 18: podium penguins sometimes came out black on the Scoreboard).
+    /// </summary>
+    public void Follow(Photon.Realtime.Player player)
+    {
+        followed = player;
+        if (player != null) SetSkin(PenguinSkins.Of(player));
+    }
+
+    private Photon.Realtime.Player followed;
+    private float nextFollow;
+
     /// <summary>Wears <paramref name="player"/>'s picks (or the local saved ones when null).</summary>
     public void SetCosmetics(Photon.Realtime.Player player)
     {
@@ -228,6 +242,12 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
     private void Update()
     {
         if (model == null) return;
+        if (keyLight == null) EnsureKeyLight();   // A scene change took it: without it the penguin renders unlit (black)
+        if (followed != null && Time.unscaledTime >= nextFollow)
+        {
+            nextFollow = Time.unscaledTime + 0.5f;
+            SetSkin(PenguinSkins.Of(followed));
+        }
         // A slow look around, and a quick twirl after a colour change
         spin = Mathf.MoveTowards(spin, 0f, Time.unscaledDeltaTime * 720f);
         float yaw = Mathf.Sin(Time.unscaledTime * 0.6f) * 25f * idleLook + spin + dragYaw;
@@ -278,6 +298,7 @@ public class PenguinPreview : MonoBehaviour, UnityEngine.EventSystems.IDragHandl
         if (keyLight != null) return;
         var go = new GameObject("Penguin Preview Light");
         go.transform.rotation = Quaternion.Euler(35f, 160f, 0f);
+        DontDestroyOnLoad(go);   // Lives across scenes: previews built during a scene change kept a destroyed light
         keyLight = go.AddComponent<Light>();
         keyLight.type = LightType.Directional;
         keyLight.intensity = 1.0f;

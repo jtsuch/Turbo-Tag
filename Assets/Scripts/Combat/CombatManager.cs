@@ -286,6 +286,8 @@ public class CombatManager : MonoBehaviourPun
 
         if (live && !killerLeft) manager.Mode.OnPlayerKilled(victim, selfDestruct ? null : killer, weapon, headshot);
         if (live && !selfDestruct && weapon.StartsWith(KillInfo.KnockPrefix)) MatchStats.Add(killer, PlayerKeys.StatKnockOffs);
+        if (live && !selfDestruct && !killerLeft)
+            Highlights.OfferKill(killer.ActorNumber, victim.ActorNumber, headshot, weapon.StartsWith(KillInfo.KnockPrefix));
         // Assists: everyone else who hurt the victim in the last few seconds (not the killer, not the victim)
         if (live && assists != null)
             foreach (int actor in assists)

@@ -16,6 +16,9 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class FreeForAllMode : GameMode
 {
+    public override float  XpPerPoint   => 12f;   // A point is a kill
+    public override string XpScoreLabel => "Kills";
+
     private const float MatchEndSeconds = 5f;
 
     // Master: running totals, so two kills before Photon echoes the first property back both count

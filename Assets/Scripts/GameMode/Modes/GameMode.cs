@@ -190,6 +190,38 @@ public abstract class GameMode
     /// </summary>
     public virtual bool UsesHunterRoom => false;
 
+    /// <summary>
+    /// Whether players bump into each other and can affect each other with abilities (Race with its Collisions rule off:
+    /// everyone is still seen, but passes through everyone and is untouched by anyone else's abilities). GhostBody and
+    /// Player.AffectedBy ask this.
+    /// </summary>
+    public virtual bool PlayersCollide => true;
+
+    /// <summary>
+    /// Host, when <paramref name="target"/> is tagged: extra weight for the end-of-match highlight (<see cref="Highlights"/>),
+    /// and optionally its own caption ("{tagger}"/"{target}" filled in). Tag: the round's final tag; Protect the President:
+    /// the President.
+    /// </summary>
+    public virtual float TagHighlightBonus(PhotonPlayer target, out string caption)
+    {
+        caption = null;
+        return 0f;
+    }
+
+    /// <summary>Pregame is a vote on the abilities everyone will have (Race), not each player's own pick.</summary>
+    public virtual bool UsesAbilityVote => false;
+
+    /// <summary>
+    /// The local player's own spawn point for a respawn in this phase, when the mode has one (Race: the last checkpoint
+    /// passed). False: the usual spawn rules (Spawner).
+    /// </summary>
+    public virtual bool TryGetRespawn(PlayerRole role, MatchPhase phase, out UnityEngine.Vector3 position, out UnityEngine.Quaternion rotation)
+    {
+        position = default;
+        rotation = UnityEngine.Quaternion.identity;
+        return false;
+    }
+
     /// <summary>This role is in the hunter room in this phase (they roam it, with no abilities, and are off the map).</summary>
     public bool InHunterRoom(PlayerRole role, MatchPhase phase) =>
         UsesHunterRoom && role == PlayerRole.Hunter && (phase == MatchPhase.Countdown || phase == MatchPhase.Hiding);
@@ -201,6 +233,43 @@ public abstract class GameMode
 
     /// <summary>Mode-specific multiplier on ability cooldowns (0 = no cooldowns).</summary>
     public virtual float CooldownMultiplier(PlayerRole role) => 1f;
+
+    // ─── Profile: XP and wins (ProfileStats records each player's own match at MatchEnd) ───
+
+    /// <summary>Whether a match of this mode counts toward profiles (practice modes don't).</summary>
+    public virtual bool GivesXp => Category != ModeCategory.Practice;
+
+    /// <summary>
+    /// XP for the points a player scored this match, at this mode's own rate (a Tag point and a Free for All kill aren't
+    /// worth the same). <see cref="ProfileStats"/> adds the same base for playing and the same win bonus in every mode,
+    /// and caps this part. Default: the player's Score × <see cref="XpPerPoint"/>.
+    /// </summary>
+    public virtual float XpFromScore(PhotonPlayer player) =>
+        UnityEngine.Mathf.Max(0f, NetProps.Of(player, PlayerKeys.Score, 0f)) * XpPerPoint;
+
+    /// <summary>XP per point of Score (<see cref="XpFromScore"/>).</summary>
+    public virtual float XpPerPoint => 1f;
+
+    /// <summary>How the score's XP line reads on the Scoreboard ("Points", "Kills", "Rounds won"…).</summary>
+    public virtual string XpScoreLabel => "Points";
+
+    /// <summary>
+    /// Read at MatchEnd from synced state: did <paramref name="player"/> win? Default: nobody ranks above them
+    /// (<see cref="CompareForScoreboard"/>; ties for first all count). Team and side modes override this.
+    /// </summary>
+    public virtual bool DidWin(PhotonPlayer player)
+    {
+        if (player == null) return false;
+        bool anyOrder = false;
+        foreach (var other in PhotonNetwork.PlayerList)
+        {
+            if (other == player) continue;
+            int order = CompareForScoreboard(other, player);
+            if (order < 0) return false;            // Someone ranks above them
+            if (order > 0) anyOrder = true;
+        }
+        return anyOrder;   // A mode that can't tell anyone apart has no winner
+    }
 
     /// <summary>
     /// Seconds of pause at the start of every countdown before its numbers begin (Justin, Nov 16: time to pick guns,

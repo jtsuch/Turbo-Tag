@@ -120,6 +120,17 @@ public class CosmeticWardrobe : MonoBehaviour
         label.fontSizeMin = 13f;
         label.fontSizeMax = 18f;
 
+        // Locked behind a profile level: dimmed, with the level it opens at, and no pick
+        var item = CosmeticRegistry.Find(id);
+        if (!Cosmetics.IsUnlocked(id) && item != null)
+        {
+            var lockShade = UIKit.Panel(face.transform, new Color(0.05f, 0.03f, 0.12f, 0.72f), 18f, "Locked");
+            UIKit.Stretch(lockShade.rectTransform);
+            lockShade.raycastTarget = false;
+            var lockText = UIKit.Text(lockShade.transform, $"LEVEL\n{item.unlockLevel}", 30f, UIKit.Font.Display, Theme.primary, TextAlignmentOptions.Center);
+            UIKit.Stretch(lockText.rectTransform);
+        }
+
         var button = face.gameObject.AddComponent<Button>();
         button.transition = Selectable.Transition.None;
         var fx = face.gameObject.AddComponent<UIButtonFx>();
@@ -142,6 +153,7 @@ public class CosmeticWardrobe : MonoBehaviour
 
     private void Pick(CosmeticSlot slot, string id)
     {
+        if (!Cosmetics.IsUnlocked(id)) { UISound.Play(UISound.Kind.Error); return; }
         Cosmetics.SetLocal(slot, id);
         preview.SetCosmetics(null);
         if (CosmeticRegistry.Find(id) is { backFacing: true }) preview.ShowBack(); // Turn round to show it

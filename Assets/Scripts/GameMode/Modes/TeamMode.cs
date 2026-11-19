@@ -15,6 +15,12 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public abstract class TeamMode : GameMode
 {
+    public override bool DidWin(PhotonPlayer player)
+    {
+        var role = PlayerRoles.Get(player);
+        return (role == PlayerRole.TeamRed && Winner == Red) || (role == PlayerRole.TeamBlue && Winner == Blue);
+    }
+
     public const string Red  = "Red";
     public const string Blue = "Blue";
     public const string Draw = "Draw";

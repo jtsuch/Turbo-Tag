@@ -22,6 +22,7 @@ public class MainMenuScreen : MenuScreen
     private TMP_Text nameText, statusText;
     private PenguinPreview preview;
     private CosmeticWardrobe wardrobe;
+    private ProfilePanel profile;
     private readonly List<(Image ring, string skin)> swatches = new();
     private UIModal settings;
     private bool busy, creating;
@@ -50,6 +51,7 @@ public class MainMenuScreen : MenuScreen
 
         wardrobe = CosmeticWardrobe.Create(Root);
         wardrobe.Changed += RefreshPlayer;
+        profile = ProfilePanel.Create(Root);
 
         BuildLogin();
     }
@@ -103,8 +105,14 @@ public class MainMenuScreen : MenuScreen
         UIKit.Text(card, "Penguin Colour", 22f, UIKit.Font.Bold, Theme.textMuted, TextAlignmentOptions.Center);
         BuildSwatches(card);
 
-        var wardrobeButton = UIKit.Button(card, "Wardrobe", UIKit.Style.Secondary, () => wardrobe.Open(), 60f, 26f);
-        UIKit.Size(wardrobeButton, 280f, 60f);
+        // Wardrobe and Profile side by side
+        var buttons = UIKit.Rect("Buttons", card);
+        UIKit.Size(buttons, height: 60f);
+        UIKit.HStack(buttons, 14f, null, TextAnchor.MiddleCenter, expandHeight: false);
+        var wardrobeButton = UIKit.Button(buttons, "Wardrobe", UIKit.Style.Secondary, () => wardrobe.Open(), 60f, 26f);
+        UIKit.Size(wardrobeButton, 220f, 60f);
+        var profileButton = UIKit.Button(buttons, "Profile", UIKit.Style.Secondary, () => profile.Open(), 60f, 26f);
+        UIKit.Size(profileButton, 220f, 60f);
 
         UIKit.Spacer(card);
         logOutLink = UIKit.LinkButton(card, "Log out", LogOut, 22f);
@@ -412,6 +420,7 @@ public class MainMenuScreen : MenuScreen
         if (string.IsNullOrEmpty(displayName)) displayName = PlayerPrefs.GetString(UsernamePrefsKey, "Penguin");
         PlayerPrefs.SetString(UsernamePrefsKey, displayName);
         PhotonNetwork.NickName = displayName;
+        ProfileStats.SyncWithCloud();   // Signed in: this PC's profile and the online copy, whichever has more games
         passwordInput.text = confirmInput.text = "";
         if (login.IsOpen)
         {

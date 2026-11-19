@@ -100,7 +100,7 @@ public class SettingsManager : MonoBehaviour
     private void Apply()
     {
         ApplyFrameRate();
-        AudioListener.volume        = sfxVolume;
+        AudioListener.volume        = sfxVolume * NaturalVolume;
         if (AudioManager.Instance != null) AudioManager.Instance.SetMusicVolume(musicVolume);
     }
 
@@ -148,7 +148,10 @@ public class SettingsManager : MonoBehaviour
         }
     }
 
-    /// <summary>0–1. Applied as the global AudioListener volume.</summary>
+    /// <summary>The game's whole output, under the sliders (Nov 18, Justin: 30% quieter than it was). Music and effects alike.</summary>
+    public const float NaturalVolume = 0.7f;
+
+    /// <summary>0–1. Applied (times <see cref="NaturalVolume"/>) as the global AudioListener volume.</summary>
     public float SfxVolume
     {
         get => sfxVolume;
@@ -157,7 +160,7 @@ public class SettingsManager : MonoBehaviour
             value = Mathf.Clamp01(value);
             if (Mathf.Approximately(sfxVolume, value)) return;
             sfxVolume = value;
-            AudioListener.volume = value;
+            AudioListener.volume = value * NaturalVolume;
             Save();
             SfxVolumeChanged?.Invoke(value);
         }

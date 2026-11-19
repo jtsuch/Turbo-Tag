@@ -22,6 +22,8 @@ public class CosmeticDefinition : ScriptableObject
 {
     [Tooltip("Unique id, synced in player properties. Never rename once players own it.")]
     public string id;
+    [Tooltip("Profile level that unlocks it (ProfileStats). 0: unlocked from the start (everything is, for now).")]
+    [Min(0)] public int unlockLevel;
     public string displayName;
     public CosmeticSlot slot;
     public CosmeticKind kind;

@@ -95,6 +95,8 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         if (!TryGetComponent(out ScopeOverlay _)) gameObject.AddComponent<ScopeOverlay>();       // The view through a scope
         if (!TryGetComponent(out MatchCinematics _)) gameObject.AddComponent<MatchCinematics>(); // Fly-over, final slow-mo
         if (!TryGetComponent(out MapIntro _)) gameObject.AddComponent<MapIntro>();               // The pan round the map before a match
+        if (!TryGetComponent(out ProfileRecorder _)) gameObject.AddComponent<ProfileRecorder>(); // This player's match into their profile
+        if (!TryGetComponent(out Highlights _)) gameObject.AddComponent<Highlights>();           // The match's best moment, replayed at the end
         Sfx.Prewarm();
         Clock  = GetComponent<MatchTimerController>();
         Scores = GetComponent<ScoreController>();
@@ -293,6 +295,9 @@ public class GameModeManager : MonoBehaviourPunCallbacks
         props[RoomKeys.Phase] = (int)phase;
         if (modifier != null) props[RoomKeys.Modifier] = modifier;
         props[RoomKeys.CountdownLead] = countdownLead;
+        // The end of the match: room for its best moment after the wander (Highlights names it nearer the time)
+        if (phase == MatchPhase.MatchEnd && Highlights.Instance != null && Highlights.Instance.HasMoments)
+            props[RoomKeys.PhaseDuration] = (float)props[RoomKeys.PhaseDuration] + Highlights.PlaySeconds;
         if (extra != null)
             foreach (var entry in extra) props[entry.Key] = entry.Value;
 
@@ -343,6 +348,7 @@ public class GameModeManager : MonoBehaviourPunCallbacks
             [RoomKeys.DiscHolder]     = -1,
             [RoomKeys.Modifier]       = "",
             [RoomKeys.CountdownLead]  = 0f,
+            [RoomKeys.Highlight]      = 0,
             [RoomKeys.IntroStart]     = 0d,
             [RoomKeys.MatchId]        = matchId,
             [RoomKeys.Stage]          = JoinInProgress.StageMatch,   // Also when a level is opened directly (editor tests)
@@ -383,8 +389,12 @@ public class GameModeManager : MonoBehaviourPunCallbacks
     }
 
     /// <summary>Master: tells every client that a tag happened (feedback + caught state).</summary>
-    public void BroadcastTag(PhotonPlayer tagger, PhotonPlayer target) =>
+    public void BroadcastTag(PhotonPlayer tagger, PhotonPlayer target)
+    {
+        // A real tag in a chase mode is a highlight candidate (gun modes' deaths come through here too: they offer kills)
+        if (tagger != null && tagger != target && Mode != null && !Mode.UsesGuns) Highlights.OfferTag(tagger, target);
         photonView.RPC(nameof(RPC_PlayerTagged), RpcTarget.All, tagger != null ? tagger.ActorNumber : 0, target.ActorNumber);
+    }
 
     // ─── Client API ───────────────────────────────────────────────────────────
 

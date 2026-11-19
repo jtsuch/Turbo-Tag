@@ -20,7 +20,10 @@ public static class RoomKeys
     public const string WinningTeam   = "Match_WinningTeam";
     public const string DiscHolder    = "Match_DiscHolder";    // Keep Away: actor holding the disc (-1: loose)
     public const string Modifier      = "Match_Modifier";      // This round's RoundModifiers id ("" none)
-    public const string CountdownLead = "Match_CountdownLead"; // Seconds at the start of a countdown before its numbers (modifier announcement + buy pause)
+    public const string CountdownLead = "Match_CountdownLead";
+    public const string Highlight     = "Match_Highlight";     // The end-of-match highlight's id (Highlights), 0 none
+    public const string ForcedLoadout = "Match_ForcedLoadout"; // string[4]: the abilities everyone has this match (the Pregame vote), or empty
+    public const string RaceCloseAt   = "Match_RaceCloseAt";   // Race: network time the race closes (set when the first player finishes), 0 none // Seconds at the start of a countdown before its numbers (modifier announcement + buy pause)
     public const string IntroStart    = "Match_IntroStart";    // PhotonNetwork.Time the map intro began (0: not yet)
     /// <summary>Actor numbers that have already started a round as hunter (Tag rotation).</summary>
     public const string ServedAsHunter = "Match_Served";
@@ -100,6 +103,8 @@ public static class RuleKeys
     public const string Killcam            = "Rule_Killcam";
     public const string HealthDrops        = "Rule_HealthDrops";
     public const string FreeplayGuns       = "Rule_FreeplayGuns";   // Freeplay: guns, health and the shop on (B)
+    public const string RaceCollisions     = "Rule_RaceCollisions"; // Race: players bump each other (off: they pass through and can't affect each other)
+    public const string AbilityVote        = "Rule_AbilityVote";    // Race: Pregame votes the abilities everyone gets (one drawn per slot, weighted by votes)
     public const string GunPickTime        = "Rule_GunPickTime";
     public const string GunModeAbilities   = "Rule_GunModeAbilities";
     public const string MovementSpread     = "Rule_MovementSpread";
@@ -137,6 +142,13 @@ public static class PlayerKeys
 
     /// <summary>Penguin colour (<see cref="PenguinSkins"/> name). Written by the player themself.</summary>
     public const string Skin = "Skin";
+
+    /// <summary>Race: the last checkpoint this player passed (their own write) and their finishing time (s, −1 not finished).</summary>
+    public const string RaceCheckpoint = "RaceCheckpoint", RaceFinish = "RaceFinish";
+
+    /// <summary>Pregame ability vote: this player's pick per slot (Basic, Quick, Throw, Trap) and when they picked it.</summary>
+    public const string VoteAbility0 = "VoteAb0", VoteAbility1 = "VoteAb1", VoteAbility2 = "VoteAb2", VoteAbility3 = "VoteAb3";
+    public const string VoteAbilityAt0 = "VoteAbAt0", VoteAbilityAt1 = "VoteAbAt1", VoteAbilityAt2 = "VoteAbAt2", VoteAbilityAt3 = "VoteAbAt3";
 
     /// <summary>Lobby: the map and game mode this player would like (LobbyVotes; "" none), and when they picked them.</summary>
     public const string VoteMap = "VoteMap", VoteMapAt = "VoteMapAt", VoteMode = "VoteMode", VoteModeAt = "VoteModeAt";

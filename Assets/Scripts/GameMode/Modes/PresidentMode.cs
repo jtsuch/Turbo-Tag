@@ -17,6 +17,16 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class PresidentMode : GameMode
 {
+    public override float TagHighlightBonus(PhotonPlayer target, out string caption)
+    {
+        bool president = PlayerRoles.Get(target) == PlayerRole.President;
+        caption = president ? "{tagger} tags the President!" : null;
+        return president ? 40f : 0f;
+    }
+
+    public override bool DidWin(PhotonPlayer player) => player != null && Won(player);
+    public override float XpPerPoint => 0.5f;
+
     public const string HuntersTeam   = "Hunters";
     public const string DefendersTeam = "Defenders";
 

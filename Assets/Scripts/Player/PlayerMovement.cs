@@ -475,7 +475,11 @@ public class PlayerMovement : MonoBehaviourPun
         gap    = 0f;
         float radius = (body != null ? body.radius : 0.5f) * 0.9f;
         const float lift = 0.1f;
-        Vector3 origin = rb.position + Vector3.up * (radius + lift);
+        // From the bottom of the body whichever way it faces: rb.position is the feet, which Free Spin can turn
+        // above the head; probing down from there hit the player's own capsule, read as ground, and paused gravity
+        // (standing still) so an upside-down player hung in the air (Nov 18)
+        Vector3 centre = rb.position + rb.rotation * (Vector3.up * (player.Height * 0.5f));
+        Vector3 origin = centre - Vector3.up * (player.Height * 0.5f) + Vector3.up * (radius + lift);
 
         if (!Physics.SphereCast(origin, radius, Vector3.down, out RaycastHit hit, lift + distance,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))

@@ -293,7 +293,18 @@ public class Player : MonoBehaviourPun, IPunObservable
     /// (then only their own). Actor 0 means the world (fans, pads), which shields don't block.
     /// </summary>
     public bool AffectedBy(int sourceActor) =>
-        Role != PlayerRole.Ghost && (!IsShielded || sourceActor == 0 || sourceActor == ActorNumber);
+        Role != PlayerRole.Ghost && (!IsShielded || sourceActor == 0 || sourceActor == ActorNumber)
+        && (sourceActor == 0 || sourceActor == ActorNumber || PlayersInteract);
+
+    // Race with collisions off: nobody's abilities touch anyone else (the world's pads and fans still do)
+    private static bool PlayersInteract
+    {
+        get
+        {
+            var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+            return mode == null || mode.PlayersCollide;
+        }
+    }
 
     /// <summary>
     /// For harmful traps (Mouse Trap, Ice Trap, Gravity Well, Nuke): <see cref="AffectedBy"/>, and never the placer's
@@ -532,7 +543,7 @@ public class Player : MonoBehaviourPun, IPunObservable
     private void Start()
     {
         if (!IsLocal) return;
-        // Tutorial: arrive with abilities off until an admin turns them on (all ability 1)
+        // A mode may start everyone with abilities off until an admin turns them on (all ability 1)
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
         if (mode != null && mode.AbilitiesStartOff) AdminAbilitiesOff = true;
         ProtectSpawn();

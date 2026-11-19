@@ -12,6 +12,9 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class KeepAwayMode : TeamMode
 {
+    public override float  XpPerPoint   => 1.2f;   // A point a second holding the disc
+    public override string XpScoreLabel => "Holding the disc";
+
     public override string FinalScoreUnit => "seconds held";
     private const float FlushEvery = 0.5f;
 

@@ -13,6 +13,18 @@ public static class Cosmetics
 {
     public const string None = "";
 
+    /// <summary>
+    /// Whether the local player may wear <paramref name="id"/>: its <see cref="CosmeticDefinition.unlockLevel"/> against their
+    /// profile level (<see cref="ProfileStats.Level"/>). Every item is level 0 for now, so all are unlocked; set a level on
+    /// an item's asset to lock it behind progress. Nothing (None) is always allowed.
+    /// </summary>
+    public static bool IsUnlocked(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return true;
+        var item = CosmeticRegistry.Find(id);
+        return item == null || item.unlockLevel <= 0 || ProfileStats.Level >= item.unlockLevel;
+    }
+
     public static readonly CosmeticSlot[] Slots = (CosmeticSlot[])System.Enum.GetValues(typeof(CosmeticSlot));
 
     // Rigid placement on a penguin (metres, × body size)

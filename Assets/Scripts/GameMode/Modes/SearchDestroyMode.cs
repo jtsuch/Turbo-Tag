@@ -24,6 +24,8 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class SearchDestroyMode : TeamMode
 {
+    public override float XpPerPoint => 12f;   // 1 a kill or plant, 2 a defuse
+
     public enum BombState { Carried = 0, Dropped = 1, Planted = 2, Defused = 3, Exploded = 4 }
 
     public const string ReasonEliminated = "elim";
@@ -46,6 +48,7 @@ public class SearchDestroyMode : TeamMode
     private int carrier = -1;
     private Vector3 bombPos, carrierPos;
     private readonly HashSet<int> dead = new();
+    private const float ClutchDefuseSeconds = 2.5f;   // A defuse with this little bomb time left (and an attacker up) is a highlight
     private float deadline;      // Time.time the round clock / bomb runs out
     private bool bothTeams;      // Both sides had players when the round started (else wipe-outs don't end it: solo practice)
     private bool matchOver;
@@ -412,6 +415,13 @@ public class SearchDestroyMode : TeamMode
         bomb = BombState.Defused;
         MatchStats.Add(who, PlayerKeys.StatDefuses);
         Add(who, PlayerKeys.Score, 2f);
+        // Only a clutch defuse is a highlight: the bomb nearly out and an attacker still alive (else kills win out)
+        float left = deadline - Time.time;
+        bool attackerAlive = false;
+        foreach (var p in PhotonNetwork.PlayerList)
+            if (PlayerRoles.Get(p) == AttackingRole && !dead.Contains(p.ActorNumber)) { attackerAlive = true; break; }
+        if (left <= ClutchDefuseSeconds && attackerAlive)
+            Highlights.Offer(who.ActorNumber, -1, 30f + (ClutchDefuseSeconds - left) * 6f, $"{who.NickName} defuses with {left:0.0}s left!");
         NetProps.SetRoom(RoomKeys.SnDBomb, (int)bomb);
         EndRound(Other(attack), ReasonDefused);
     }

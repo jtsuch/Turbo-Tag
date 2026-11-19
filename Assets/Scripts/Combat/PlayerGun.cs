@@ -310,7 +310,7 @@ public class PlayerGun : MonoBehaviourPun
                 if (lastDummy != null && lastTraceHit)
                 {
                     bool dummyHead = lastDummy.IsHead(end);
-                    lastDummy.TakeHit(damage * (dummyHead ? gun.HeadshotMultiplier : 1f), dummyHead, end);
+                    lastDummy.TakeHit(gun.HeadshotDamage(damage, dummyHead), dummyHead, end);
                     anyHit = true;
                     anyHead |= dummyHead;
                 }
@@ -318,7 +318,7 @@ public class PlayerGun : MonoBehaviourPun
             }
             anyHit = true;
             anyHead |= head;
-            float amount = damage * (head ? gun.HeadshotMultiplier : 1f);
+            float amount = gun.HeadshotDamage(damage, head);
             pending.TryGetValue(target, out var sum);
             pending[target] = (sum.damage + amount, sum.head || head, end);
         }
@@ -348,6 +348,7 @@ public class PlayerGun : MonoBehaviourPun
         if (model != null) model.Kick();
         PlayerCam.Local.AddRecoil(gun.Recoil);
         if (Killcam.Instance != null) Killcam.Instance.RecordShot(player.ActorNumber, firstEnd);
+        Highlights.RecordShot(player.ActorNumber, firstEnd);
         photonView.RPC(nameof(RPC_ShotFx), RpcTarget.Others, firstEnd, gun.Pellets);
         if (anyHit) LocalHit?.Invoke(anyHead);
         if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt(); // Shooting ends an emote
@@ -666,6 +667,7 @@ public class PlayerGun : MonoBehaviourPun
     {
         if (emotes != null || TryGetComponent(out emotes)) emotes.Interrupt();
         if (Killcam.Instance != null) Killcam.Instance.RecordShot(player.ActorNumber, end);
+        Highlights.RecordShot(player.ActorNumber, end);
         if (Killcam.IsPlaying) return; // The killcam replays the killer's shots itself
 
         var model = WorldModel(Current != null ? Current.Id : null);

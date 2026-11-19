@@ -217,10 +217,12 @@ public readonly struct AbilityLoadout
     public static AbilityLoadout Of(PhotonPlayer player)
     {
         var ids = new string[4];
+        // A vote decided everyone's abilities this match (Race's Pregame vote: RoomKeys.ForcedLoadout)
+        var forced = PhotonNetwork.InRoom ? NetProps.Room(RoomKeys.ForcedLoadout, Array.Empty<string>()) : Array.Empty<string>();
         for (int i = 0; i < ids.Length; i++)
         {
             var slot = (AbilitySlot)i;
-            string id = NetProps.Of(player, PropertyKey(slot), Default(slot));
+            string id = forced.Length == 4 && !string.IsNullOrEmpty(forced[i]) ? forced[i] : NetProps.Of(player, PropertyKey(slot), Default(slot));
             ids[i] = AbilityCatalog.SlotOf(id) == slot && AbilityCatalog.AllowedInMode(id) ? id : Default(slot); // Not in this mode: the default
         }
         return new AbilityLoadout(ids);

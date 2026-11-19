@@ -480,6 +480,7 @@ public class KeepAwayDisc : MonoBehaviourPun
         var theirs = PlayerRoles.Get(holder);
         if (!PlayerRoles.IsTeam(mine) || mine == theirs) return;
         SetHolder(info.Sender.ActorNumber, steal: true);
+        Highlights.Offer(info.Sender.ActorNumber, holder, 10f, $"{info.Sender.NickName} steals the disc");
     }
 
     [PunRPC]

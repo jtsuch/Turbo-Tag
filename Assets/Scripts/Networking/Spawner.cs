@@ -120,6 +120,7 @@ public class Spawner : MonoBehaviour
     private void GetSpawnPoint(PlayerRole role, out Vector3 position, out Quaternion rotation)
     {
         var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        if (mode != null && mode.TryGetRespawn(role, GameModeManager.Instance.Phase, out position, out rotation)) return;   // Race: the last checkpoint
         if (mode != null && mode.InHunterRoom(role, GameModeManager.Instance.Phase))
         {
             HunterRoom.Spot(PhotonNetwork.LocalPlayer.ActorNumber, out position, out rotation);   // Waiting off the map

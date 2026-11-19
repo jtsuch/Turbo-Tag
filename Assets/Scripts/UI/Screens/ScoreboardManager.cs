@@ -77,6 +77,7 @@ public class ScoreboardManager : MenuScreen
         UIKit.Place(footerText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(1000f, 32f));
 
         Rebuild();
+        MatchXpCard.Create(Root);   // What this match earned (bottom left)
         Sfx.Here(SfxKind.Fanfare, 0.7f);
     }
 
@@ -230,7 +231,7 @@ public class ScoreboardManager : MenuScreen
             holder.sizeDelta = new Vector2(size, size);
             var preview = PenguinPreview.Create(holder, size);
             UIKit.Stretch((RectTransform)preview.transform);
-            preview.SetSkin(PenguinSkins.Of(p));
+            preview.Follow(p);
             preview.SetCosmetics(p);
             preview.Dance = true;
             previews.Add(preview);
@@ -316,7 +317,7 @@ public class ScoreboardManager : MenuScreen
         holder.sizeDelta = new Vector2(230f, 230f);
         var preview = PenguinPreview.Create(holder, 230f);
         UIKit.Stretch((RectTransform)preview.transform);
-        preview.SetSkin(PenguinSkins.Of(mvp));
+        preview.Follow(mvp);
         preview.SetCosmetics(mvp);
         preview.Dance = true;
         previews.Add(preview);

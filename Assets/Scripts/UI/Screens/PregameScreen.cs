@@ -31,6 +31,11 @@ public class PregameScreen : MenuScreen
     private bool loading;
     private bool localReady; // Our own state, ahead of Photon's echo
 
+    // The mode's Pregame is a vote (Race with its Ability Vote rule on): a click votes for an ability, the cards show
+    // everyone's votes (LobbyVotes, like the lobby's map picks), and as the match starts the host draws one per slot
+    // for everyone, weighted by votes
+    private bool voting;
+
     private Color SlotColor(AbilitySlot slot) => slot switch
     {
         AbilitySlot.Basic => Theme.cyan,
@@ -61,7 +66,9 @@ public class PregameScreen : MenuScreen
     {
         var mode = GameModeRegistry.Find(MatchRules.GameModeKey);
         string modeName = mode != null ? mode.gameModeName : MatchRules.GameModeKey;
-        Header("Choose Your Abilities", $"{modeName}  ·  {Nicify(MatchRules.Map)}  ·  One from each category");
+        voting = GameModeRegistry.Create(MatchRules.GameModeKey).UsesAbilityVote;
+        if (voting) Header("Vote for the Abilities", $"{modeName}  ·  {Nicify(MatchRules.Map)}  ·  Everyone gets the same four: one per category, drawn by votes");
+        else Header("Choose Your Abilities", $"{modeName}  ·  {Nicify(MatchRules.Map)}  ·  One from each category");
 
         // Top right: Ready / Not Ready, how many are ready and who is still choosing; Force Start for the host
         readyButton = UIKit.Button(Root, "Ready!", UIKit.Style.Primary, () => SetReady(true), 76f, 34f);
@@ -174,6 +181,7 @@ public class PregameScreen : MenuScreen
         fx.LipDepth = 0f;
         fx.HoverScale = 1.02f;
         var card = new Card { Slot = slot, Id = id, Bg = bg, Outline = outline, Check = check.gameObject };
+        if (voting) VoteBadge.Add(bg, LobbyVotes.ForSlot(slot), id);   // Everyone's votes on it
         button.onClick.AddListener(() => Choose(card));
         cards.Add(card);
     }
@@ -226,12 +234,14 @@ public class PregameScreen : MenuScreen
 
     private void Choose(Card card)
     {
-        AbilityLoadout.SetLocal(card.Slot, card.Id);
+        if (voting) LobbyVotes.Toggle(LobbyVotes.ForSlot(card.Slot), card.Id);   // A vote (click again to take it back)
+        else AbilityLoadout.SetLocal(card.Slot, card.Id);
         RefreshCards();
     }
 
     private void RefreshCards()
     {
+        if (voting) { RefreshVotes(); return; }
         foreach (var card in cards)
         {
             bool on = AbilityLoadout.LastChoice(card.Slot) == card.Id;
@@ -239,6 +249,21 @@ public class PregameScreen : MenuScreen
             card.Check.SetActive(on);
             card.Bg.GetComponent<UIButtonFx>().FaceColor = on ? Theme.cardHover : Theme.card;
             if (on) picked[card.Slot].text = AbilityCatalog.DisplayName(card.Id);
+        }
+    }
+
+    // Voting: no ticks or highlights of your own, only everyone's coloured bubbles and outlines (VoteBadge); each
+    // header says your vote
+    private void RefreshVotes()
+    {
+        foreach (var slot in picked.Keys) picked[slot].text = "Click to vote";
+        foreach (var card in cards)
+        {
+            bool mine = LobbyVotes.Mine(LobbyVotes.ForSlot(card.Slot)) == card.Id;
+            card.Outline.enabled = false;
+            card.Check.SetActive(false);
+            card.Bg.GetComponent<UIButtonFx>().FaceColor = Theme.card;
+            if (mine) picked[card.Slot].text = "Your vote: " + AbilityCatalog.DisplayName(card.Id);
         }
     }
 
@@ -284,6 +309,11 @@ public class PregameScreen : MenuScreen
         }
 
         foreach (var p in PhotonNetwork.PlayerList) NetProps.SetPlayer(p, PlayerKeys.Ready, false); // Fresh next time
+        // The vote's draw: the abilities everyone has this match (AbilityLoadout.Of reads it), before anyone loads
+        var draw = voting ? LobbyVotes.DrawAbilities() : new string[0];
+        if (voting) Debug.Log("[Pregame] Ability vote drew: " + string.Join(", ", draw));
+        NetProps.SetRoom(RoomKeys.ForcedLoadout, draw);
+        if (voting) LobbyVotes.ClearAll();   // Last race's votes never carry into the next Pregame
         PhotonNetwork.LoadLevel(map);
     }
 }

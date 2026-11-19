@@ -13,6 +13,7 @@ public static class MatchLauncher
         if (!PhotonNetwork.IsMasterClient) return;
 
         LobbyVotes.ClearAll();   // The next lobby starts with no marks
+        NetProps.SetRoom(RoomKeys.ForcedLoadout, new string[0]);   // Pregame's vote (if any) decides again
 
         // The room stays open and listed (as IN PROGRESS) when the mode takes joiners mid-match (JoinInProgress)
         JoinInProgress.SetOpen(GameModeRegistry.Create(MatchRules.GameModeKey).AllowsJoining);
@@ -52,6 +53,7 @@ public static class MatchLauncher
         if (!PhotonNetwork.IsMasterClient) return;
         JoinInProgress.SetOpen(true);
         NetProps.SetRoom(RoomKeys.Stage, JoinInProgress.StageLobby);
+        NetProps.SetRoom(RoomKeys.ForcedLoadout, new string[0]);
         PhotonNetwork.LoadLevel(SceneNames.Lobby);
     }
 

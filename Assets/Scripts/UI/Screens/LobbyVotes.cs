@@ -18,10 +18,31 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public static class LobbyVotes
 {
-    public enum Kind { Map, Mode }
+    /// <summary>What is being picked: a map, a game mode, or (the Race's Pregame vote) an ability for one slot.</summary>
+    public enum Kind { Map, Mode, Basic, Quick, Throw, Trap }
 
-    private static string Key(Kind kind)  => kind == Kind.Map ? PlayerKeys.VoteMap : PlayerKeys.VoteMode;
-    private static string When(Kind kind) => kind == Kind.Map ? PlayerKeys.VoteMapAt : PlayerKeys.VoteModeAt;
+    /// <summary>The vote kind for an ability slot.</summary>
+    public static Kind ForSlot(AbilitySlot slot) => Kind.Basic + (int)slot;
+
+    private static string Key(Kind kind) => kind switch
+    {
+        Kind.Map   => PlayerKeys.VoteMap,
+        Kind.Mode  => PlayerKeys.VoteMode,
+        Kind.Basic => PlayerKeys.VoteAbility0,
+        Kind.Quick => PlayerKeys.VoteAbility1,
+        Kind.Throw => PlayerKeys.VoteAbility2,
+        _          => PlayerKeys.VoteAbility3,
+    };
+
+    private static string When(Kind kind) => kind switch
+    {
+        Kind.Map   => PlayerKeys.VoteMapAt,
+        Kind.Mode  => PlayerKeys.VoteModeAt,
+        Kind.Basic => PlayerKeys.VoteAbilityAt0,
+        Kind.Quick => PlayerKeys.VoteAbilityAt1,
+        Kind.Throw => PlayerKeys.VoteAbilityAt2,
+        _          => PlayerKeys.VoteAbilityAt3,
+    };
 
     /// <summary>Bumped whenever anyone's picks change (or someone leaves), so badges know to redraw.</summary>
     public static int Version { get; private set; }
@@ -65,19 +86,57 @@ public static class LobbyVotes
         return list;
     }
 
-    /// <summary>Host: everyone's picks off (a match is starting: the next lobby starts clean).</summary>
+    /// <summary>Host: everyone's picks off (a match is starting: the next lobby, and the next Pregame, start clean).</summary>
     public static void ClearAll()
     {
         if (!PhotonNetwork.IsMasterClient || !PhotonNetwork.InRoom) return;
         foreach (var p in PhotonNetwork.PlayerList)
         {
-            if (NetProps.Of(p, PlayerKeys.VoteMap, "") == "" && NetProps.Of(p, PlayerKeys.VoteMode, "") == "") continue;
-            p.SetCustomProperties(new Hashtable
+            var props = new Hashtable();
+            foreach (Kind kind in System.Enum.GetValues(typeof(Kind)))
             {
-                [PlayerKeys.VoteMap] = "", [PlayerKeys.VoteMapAt] = 0d,
-                [PlayerKeys.VoteMode] = "", [PlayerKeys.VoteModeAt] = 0d,
-            });
+                if (NetProps.Of(p, Key(kind), "") == "") continue;
+                props[Key(kind)] = "";
+                props[When(kind)] = 0d;
+            }
+            if (props.Count > 0) p.SetCustomProperties(props);
         }
+    }
+
+    /// <summary>
+    /// Host, as Pregame ends with the ability vote on: one ability per slot for everyone, drawn at random with each
+    /// weighted by its votes (2 of 3 votes: a 2-in-3 chance). A slot nobody voted on draws from every usable ability.
+    /// </summary>
+    public static string[] DrawAbilities()
+    {
+        var result = new string[4];
+        foreach (AbilitySlot slot in System.Enum.GetValues(typeof(AbilitySlot)))
+        {
+            var counts = new Dictionary<string, int>();
+            int total = 0;
+            foreach (var p in PhotonNetwork.PlayerList)
+            {
+                string id = NetProps.Of(p, Key(ForSlot(slot)), "");
+                if (id == "" || AbilityCatalog.SlotOf(id) != slot || !AbilityCatalog.IsUsable(id)) continue;
+                counts.TryGetValue(id, out int n);
+                counts[id] = n + 1;
+                total++;
+            }
+            if (total == 0)
+            {
+                var all = new List<string>();
+                foreach (var id in AbilityCatalog.InSlot(slot)) if (AbilityCatalog.IsUsable(id)) all.Add(id);
+                result[(int)slot] = all.Count > 0 ? all[Random.Range(0, all.Count)] : AbilityLoadout.Default(slot);
+                continue;
+            }
+            int roll = Random.Range(0, total);
+            foreach (var pair in counts)
+            {
+                if (roll < pair.Value) { result[(int)slot] = pair.Key; break; }
+                roll -= pair.Value;
+            }
+        }
+        return result;
     }
 
     /// <summary>A player's penguin colour as UI ink: the black penguin reads as light grey on the dark UI.</summary>
@@ -101,7 +160,8 @@ public static class LobbyVotes
     {
         public void OnPlayerPropertiesUpdate(PhotonPlayer target, Hashtable changed)
         {
-            if (changed.ContainsKey(PlayerKeys.VoteMap) || changed.ContainsKey(PlayerKeys.VoteMode) || changed.ContainsKey(PlayerKeys.Skin)) Version++;
+            foreach (var key in changed.Keys)
+                if (key is string k && (k.StartsWith("Vote") || k == PlayerKeys.Skin)) { Version++; break; }
         }
         public void OnPlayerLeftRoom(PhotonPlayer otherPlayer) => Version++;
         public void OnPlayerEnteredRoom(PhotonPlayer newPlayer) { }

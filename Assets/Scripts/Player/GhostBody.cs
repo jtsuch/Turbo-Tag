@@ -25,7 +25,9 @@ public class GhostBody : MonoBehaviour
 
     private void Update()
     {
-        bool ghost = player.Role == PlayerRole.Ghost || player.Has(PlayerFlag.Phantom);
+        var mode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : null;
+        bool ghost = player.Role == PlayerRole.Ghost || player.Has(PlayerFlag.Phantom)
+                  || (mode != null && !mode.PlayersCollide);   // Race with collisions off: everyone passes through everyone
         if (ghost == ghosted && (!ghost || Time.time < nextRefresh)) return;
         nextRefresh = Time.time + 0.5f; // New players join, bodies respawn: keep the list fresh
         ghosted = ghost;

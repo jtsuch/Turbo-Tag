@@ -106,6 +106,12 @@ public static class MatchRules
     public static bool  HealthDrops => NetProps.Room(RuleKeys.HealthDrops, true);
     /// <summary>Freeplay's Guns switch (Match Rules): guns, health and the shop (B, any time). Off by default.</summary>
     public static bool  FreeplayGuns => NetProps.Room(RuleKeys.FreeplayGuns, false);
+
+    /// <summary>Race: players collide (default on). Off: they pass through each other and nobody's abilities touch anyone else.</summary>
+    public static bool RaceCollisions => NetProps.Room(RuleKeys.RaceCollisions, true);
+
+    /// <summary>Race: Pregame is a vote on the abilities everyone gets (default on); off, everyone picks their own.</summary>
+    public static bool AbilityVote => NetProps.Room(RuleKeys.AbilityVote, true);
     public static float GunPickTime => UnityEngine.Mathf.Max(1f, NetProps.Room(RuleKeys.GunPickTime, DefaultGunPickTime));
     public static bool  GunModeAbilities => NetProps.Room(RuleKeys.GunModeAbilities, true);
     /// <summary>Guns get less accurate in the air (off by default: flip and snipe with perfect aim).</summary>

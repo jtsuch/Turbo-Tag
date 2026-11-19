@@ -10,6 +10,9 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class TeamDeathmatchMode : TeamMode
 {
+    public override float  XpPerPoint   => 10f;
+    public override string XpScoreLabel => "Kills";
+
     public override string DisplayName => "Team Deathmatch";
     public override bool   UsesGuns    => true;
     public override bool   ShowsShotsOnMap => true;

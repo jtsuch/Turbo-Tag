@@ -18,6 +18,16 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class TagMode : GameMode
 {
+    // The round's last hider caught is the big tag (RemainingHiders already leaves the target out)
+    public override float TagHighlightBonus(PhotonPlayer target, out string caption)
+    {
+        bool last = RemainingHiders().Count == 0;
+        caption = last ? "{tagger} catches the last hider!" : null;
+        return last ? 15f : 0f;
+    }
+
+    public override float XpPerPoint => 0.4f;   // ~1 point a second hiding, 10 a tag
+
     private const float RoundEndSeconds  = 6f;
     private const float MatchEndSeconds  = 5f;
     private const float ContactRetrySeconds = 0.5f;

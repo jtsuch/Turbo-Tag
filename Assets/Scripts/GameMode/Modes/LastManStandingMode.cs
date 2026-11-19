@@ -23,6 +23,11 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class LastManStandingMode : FreeForAllMode
 {
+    // Score is rounds won; kills earn too (a round can be lost after a good fight)
+    public override float XpFromScore(PhotonPlayer player) =>
+        NetProps.Of(player, PlayerKeys.Score, 0f) * 40f + MatchStats.Get(player, PlayerKeys.StatKills) * 8f;
+    public override string XpScoreLabel => "Rounds won and kills";
+
     private const float RoundEndSeconds = 5f, MatchEndSeconds = 6f, MinCountdown = 5f;
     private const string SitOut = "sitout";
 

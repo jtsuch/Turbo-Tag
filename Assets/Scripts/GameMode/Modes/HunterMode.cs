@@ -16,6 +16,13 @@ using PhotonPlayer = Photon.Realtime.Player;
 /// </summary>
 public class HunterMode : GameMode
 {
+    public override bool DidWin(PhotonPlayer player) => player != null && Won(player);
+    // The hunter earns for kills, hiders for every second they lasted
+    public override float XpFromScore(PhotonPlayer player) => PlayerRoles.Get(player) == PlayerRole.Hunter
+        ? MatchStats.Get(player, PlayerKeys.StatKills) * 30f
+        : MatchStats.Get(player, PlayerKeys.StatTimeAlive) * 0.8f;
+    public override string XpScoreLabel => "Kills / time alive";
+
     public override ModeCategory Category => ModeCategory.Movement;
     public override float BuyPauseSeconds => 0f;   // Nobody picks a gun: the hunter's pistol is set   // One armed hunter against hiders' abilities: a hide-and-seek mode
     public const string HunterTeam = "Hunter";

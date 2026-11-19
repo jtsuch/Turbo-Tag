@@ -17,6 +17,16 @@ public sealed class GunInfo
 
     public float Damage;                     // Per bullet (per pellet for shotguns), before the Damage rule
     public float HeadshotMultiplier = 2f;
+    /// <summary>The most one headshot can do, after every damage scale (0: no cap). <see cref="HeadshotDamage"/>.</summary>
+    public float MaxHeadshotDamage = 0f;
+
+    /// <summary>A hit's damage from a shot's <paramref name="damage"/> (already scaled): the multiplier, then the cap, on the head.</summary>
+    public float HeadshotDamage(float damage, bool head)
+    {
+        if (!head) return damage;
+        float amount = damage * HeadshotMultiplier;
+        return MaxHeadshotDamage > 0f ? Mathf.Min(amount, MaxHeadshotDamage) : amount;
+    }
     public float FireInterval;               // Seconds between shots
     public bool  Automatic;                  // Hold to keep firing
     public int   Magazine;
@@ -147,6 +157,7 @@ public static class GunCatalog
             Id = "LongRifle", Name = "Glacier", Model = "Guns/LongRifle", Price = 2250,
             Description = "Semi-auto rifle. Four body shots or two headshots; tight at range, scroll up to zoom.",
             Damage = 26f, HeadshotMultiplier = 2f, FireInterval = 0.3f, Automatic = false,
+            MaxHeadshotDamage = 65f,   // Nov 18 (Justin): never more than 65 a headshot, whatever the damage scale
             Magazine = 20, ReloadTime = 2.2f, Range = 250f, Spread = 0f, AirSpread = 2.5f, Recoil = 1.2f,
             Bloom = 0.3f, MaxBloom = 1.5f,
             ScopeZoom = 1.6f, ScopeLens = false,   // Nov 14: a light zoom (the Icicle's is 4×, with its lens)
